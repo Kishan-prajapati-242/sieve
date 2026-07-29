@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 import psycopg
+import pytest
 
 from api.db.migrate import migrate
 from api.ingest.openalex import (
@@ -21,6 +22,7 @@ from api.ingest.openalex import (
     ingest,
     iter_works,
     make_client,
+    split_budget,
 )
 from api.ingest.ratelimit import TokenBucket
 
@@ -49,11 +51,12 @@ def make_work(
     }
 
 
-def paged_transport(pages: list[list[dict[str, Any]]]) -> httpx.MockTransport:
-    """Serves pages keyed by cursor: '*' -> pages[0], 'c1' -> pages[1], ..."""
+def paged_transport(pages_by_filter: dict[str, list[list[dict[str, Any]]]]) -> httpx.MockTransport:
+    """Serves per-filter page lists, keyed by cursor: '*' -> pages[0], 'c1' -> pages[1], ..."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert "mailto:prajapati.kish@northeastern.edu" in request.headers["user-agent"]
+        pages = pages_by_filter[request.url.params["filter"]]
         cursor = request.url.params["cursor"]
         idx = 0 if cursor == "*" else int(cursor.removeprefix("c"))
         next_cursor = f"c{idx + 1}" if idx + 1 < len(pages) else None
@@ -73,10 +76,54 @@ def test_deinvert_abstract_orders_by_position() -> None:
 
 def test_cursor_pagination_walks_every_page_with_polite_user_agent() -> None:
     pages = [[make_work(1), make_work(2)], [make_work(3)], [make_work(4)]]
-    with make_client(transport=paged_transport(pages)) as client:
+    with make_client(transport=paged_transport({"unused": pages})) as client:
         got = [w["id"] for w in iter_works(client, free_bucket(), "unused")]
     assert got == [f"https://openalex.org/W{n}" for n in (1, 2, 3, 4)]
     assert USER_AGENT.endswith("(mailto:prajapati.kish@northeastern.edu)")
+
+
+def test_split_budget_matches_the_agreed_weights() -> None:
+    # The production weights at the smoke-test size: 40% concept, 15% each.
+    assert split_budget(100, [0.40, 0.15, 0.15, 0.15, 0.15]) == [40, 15, 15, 15, 15]
+
+
+def test_split_budget_sums_exactly_despite_rounding() -> None:
+    for limit in (1, 3, 7, 101, 199_999):
+        budgets = split_budget(limit, [0.40, 0.15, 0.15, 0.15, 0.15])
+        assert sum(budgets) == limit
+    # Weights need not sum to 1; ratios are what count.
+    assert split_budget(30, [2.0, 1.0]) == [20, 10]
+
+
+def test_split_budget_rejects_nonpositive_weights() -> None:
+    with pytest.raises(ValueError):
+        split_budget(10, [0.5, 0.0])
+
+
+def test_every_query_gets_its_own_budget(scratch_db: str) -> None:
+    """The --limit bug: a global cap let the first (broad) query consume the
+    whole budget and the specialty queries never ran at all."""
+    migrate(scratch_db)
+    transport = paged_transport(
+        {
+            "broad": [[make_work(1), make_work(2)], [make_work(3), make_work(4)]],
+            "niche": [[make_work(5), make_work(6)]],
+        }
+    )
+    queries = [("broad", "broad", 2.0), ("niche", "niche", 1.0)]
+
+    with (
+        make_client(transport=transport) as client,
+        psycopg.connect(scratch_db) as conn,
+    ):
+        stats = ingest(conn, client, free_bucket(), limit=3, queries=queries)
+        stored = conn.execute("SELECT source_id FROM source_records ORDER BY source_id").fetchall()
+
+    # 2:1 weights over limit 3 -> broad stops at 2 despite having 4 works
+    # available, and niche actually runs (the old code never reached it).
+    assert stats.per_query == {"broad": 2, "niche": 1}
+    assert stats.fetched == 3
+    assert stored == [("W1",), ("W2",), ("W5",)]
 
 
 def test_ingest_twice_is_idempotent(scratch_db: str) -> None:
@@ -88,8 +135,8 @@ def test_ingest_twice_is_idempotent(scratch_db: str) -> None:
         make_work(3, title=None),  # no title: audit row only, no paper
         make_work(4),  # no DOI at all: NULLs must not "conflict"
     ]
-    transport = paged_transport([works])
-    queries = [("test", "unused-filter")]
+    transport = paged_transport({"unused-filter": [works]})
+    queries = [("test", "unused-filter", 1.0)]
 
     with make_client(transport=transport) as client, psycopg.connect(scratch_db) as conn:
         first = ingest(conn, client, free_bucket(), queries=queries)
@@ -104,10 +151,12 @@ def test_ingest_twice_is_idempotent(scratch_db: str) -> None:
         ).fetchone()
         abstract = conn.execute("SELECT abstract FROM papers WHERE title = 'Paper 1'").fetchone()
 
-    assert first == IngestStats(fetched=4, new_papers=2, linked_by_doi=1, skipped_no_title=1)
+    assert first == IngestStats(
+        fetched=4, new_papers=2, linked_by_doi=1, skipped_no_title=1, per_query={"test": 4}
+    )
     # Rerun: every linked record just refreshes; the title-less one is
     # re-attempted and re-skipped; nothing new is created anywhere.
-    assert second == IngestStats(fetched=4, refreshed=3, skipped_no_title=1)
+    assert second == IngestStats(fetched=4, refreshed=3, skipped_no_title=1, per_query={"test": 4})
     assert counts["source_records"] == (4,)
     assert counts["papers"] == (2,)
     assert counts["merges"] == (1,)
@@ -119,10 +168,10 @@ def test_limit_stops_mid_crawl(scratch_db: str) -> None:
     migrate(scratch_db)
     pages = [[make_work(1), make_work(2)], [make_work(3)]]
     with (
-        make_client(transport=paged_transport(pages)) as client,
+        make_client(transport=paged_transport({"u": pages})) as client,
         psycopg.connect(scratch_db) as conn,
     ):
-        stats = ingest(conn, client, free_bucket(), limit=1, queries=[("test", "u")])
+        stats = ingest(conn, client, free_bucket(), limit=1, queries=[("test", "u", 1.0)])
         count = conn.execute("SELECT count(*) FROM source_records").fetchone()
     assert stats.fetched == 1
     assert count == (1,)

@@ -32,7 +32,7 @@ import argparse
 import os
 import sys
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -70,33 +70,62 @@ SELECT_FIELDS = ",".join(
 # abstract feeds both fts and the Phase 2 embeddings; a bare title ranks
 # poorly in every mode. Sorted most-cited-first (see iter_works) so a capped
 # crawl keeps the highest-value works.
-QUERIES: list[tuple[str, str]] = [
+#
+# The third element is each query's WEIGHT of the total --limit budget
+# (Kishan, 2026-07-29: broad concept 40%, the rest split evenly). A single
+# global cap would let the 2.2M-work concept query consume everything and
+# starve the four specialty crawls — the exact bug this fixes. Budgets are
+# fixed, not rolled over: if a specialty query runs out of works below its
+# budget, the run reports the shortfall rather than silently backfilling
+# with more broad-concept works.
+QUERIES: list[tuple[str, str, float]] = [
     # Broad disciplinary base: everything OpenAlex files under the NLP
     # concept (C204321447, "Natural language processing", ~2.2M works).
-    ("nlp-concept", "concepts.id:C204321447,has_abstract:true"),
+    ("nlp-concept", "concepts.id:C204321447,has_abstract:true", 0.40),
     # Phrase queries catch clinical/biomedical work indexed under medicine
     # rather than the CS concept tree.
     (
         "clinical-nlp",
         'title_and_abstract.search:"clinical natural language processing"'
         ' OR "clinical text mining" OR "clinical NLP",has_abstract:true',
+        0.15,
     ),
     (
         "biomedical-nlp",
         'title_and_abstract.search:"biomedical natural language processing"'
         ' OR "biomedical text mining",has_abstract:true',
+        0.15,
     ),
     (
         "text-simplification",
         'title_and_abstract.search:"text simplification" OR "lexical simplification"'
         ' OR "readability assessment",has_abstract:true',
+        0.15,
     ),
     (
         "mental-health-nlp",
         'title_and_abstract.search:"mental health" AND "natural language processing"'
         ",has_abstract:true",
+        0.15,
     ),
 ]
+
+
+def split_budget(limit: int, weights: Sequence[float]) -> list[int]:
+    """Split `limit` by weight into integer budgets that sum to exactly limit.
+
+    Largest-remainder method: floor everything, then hand the leftover units
+    to the largest fractional parts. Weights need not sum to 1.
+    """
+    if any(w <= 0 for w in weights):
+        raise ValueError("query weights must be positive")
+    total = sum(weights)
+    raw = [limit * w / total for w in weights]
+    budgets = [int(r) for r in raw]
+    by_remainder = sorted(range(len(raw)), key=lambda i: raw[i] - budgets[i], reverse=True)
+    for i in by_remainder[: limit - sum(budgets)]:
+        budgets[i] += 1
+    return budgets
 
 
 @dataclass
@@ -106,6 +135,7 @@ class IngestStats:
     linked_by_doi: int = 0
     refreshed: int = 0
     skipped_no_title: int = 0
+    per_query: dict[str, int] = field(default_factory=dict)
 
     def summary(self) -> str:
         return (
@@ -240,23 +270,38 @@ def ingest(
     bucket: TokenBucket,
     *,
     limit: int | None = None,
-    queries: Sequence[tuple[str, str]] = tuple(QUERIES),
+    queries: Sequence[tuple[str, str, float]] = tuple(QUERIES),
 ) -> IngestStats:
-    """Crawl every query; one transaction per work, so a crash mid-run loses
-    at most one work and a rerun converges instead of duplicating."""
+    """Crawl every query within its own budget share of --limit.
+
+    Budgets are per query, not a global cap, so the broad concept crawl can
+    never starve the specialty ones. One transaction per work: a crash
+    mid-run loses at most one work and a rerun converges, never duplicates.
+    """
+    budgets: list[int | None]
+    if limit is None:
+        budgets = [None] * len(queries)
+    else:
+        budgets = list(split_budget(limit, [w for _, _, w in queries]))
     stats = IngestStats()
-    for name, filter_ in queries:
-        print(f"query {name}: starting")
-        for work in iter_works(client, bucket, filter_):
-            if limit is not None and stats.fetched >= limit:
-                print(f"--limit {limit} reached, stopping")
-                return stats
+    for (name, filter_, _), budget in zip(queries, budgets, strict=True):
+        stats.per_query[name] = 0
+        if budget == 0:
+            continue
+        print(f"query {name}: starting (budget {'unlimited' if budget is None else budget})")
+        per_page = 200 if budget is None else min(200, budget)
+        for work in iter_works(client, bucket, filter_, per_page=per_page):
+            if budget is not None and stats.per_query[name] >= budget:
+                break
             with conn.transaction():
                 outcome = store_work(conn, work)
             stats.fetched += 1
+            stats.per_query[name] += 1
             setattr(stats, outcome, getattr(stats, outcome) + 1)
             if stats.fetched % 1000 == 0:
                 print(f"  {stats.summary()}")
+        if budget is not None and stats.per_query[name] < budget:
+            print(f"query {name}: exhausted at {stats.per_query[name]} of budget {budget}")
     return stats
 
 
@@ -266,7 +311,8 @@ def main() -> None:
         "--limit",
         type=int,
         default=None,
-        help="stop after N works in total; smoke-test with --limit 100 before a full pull",
+        help="total works budget, split across queries by weight;"
+        " smoke-test with --limit 100 before a full pull",
     )
     args = parser.parse_args()
     conninfo = os.environ.get("DATABASE_URL")
@@ -276,6 +322,8 @@ def main() -> None:
     with make_client() as client, psycopg.connect(conninfo) as conn:
         stats = ingest(conn, client, bucket, limit=args.limit)
     print(stats.summary())
+    for name, count in stats.per_query.items():
+        print(f"  {name}: {count}")
 
 
 if __name__ == "__main__":
