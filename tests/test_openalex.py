@@ -20,6 +20,7 @@ from api.ingest.openalex import (
     USER_AGENT,
     IngestStats,
     deinvert_abstract,
+    extract_venue,
     ingest,
     iter_works,
     make_client,
@@ -78,6 +79,29 @@ def test_deinvert_abstract_orders_by_position() -> None:
     assert deinvert_abstract(inverted) == "Deep learning wins wins again"
     assert deinvert_abstract(None) is None
     assert deinvert_abstract({}) is None
+
+
+def test_extract_venue_prefers_canonical_source_then_falls_back_to_raw() -> None:
+    canonical = {"primary_location": {"source": {"display_name": "JAMIA"}}}
+    assert extract_venue(canonical) == "JAMIA"
+
+    # The measured ACL Anthology shape (92% of ACL papers, 2026-07-29):
+    # source null everywhere, venue only in raw_source_name free text.
+    acl_shaped = {
+        "primary_location": {"source": None, "raw_source_name": "Proceedings of ACL 2017"},
+        "locations": [{"source": None, "raw_source_name": "Proceedings of ACL 2017"}],
+    }
+    assert extract_venue(acl_shaped) == "Proceedings of ACL 2017"
+
+    # A canonical source in locations[] beats raw free text anywhere.
+    mixed = {
+        "primary_location": {"source": None, "raw_source_name": "raw name"},
+        "locations": [{"source": {"display_name": "Canonical Venue"}}],
+    }
+    assert extract_venue(mixed) == "Canonical Venue"
+
+    assert extract_venue({"primary_location": None, "locations": []}) is None
+    assert extract_venue({}) is None
 
 
 def test_cursor_pagination_walks_every_page_with_polite_user_agent() -> None:

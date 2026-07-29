@@ -59,7 +59,11 @@ SELECT_FIELDS = ",".join(
         "doi",
         "display_name",
         "publication_year",
+        "type",  # article | conference-paper | paratext | editorial | ...
+        "is_paratext",
+        "is_retracted",
         "primary_location",
+        "locations",  # venue fallback chain; primary alone is null for ~1/3 of works
         "cited_by_count",
         "abstract_inverted_index",
         "authorships",
@@ -192,6 +196,31 @@ def make_client(
     )
 
 
+def extract_venue(work: dict[str, Any]) -> str | None:
+    """Venue via fallback chain; a single field misses a third of the corpus.
+
+    Canonical first: source.display_name on primary_location, then on each
+    entry of locations[] — these are OpenAlex's deduplicated Source entities.
+    Then raw_source_name in the same order: publisher-deposited free text,
+    less clean, but it is where the venue lives for works whose source
+    entity is unlinked — measured 2026-07-29, 92% of the corpus's ACL
+    Anthology papers (DOI 10.18653/...) had source null everywhere while
+    raw_source_name carried the full proceedings title.
+    """
+    spots = [work.get("primary_location"), *(work.get("locations") or [])]
+    for key in ("source", "raw_source_name"):
+        for spot in spots:
+            if not spot:
+                continue
+            if key == "source":
+                name = (spot.get("source") or {}).get("display_name")
+            else:
+                name = spot.get("raw_source_name")
+            if name:
+                return str(name)
+    return None
+
+
 def deinvert_abstract(inverted: dict[str, list[int]] | None) -> str | None:
     """OpenAlex ships abstracts as {word: [positions]} (a legal workaround);
     flatten back to text by position."""
@@ -256,7 +285,7 @@ def store_work(conn: psycopg.Connection, work: dict[str, Any]) -> str:
     doi = normalize_doi(work.get("doi"))
     ids = work.get("ids") or {}
     pubmed_id = (ids.get("pmid") or "").removeprefix("https://pubmed.ncbi.nlm.nih.gov/") or None
-    venue = ((work.get("primary_location") or {}).get("source") or {}).get("display_name")
+    venue = extract_venue(work)
 
     inserted = conn.execute(
         """
