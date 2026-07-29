@@ -25,6 +25,34 @@ Python stopped being required in the request path.
 
 ---
 
+## DECISION-1b: Corpus sort order (how a capped crawl picks its works)
+
+**Date:** 2026-07-29
+
+**Decision:** Stratify by year: split each query's budget evenly across the
+last ~10 publication years plus one pre-2016 "classics" slice, and sort by
+citations within each year slice.
+
+**Alternatives considered:** keep the global `cited_by_count:desc` sort;
+sort by `publication_date:desc`.
+
+**Why rejected:** citation sort biases toward older famous work, since
+citations accrue with age — my real queries target recent LLM-era work, and
+a fame-biased corpus makes BM25 look better than it is and understates what
+dense retrieval adds in Phase 4. Pure recency has the opposite problem: NLP
+publishes at such volume now that the corpus would be a one-to-two-year
+slice — no classic papers, no meaningful year filter, and no citation
+quality floor. Year stratification keeps recent coverage my queries can
+actually hit while papers only compete on citations against their own year.
+
+**What would change my mind:** if the Phase 4 eval queries end up mostly
+targeting classic-era topics, the coverage argument against citation sort
+weakens and its simplicity starts to win; if I wanted the corpus to mirror
+real publication volume instead of even temporal coverage, that is
+approximately the recency sort.
+
+---
+
 ## Template
 
 ```text

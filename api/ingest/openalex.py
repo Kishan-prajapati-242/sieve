@@ -33,6 +33,7 @@ import os
 import sys
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -126,6 +127,22 @@ def split_budget(limit: int, weights: Sequence[float]) -> list[int]:
     for i in by_remainder[: limit - sum(budgets)]:
         budgets[i] += 1
     return budgets
+
+
+def year_slices(now_year: int, span: int = 10) -> list[tuple[str, str]]:
+    """DECISION-1b: even temporal slices, citations only compete within a year.
+
+    The last `span` years each get a slice, plus one "classics" slice for
+    everything older. Global citation sort was rejected because citations
+    accrue with age — it starves the corpus of the recent work the real
+    queries target; pure recency was rejected because today's publication
+    volume would make the corpus a one-to-two-year slice with no quality
+    floor. See docs/decisions.md.
+    """
+    first_full_year = now_year - span + 1
+    slices = [(str(y), f"publication_year:{y}") for y in range(first_full_year, now_year + 1)]
+    slices.append((f"pre-{first_full_year}", f"publication_year:<{first_full_year}"))
+    return slices
 
 
 @dataclass
@@ -271,13 +288,19 @@ def ingest(
     *,
     limit: int | None = None,
     queries: Sequence[tuple[str, str, float]] = tuple(QUERIES),
+    slices: Sequence[tuple[str, str]] | None = None,
 ) -> IngestStats:
-    """Crawl every query within its own budget share of --limit.
+    """Crawl every query within its own budget share of --limit, each query
+    stratified evenly across year slices (DECISION-1b).
 
     Budgets are per query, not a global cap, so the broad concept crawl can
-    never starve the specialty ones. One transaction per work: a crash
-    mid-run loses at most one work and a rerun converges, never duplicates.
+    never starve the specialty ones; within a query the same largest-
+    remainder split spreads its budget across the year slices. One
+    transaction per work: a crash mid-run loses at most one work and a rerun
+    converges, never duplicates.
     """
+    if slices is None:
+        slices = year_slices(datetime.now(UTC).year)
     budgets: list[int | None]
     if limit is None:
         budgets = [None] * len(queries)
@@ -288,20 +311,31 @@ def ingest(
         stats.per_query[name] = 0
         if budget == 0:
             continue
+        slice_budgets: list[int | None]
+        if budget is None:
+            slice_budgets = [None] * len(slices)
+        else:
+            slice_budgets = list(split_budget(budget, [1.0] * len(slices)))
         print(f"query {name}: starting (budget {'unlimited' if budget is None else budget})")
-        per_page = 200 if budget is None else min(200, budget)
-        for work in iter_works(client, bucket, filter_, per_page=per_page):
-            if budget is not None and stats.per_query[name] >= budget:
-                break
-            with conn.transaction():
-                outcome = store_work(conn, work)
-            stats.fetched += 1
-            stats.per_query[name] += 1
-            setattr(stats, outcome, getattr(stats, outcome) + 1)
-            if stats.fetched % 1000 == 0:
-                print(f"  {stats.summary()}")
-        if budget is not None and stats.per_query[name] < budget:
-            print(f"query {name}: exhausted at {stats.per_query[name]} of budget {budget}")
+        for (slice_name, fragment), slice_budget in zip(slices, slice_budgets, strict=True):
+            if slice_budget == 0:
+                continue
+            sliced_filter = f"{filter_},{fragment}" if fragment else filter_
+            taken = 0
+            per_page = 200 if slice_budget is None else min(200, slice_budget)
+            for work in iter_works(client, bucket, sliced_filter, per_page=per_page):
+                if slice_budget is not None and taken >= slice_budget:
+                    break
+                with conn.transaction():
+                    outcome = store_work(conn, work)
+                taken += 1
+                stats.fetched += 1
+                stats.per_query[name] += 1
+                setattr(stats, outcome, getattr(stats, outcome) + 1)
+                if stats.fetched % 1000 == 0:
+                    print(f"  {stats.summary()}")
+            if slice_budget is not None and taken < slice_budget:
+                print(f"  {name}/{slice_name}: exhausted at {taken} of {slice_budget}")
     return stats
 
 

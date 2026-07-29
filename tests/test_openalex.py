@@ -23,8 +23,13 @@ from api.ingest.openalex import (
     iter_works,
     make_client,
     split_budget,
+    year_slices,
 )
 from api.ingest.ratelimit import TokenBucket
+
+# Most tests opt out of year stratification to test one dimension at a time;
+# test_year_stratification_spreads_the_budget covers the slicing itself.
+UNSLICED = [("all", "")]
 
 
 def free_bucket() -> TokenBucket:
@@ -116,7 +121,7 @@ def test_every_query_gets_its_own_budget(scratch_db: str) -> None:
         make_client(transport=transport) as client,
         psycopg.connect(scratch_db) as conn,
     ):
-        stats = ingest(conn, client, free_bucket(), limit=3, queries=queries)
+        stats = ingest(conn, client, free_bucket(), limit=3, queries=queries, slices=UNSLICED)
         stored = conn.execute("SELECT source_id FROM source_records ORDER BY source_id").fetchall()
 
     # 2:1 weights over limit 3 -> broad stops at 2 despite having 4 works
@@ -124,6 +129,45 @@ def test_every_query_gets_its_own_budget(scratch_db: str) -> None:
     assert stats.per_query == {"broad": 2, "niche": 1}
     assert stats.fetched == 3
     assert stored == [("W1",), ("W2",), ("W5",)]
+
+
+def test_year_slices_cover_span_plus_classics() -> None:
+    slices = year_slices(2026)
+    assert len(slices) == 11
+    assert slices[0] == ("2017", "publication_year:2017")
+    assert slices[-2] == ("2026", "publication_year:2026")
+    assert slices[-1] == ("pre-2017", "publication_year:<2017")
+
+
+def test_year_stratification_spreads_the_budget(scratch_db: str) -> None:
+    """DECISION-1b: each year slice gets its share instead of the crawl
+    spending the whole budget on the (citation-heavy) top of one list."""
+    migrate(scratch_db)
+    transport = paged_transport(
+        {
+            "f,publication_year:2025": [[make_work(1), make_work(2), make_work(3)]],
+            "f,publication_year:2026": [[make_work(4), make_work(5), make_work(6)]],
+        }
+    )
+    slices = [("2025", "publication_year:2025"), ("2026", "publication_year:2026")]
+
+    with (
+        make_client(transport=transport) as client,
+        psycopg.connect(scratch_db) as conn,
+    ):
+        stats = ingest(
+            conn,
+            client,
+            free_bucket(),
+            limit=4,
+            queries=[("q", "f", 1.0)],
+            slices=slices,
+        )
+        stored = conn.execute("SELECT source_id FROM source_records ORDER BY source_id").fetchall()
+
+    # Budget 4 over two slices -> 2 from each year, not 3+1 off one list.
+    assert stats.per_query == {"q": 4}
+    assert stored == [("W1",), ("W2",), ("W4",), ("W5",)]
 
 
 def test_ingest_twice_is_idempotent(scratch_db: str) -> None:
@@ -139,8 +183,8 @@ def test_ingest_twice_is_idempotent(scratch_db: str) -> None:
     queries = [("test", "unused-filter", 1.0)]
 
     with make_client(transport=transport) as client, psycopg.connect(scratch_db) as conn:
-        first = ingest(conn, client, free_bucket(), queries=queries)
-        second = ingest(conn, client, free_bucket(), queries=queries)
+        first = ingest(conn, client, free_bucket(), queries=queries, slices=UNSLICED)
+        second = ingest(conn, client, free_bucket(), queries=queries, slices=UNSLICED)
 
         counts = {
             table: conn.execute(f"SELECT count(*) FROM {table}").fetchone()  # noqa: S608
@@ -171,7 +215,9 @@ def test_limit_stops_mid_crawl(scratch_db: str) -> None:
         make_client(transport=paged_transport({"u": pages})) as client,
         psycopg.connect(scratch_db) as conn,
     ):
-        stats = ingest(conn, client, free_bucket(), limit=1, queries=[("test", "u", 1.0)])
+        stats = ingest(
+            conn, client, free_bucket(), limit=1, queries=[("test", "u", 1.0)], slices=UNSLICED
+        )
         count = conn.execute("SELECT count(*) FROM source_records").fetchone()
     assert stats.fetched == 1
     assert count == (1,)
