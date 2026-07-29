@@ -1,0 +1,43 @@
+# Local dev: Postgres 16 (with pgvector compiled in) + the API.
+# The worker service joins in Phase 3 when the queue exists.
+#
+# Interpolated ${...} values come from .env (compose reads it automatically).
+# The api container gets DATABASE_URL pointing at the "postgres" service name;
+# the DATABASE_URL in .env points at localhost and is for host-side tools.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount only the source, not the whole repo, so the image's installed
+      # site-packages stay authoritative for dependencies.
+      - ./api:/app/api
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      postgres:
+        # Waits for pg_isready, not merely for the container to exist —
+        # plain depends_on would let the API race a still-booting Postgres.
+        condition: service_healthy
+
+volumes:
+  pgdata:
