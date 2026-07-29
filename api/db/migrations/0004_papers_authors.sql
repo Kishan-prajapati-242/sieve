@@ -1,0 +1,12 @@
+-- Author display names, in publication order, for the result list (Phase 1
+-- frontend). Deliberately NOT folded into the fts column: author search is a
+-- different feature with different semantics (exact-ish name match, not
+-- English stemming — "Stemming" would mangle names), and adding names to the
+-- tsvector would pollute keyword relevance. TEXT[] over JSONB because the
+-- consumer only ever reads the whole ordered list.
+--
+-- Existing rows are backfilled from source_records.raw (authorships has been
+-- in SELECT_FIELDS since the first pull), outside this migration: backfill
+-- is data repair on one dev corpus, not schema, and migrations run on every
+-- fresh clone where there is nothing to backfill.
+ALTER TABLE papers ADD COLUMN authors TEXT[];

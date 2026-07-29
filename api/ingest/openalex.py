@@ -234,6 +234,21 @@ def extract_venue(work: dict[str, Any]) -> str | None:
     return None
 
 
+def extract_authors(work: dict[str, Any]) -> list[str] | None:
+    """Author display names in publication order; None when OpenAlex has none.
+
+    Reads authorships[].author.display_name and nothing else — positions and
+    institutions stay in the raw record. None (not []) when empty, so the
+    column reads NULL for "unknown" rather than asserting zero authors.
+    """
+    names = [
+        name
+        for a in work.get("authorships") or []
+        if (name := (a.get("author") or {}).get("display_name"))
+    ]
+    return [str(n) for n in names] or None
+
+
 def deinvert_abstract(inverted: dict[str, list[int]] | None) -> str | None:
     """OpenAlex ships abstracts as {word: [positions]} (a legal workaround);
     flatten back to text by position."""
@@ -311,8 +326,8 @@ def store_work(conn: psycopg.Connection, work: dict[str, Any]) -> str:
         """
         INSERT INTO papers
             (doi, title, title_norm, abstract, year, venue, citation_count, pubmed_id,
-             is_retracted)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+             is_retracted, authors)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (doi) DO NOTHING
         RETURNING id
         """,
@@ -326,6 +341,7 @@ def store_work(conn: psycopg.Connection, work: dict[str, Any]) -> str:
             work.get("cited_by_count") or 0,
             pubmed_id,
             bool(work.get("is_retracted")),
+            extract_authors(work),
         ),
     ).fetchone()
 

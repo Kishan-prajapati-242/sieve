@@ -38,6 +38,7 @@ class SearchResult(BaseModel):
     id: int
     doi: str | None
     title: str
+    authors: list[str] | None
     abstract: str | None
     year: int | None
     venue: str | None

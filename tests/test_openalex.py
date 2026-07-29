@@ -20,6 +20,7 @@ from api.ingest.openalex import (
     USER_AGENT,
     IngestStats,
     deinvert_abstract,
+    extract_authors,
     extract_venue,
     ingest,
     iter_works,
@@ -46,6 +47,7 @@ def make_work(
     year: int = 2024,
     type_: str = "article",
     is_retracted: bool = False,
+    authors: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
         "id": f"https://openalex.org/W{n}",
@@ -58,7 +60,7 @@ def make_work(
         "primary_location": {"source": {"display_name": f"Venue {n}"}},
         "cited_by_count": n * 10,
         "abstract_inverted_index": {"About": [0], f"paper{n}.": [1]},
-        "authorships": [],
+        "authorships": [{"author": {"display_name": name}} for name in authors or []],
         "ids": {"openalex": f"https://openalex.org/W{n}"},
     }
 
@@ -107,6 +109,36 @@ def test_extract_venue_prefers_canonical_source_then_falls_back_to_raw() -> None
 
     assert extract_venue({"primary_location": None, "locations": []}) is None
     assert extract_venue({}) is None
+
+
+def test_extract_authors_in_publication_order_or_none() -> None:
+    work = {
+        "authorships": [
+            {"author": {"display_name": "First Author"}},
+            {"author": None},  # dangling authorship: skipped, not a crash
+            {"author": {"display_name": "Last Author"}},
+        ]
+    }
+    assert extract_authors(work) == ["First Author", "Last Author"]
+    # None, not []: NULL in the column means "unknown", not "zero authors".
+    assert extract_authors({"authorships": []}) is None
+    assert extract_authors({}) is None
+
+
+def test_authors_are_stored_with_the_paper(scratch_db: str) -> None:
+    migrate(scratch_db)
+    works = [make_work(1, authors=["Ada Lovelace", "Grace Hopper"]), make_work(2)]
+    transport = paged_transport({"unused-filter": [works]})
+    queries = [("test", "unused-filter", 1.0)]
+
+    with make_client(transport=transport) as client, psycopg.connect(scratch_db) as conn:
+        ingest(conn, client, free_bucket(), queries=queries, slices=UNSLICED)
+        rows = conn.execute("SELECT title, authors FROM papers ORDER BY id").fetchall()
+
+    assert rows == [
+        ("Paper 1", ["Ada Lovelace", "Grace Hopper"]),
+        ("Paper 2", None),
+    ]
 
 
 def test_cursor_pagination_walks_every_page_with_polite_user_agent() -> None:
