@@ -130,22 +130,34 @@ Free tiers, real limits. Respect them — your ingestion pipeline exists partly 
 
 | Source | Access | Limit | Notes |
 | --- | --- | --- | --- |
-| **OpenAlex** | REST, **api_key required** | **metered: $1/day free budget with a key; $0.01/day anonymous** | Primary source. Best coverage and cleanest metadata. Bills per request; our page shape measured $0.0001/request (2026-07-29), budget resets midnight UTC. See developers.openalex.org. |
+| **OpenAlex** | REST, **api_key required** | **metered: $1/day (10,000 credits) free with a key; $0.01/day anonymous** | Primary source. Best coverage and cleanest metadata. Bills per request by class: concept/list filters 1 credit, `.search:` filters 10 credits, page size irrelevant (measured 2026-07-29). Budget resets midnight UTC. See developers.openalex.org. |
 | **arXiv** | REST (Atom), no key | roughly 1 request per 3 seconds | Preprints. Slow, so batch and cache aggressively. |
 | **PubMed E-utilities** | REST | 3 req/s without a key | Biomedical. Relevant to your clinical NLP interest and gives the dedup problem real teeth. |
 | **Crossref** | REST, no key | polite pool | Optional, good for DOI resolution and filling gaps. |
 
 **OpenAlex went usage-based (2026), and it changes the operational math.**
-The API bills per request against a daily budget: $0.01/day for anonymous
-traffic, $1/day with a free api_key (developers.openalex.org). Measured
-2026-07-29: our page shape costs $0.0001 per request, so a keyed day is
-roughly 10,000 page-requests — the full 200K corpus (~1,100 pages of 200,
-plus per-slice overhead) fits in a single day's free budget, and the 50K
-Phase 1 pull (~300 requests) is trivial. WITHOUT the key the same pull dies
-after ~100 requests with 429s that look like a rate bug and are actually
-billing. For exactly that reason the ingest script refuses to start without
-`OPENALEX_API_KEY`, and `--check-budget` prints the remaining budget and
-reset time before you commit to a pull.
+The API bills per request against a daily budget: $0.01/day anonymous,
+$1/day = 10,000 credits with a free api_key (developers.openalex.org).
+Measured 2026-07-29 by bracketing single requests with free `/rate-limit`
+reads: a concept-filter page bills 1 credit (`list` class), a
+`title_and_abstract.search:` page bills 10 credits (`search` class), and
+page size does not change the price — so 200-work pages are the only
+sensible unit, and search-heavy crawling is the cost driver.
+
+Corpus cost at the 40/15x4 query weights, 11 year slices, 200-work pages:
+the full 200K pull is ~407 list requests (~410 credits) plus ~616 search
+requests (~6,160 credits) — **~6,600 credits, which fits in a single keyed
+day at ~66% of budget**. The 50K Phase 1 pull is ~1,870 credits (~19%).
+Specialty queries usually exhaust below their nominal budgets, so real cost
+runs lower. If the fit ever tightens, the lever is re-expressing specialty
+queries as concept/topic filters, which bill at the 1-credit list rate.
+
+WITHOUT the key the same pull dies after ~100 requests with 429s that look
+like a rate bug and are actually billing. For exactly that reason the
+ingest script refuses to start without `OPENALEX_API_KEY`; every run prints
+its budget up front and its measured credits per query at the end, and
+`--check-budget` shows the remaining budget and reset time before you
+commit to a pull.
 
 **Metadata only. Do not download PDFs.** You need: title, abstract, authors, year, venue, DOI, arXiv ID, PubMed ID, citation count, concepts/keywords, source URL. That is a few kilobytes per paper.
 
