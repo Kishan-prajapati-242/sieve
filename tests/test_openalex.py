@@ -15,6 +15,7 @@ import psycopg
 import pytest
 
 from api.db.migrate import migrate
+from api.ingest.http import RequestMeter
 from api.ingest.openalex import (
     USER_AGENT,
     IngestStats,
@@ -176,6 +177,56 @@ def test_ingest_stops_cleanly_when_quota_is_exhausted(scratch_db: str) -> None:
     assert stats.per_query == {"q": 2}
     assert stats.fetched == 2
     assert count == (2,)
+
+
+def test_exhausted_budget_never_fetches_the_next_page(scratch_db: str) -> None:
+    """Found live: with per_page == slice_budget, the budget check ran when
+    the generator resumed — after it had already fetched (and been billed
+    for) the next page. One slice, budget 1: exactly one request."""
+    migrate(scratch_db)
+    requests_made: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests_made.append(str(request.url.params.get("cursor")))
+        return httpx.Response(
+            200, json={"meta": {"next_cursor": "more"}, "results": [make_work(len(requests_made))]}
+        )
+
+    with (
+        make_client(transport=httpx.MockTransport(handler)) as client,
+        psycopg.connect(scratch_db) as conn,
+    ):
+        stats = ingest(
+            conn, client, free_bucket(), limit=1, queries=[("q", "f", 1.0)], slices=UNSLICED
+        )
+    assert stats.fetched == 1
+    assert requests_made == ["*"]
+
+
+def test_ingest_attributes_credits_per_query(scratch_db: str) -> None:
+    """Credits, not requests: one page of each query here costs 1 vs 10
+    credits, which raw request counts would report as identical."""
+    migrate(scratch_db)
+    list_filter = "concepts.id:C1"
+    search_filter = 'title_and_abstract.search:"x"'
+    transport = paged_transport(
+        {
+            list_filter: [[make_work(1), make_work(2)]],
+            search_filter: [[make_work(3), make_work(4)]],
+        }
+    )
+    meter = RequestMeter()
+    queries = [("cheap", list_filter, 1.0), ("pricey", search_filter, 1.0)]
+
+    with (
+        make_client(transport=transport, meter=meter) as client,
+        psycopg.connect(scratch_db) as conn,
+    ):
+        stats = ingest(conn, client, free_bucket(), queries=queries, slices=UNSLICED, meter=meter)
+
+    assert stats.per_query == {"cheap": 2, "pricey": 2}
+    assert stats.per_query_credits == {"cheap": 1, "pricey": 10}
+    assert meter.credits_spent == 11
 
 
 def test_year_slices_cover_span_plus_classics() -> None:

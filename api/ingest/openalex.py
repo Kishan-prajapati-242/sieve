@@ -154,6 +154,10 @@ class IngestStats:
     refreshed: int = 0
     skipped_no_title: int = 0
     per_query: dict[str, int] = field(default_factory=dict)
+    # Credits, not requests: search-filter pages bill 10x list pages, so the
+    # spend profile is invisible in request counts. Populated when a
+    # RequestMeter is passed to ingest().
+    per_query_credits: dict[str, int] = field(default_factory=dict)
 
     def summary(self) -> str:
         return (
@@ -304,6 +308,7 @@ def ingest(
     limit: int | None = None,
     queries: Sequence[tuple[str, str, float]] = tuple(QUERIES),
     slices: Sequence[tuple[str, str]] | None = None,
+    meter: RequestMeter | None = None,
 ) -> IngestStats:
     """Crawl every query within its own budget share of --limit, each query
     stratified evenly across year slices (DECISION-1b).
@@ -325,6 +330,9 @@ def ingest(
     try:
         for (name, filter_, _), budget in zip(queries, budgets, strict=True):
             stats.per_query[name] = 0
+            if meter is not None:
+                query_credits_start = meter.credits_spent
+                stats.per_query_credits[name] = 0
             if budget == 0:
                 continue
             slice_budgets: list[int | None]
@@ -340,8 +348,6 @@ def ingest(
                 taken = 0
                 per_page = 200 if slice_budget is None else min(200, slice_budget)
                 for work in iter_works(client, bucket, sliced_filter, per_page=per_page):
-                    if slice_budget is not None and taken >= slice_budget:
-                        break
                     with conn.transaction():
                         outcome = store_work(conn, work)
                     taken += 1
@@ -350,8 +356,16 @@ def ingest(
                     setattr(stats, outcome, getattr(stats, outcome) + 1)
                     if stats.fetched % 1000 == 0:
                         print(f"  {stats.summary()}")
+                    if slice_budget is not None and taken >= slice_budget:
+                        # Break BEFORE the generator resumes: resuming after
+                        # the page is drained fetches (and bills) the next
+                        # page just to throw it away — at per_page ==
+                        # slice_budget that doubled every slice's cost.
+                        break
                 if slice_budget is not None and taken < slice_budget:
                     print(f"  {name}/{slice_name}: exhausted at {taken} of {slice_budget}")
+                if meter is not None:
+                    stats.per_query_credits[name] = meter.credits_spent - query_credits_start
     except QuotaExhausted as exc:
         # The daily budget is spent; everything stored so far is committed.
         # Stopping is the correct move — the crawl is idempotent, so a rerun
@@ -406,13 +420,25 @@ def main() -> None:
     if not conninfo:
         sys.exit("DATABASE_URL is not set")
     with make_client(api_key=api_key, meter=meter) as client, psycopg.connect(conninfo) as conn:
-        stats = ingest(conn, client, bucket, limit=args.limit)
+        # Price this run with the server's CURRENT cost table rather than our
+        # measured defaults, and show the budget before spending any of it.
+        # /rate-limit itself is free (singleton class).
+        try:
+            rl = get_json(client, "/rate-limit", params={}, bucket=bucket)["rate_limit"]
+        except QuotaExhausted as exc:
+            sys.exit(f"budget already exhausted: {exc}")
+        meter.credit_costs.update(rl.get("credit_costs", {}))
+        print(
+            f"budget: {rl['credits_remaining']} of {rl['credits_limit']} credits,"
+            f" resets in {rl['resets_in_seconds']}s"
+        )
+        stats = ingest(conn, client, bucket, limit=args.limit, meter=meter)
     print(stats.summary())
     for name, count in stats.per_query.items():
-        print(f"  {name}: {count}")
-    spent = f"requests this run: {meter.requests}"
+        print(f"  {name}: {count} works, {stats.per_query_credits.get(name, 0)} credits")
+    spent = f"credits this run: {meter.credits_spent} ({meter.requests} requests)"
     if meter.remaining is not None:
-        spent += f"; server reports {meter.remaining} remaining, reset in {meter.reset_seconds}s"
+        spent += f"; server reports {meter.remaining} credits remaining"
     print(spent)
 
 
