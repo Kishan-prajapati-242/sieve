@@ -1,0 +1,40 @@
+# Lint, type-check, migrate, test — against the same pgvector image compose
+# uses locally, so CI failures reproduce with `docker compose up` + pytest.
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: sieve
+          POSTGRES_PASSWORD: sieve
+          POSTGRES_DB: sieve
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sieve -d sieve"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://sieve:sieve@localhost:5432/sieve
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy api
+      - run: python -m api.db.migrate
+      - run: pytest -q
