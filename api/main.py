@@ -15,6 +15,7 @@ from fastapi import FastAPI, Request, Response
 from api.db.pool import close_pool, get_pool
 from api.logs import request_id_var, setup_logging
 from api.search.routes import router as search_router
+from api.stats import router as stats_router
 
 
 @asynccontextmanager
@@ -34,6 +35,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="sieve", lifespan=lifespan)
 app.include_router(search_router)
+app.include_router(stats_router)
 
 
 @app.middleware("http")

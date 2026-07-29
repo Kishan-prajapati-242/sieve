@@ -17,6 +17,7 @@ import pytest
 from api.db.migrate import migrate
 from api.ingest.http import RequestMeter
 from api.ingest.openalex import (
+    QUERIES,
     USER_AGENT,
     IngestStats,
     deinvert_abstract,
@@ -125,6 +126,28 @@ def test_extract_authors_in_publication_order_or_none() -> None:
     assert extract_authors({}) is None
 
 
+def test_provenance_is_first_fetch_and_stable_across_reruns(scratch_db: str) -> None:
+    """DECISION-2: composition is a README number, so every record carries
+    the query that fetched it — and refetches by an overlapping query must
+    not steal the attribution, or stats would churn with query order."""
+    migrate(scratch_db)
+    transport = paged_transport(
+        {
+            "filter-a": [[make_work(1), make_work(2)]],
+            "filter-b": [[make_work(2), make_work(3)]],  # work 2 overlaps
+        }
+    )
+
+    with make_client(transport=transport) as client, psycopg.connect(scratch_db) as conn:
+        ingest(conn, client, free_bucket(), queries=[("query-a", "filter-a", 1.0)], slices=UNSLICED)
+        ingest(conn, client, free_bucket(), queries=[("query-b", "filter-b", 1.0)], slices=UNSLICED)
+        rows = conn.execute(
+            "SELECT source_id, query_name FROM source_records ORDER BY source_id"
+        ).fetchall()
+
+    assert rows == [("W1", "query-a"), ("W2", "query-a"), ("W3", "query-b")]
+
+
 def test_authors_are_stored_with_the_paper(scratch_db: str) -> None:
     migrate(scratch_db)
     works = [make_work(1, authors=["Ada Lovelace", "Grace Hopper"]), make_work(2)]
@@ -150,8 +173,19 @@ def test_cursor_pagination_walks_every_page_with_polite_user_agent() -> None:
 
 
 def test_split_budget_matches_the_agreed_weights() -> None:
-    # The production weights at the smoke-test size: 40% concept, 15% each.
-    assert split_budget(100, [0.40, 0.15, 0.15, 0.15, 0.15]) == [40, 15, 15, 15, 15]
+    # DECISION-2 weights are nominal work targets: at the full 205K pull
+    # every query gets exactly its agreed budget.
+    assert split_budget(205_000, [w for _, _, w in QUERIES]) == [
+        60_000,  # general-nlp (30%)
+        70_000,  # biomedical-clinical-text (35%)
+        20_000,  # clinical-informatics (10%, deliberately small)
+        25_000,  # text-simplification (12.5%)
+        25_000,  # mental-health-nlp (12.5%)
+        1_250,  # the four phrase-core queries
+        1_250,
+        1_250,
+        1_250,
+    ]
 
 
 def test_split_budget_sums_exactly_despite_rounding() -> None:

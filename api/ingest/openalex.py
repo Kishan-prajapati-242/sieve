@@ -81,48 +81,55 @@ SELECT_FIELDS = ",".join(
     ]
 )
 
-# The corpus domain (Kishan, 2026-07-28): NLP, clinical/biomedical NLP, text
-# simplification, mental health NLP. has_abstract:true throughout — the
-# abstract feeds both fts and the Phase 2 embeddings; a bare title ranks
-# poorly in every mode. Sorted most-cited-first (see iter_works) so a capped
-# crawl keeps the highest-value works.
+# The corpus composition (DECISION-2, Kishan, 2026-07-29): topic filters
+# replaced the deprecated concept plus exact-phrase searches. Topics are
+# both broader (no exact-phrase result cap — clinical-nlp maxed out at ~919
+# works total) and list-class, i.e. 10x cheaper per page than .search:
+# filters (measured: 182 vs 13 works per credit). has_abstract:true
+# throughout — the abstract feeds both fts and the Phase 2 embeddings.
 #
-# The third element is each query's WEIGHT of the total --limit budget
-# (Kishan, 2026-07-29: broad concept 40%, the rest split evenly). A single
-# global cap would let the 2.2M-work concept query consume everything and
-# starve the four specialty crawls — the exact bug this fixes. Budgets are
-# fixed, not rolled over: if a specialty query runs out of works below its
-# budget, the run reports the shortfall rather than silently backfilling
-# with more broad-concept works.
+# Weights are NOMINAL WORK TARGETS at the full 205K pull; split_budget
+# normalizes, so --limit 205000 hits these exactly and smaller limits
+# scale proportionally. Budgets are fixed, not rolled over: a query that
+# exhausts below budget reports the shortfall rather than silently
+# backfilling from the broad query. Measured pools (works with abstracts,
+# meta.count 2026-07-29): T10181 376K, T11710 224K, T10350|T13702 170K,
+# T13629 49K, T12488 54K — every budget sits under its pool.
 QUERIES: list[tuple[str, str, float]] = [
-    # Broad disciplinary base: everything OpenAlex files under the NLP
-    # concept (C204321447, "Natural language processing", ~2.2M works).
-    ("nlp-concept", "concepts.id:C204321447,has_abstract:true", 0.40),
-    # Phrase queries catch clinical/biomedical work indexed under medicine
-    # rather than the CS concept tree.
+    ("general-nlp", "topics.id:T10181,has_abstract:true", 60_000),
+    ("biomedical-clinical-text", "topics.id:T11710,has_abstract:true", 70_000),
+    # Deliberately small (Kishan): T10350/T13702 are largely not NLP — at
+    # 20% of the corpus they stop being hard negatives and start skewing
+    # the Phase 4 hybrid-vs-BM25 comparison. 10%, not more.
+    ("clinical-informatics", "topics.id:T10350|T13702,has_abstract:true", 20_000),
+    ("text-simplification", "topics.id:T13629,has_abstract:true", 25_000),
+    ("mental-health-nlp", "topics.id:T12488,has_abstract:true", 25_000),
+    # The original exact-phrase queries, kept as a small high-precision
+    # core. Result-capped by nature (they exhaust below budget and report
+    # it); search-class, so 10x page cost — at these budgets that is noise.
     (
-        "clinical-nlp",
+        "clinical-nlp-phrase",
         'title_and_abstract.search:"clinical natural language processing"'
         ' OR "clinical text mining" OR "clinical NLP",has_abstract:true',
-        0.15,
+        1_250,
     ),
     (
-        "biomedical-nlp",
+        "biomedical-nlp-phrase",
         'title_and_abstract.search:"biomedical natural language processing"'
         ' OR "biomedical text mining",has_abstract:true',
-        0.15,
+        1_250,
     ),
     (
-        "text-simplification",
+        "text-simplification-phrase",
         'title_and_abstract.search:"text simplification" OR "lexical simplification"'
         ' OR "readability assessment",has_abstract:true',
-        0.15,
+        1_250,
     ),
     (
-        "mental-health-nlp",
+        "mental-health-nlp-phrase",
         'title_and_abstract.search:"mental health" AND "natural language processing"'
         ",has_abstract:true",
-        0.15,
+        1_250,
     ),
 ]
 
@@ -281,23 +288,27 @@ def iter_works(
         cursor = page["meta"].get("next_cursor")
 
 
-def store_work(conn: psycopg.Connection, work: dict[str, Any]) -> str:
+def store_work(conn: psycopg.Connection, work: dict[str, Any], query_name: str | None) -> str:
     """Upsert one work; returns the IngestStats field to bump.
 
     Rerun-safe by construction: the source_records upsert converges, an
     already-linked record refreshes raw and stops, and only unlinked records
-    ever derive a paper.
+    ever derive a paper. query_name is first-fetch provenance: the COALESCE
+    keeps the original attribution on refresh, so composition stats don't
+    churn with query order when pools overlap (DECISION-2).
     """
     source_id = work["id"].removeprefix("https://openalex.org/")
     row = conn.execute(
         """
-        INSERT INTO source_records (source, source_id, raw)
-        VALUES ('openalex', %s, %s)
+        INSERT INTO source_records (source, source_id, raw, query_name)
+        VALUES ('openalex', %s, %s, %s)
         ON CONFLICT (source, source_id)
-        DO UPDATE SET raw = EXCLUDED.raw, fetched_at = now()
+        DO UPDATE SET raw = EXCLUDED.raw,
+                      fetched_at = now(),
+                      query_name = COALESCE(source_records.query_name, EXCLUDED.query_name)
         RETURNING id, paper_id
         """,
-        (source_id, Jsonb(work)),
+        (source_id, Jsonb(work), query_name),
     ).fetchone()
     assert row is not None  # RETURNING on upsert always yields the row
     record_id, paper_id = row
@@ -416,7 +427,7 @@ def ingest(
                 per_page = 200 if slice_budget is None else min(200, slice_budget)
                 for work in iter_works(client, bucket, sliced_filter, per_page=per_page):
                     with conn.transaction():
-                        outcome = store_work(conn, work)
+                        outcome = store_work(conn, work, name)
                     taken += 1
                     stats.fetched += 1
                     stats.per_query[name] += 1

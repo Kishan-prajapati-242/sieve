@@ -1,0 +1,11 @@
+-- Which crawl query fetched this record (DECISION-2): corpus composition is
+-- a README number, and it cannot be reported without provenance.
+--
+-- First-fetch semantics: set on insert, kept on refresh (the upsert
+-- COALESCEs, existing value wins), so attribution is stable across reruns
+-- and does not churn with query order when pools overlap. NULL means the
+-- record predates this column and no current query has refetched it yet —
+-- the 200K pull backfills most of these naturally; whatever it does not
+-- touch is reported as "unattributed" rather than guessed from the raw
+-- record's topics, because inferred provenance is not provenance.
+ALTER TABLE source_records ADD COLUMN query_name TEXT;
