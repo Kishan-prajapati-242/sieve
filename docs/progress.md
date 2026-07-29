@@ -1,9 +1,32 @@
 # Progress
 
 Phase: 1 (search over one source).
-Next task: the plain React frontend (search box, result list, year
-filter — deliberately plain, design later). Then the Phase 1 acceptance
-check.
+Next task: top up the corpus to 50K (needs Kishan's go-ahead:
+`--check-budget` first, then `python -m api.ingest.openalex --limit 50000`,
+~1,870 credits measured), then the Phase 1 acceptance check.
+
+Shipped 2026-07-29 (task 6): the frontend, all-Docker (DECISION-1d,
+docs/decisions.md). `docker compose up` now brings up postgres → migrate →
+api → web; the page is at localhost:5173. web/ is Vite + React 18 + TS +
+Tailwind + TanStack Query, served by a stock node:20-alpine container with
+the source bind-mounted — hot reload works but only via polling
+(watch.usePolling in web/vite.config.ts; inotify doesn't cross the podman
+VM boundary, same as the uvicorn --reload note below). /api proxies to the
+api service, so there is no CORS config anywhere. node_modules lives in a
+named volume, NOT on the host — consequence: VS Code shows unresolved
+imports in web/src (cosmetic, accepted in DECISION-1d; a host
+`npm install` would fix it but requires installing Node).
+package-lock.json was generated inside the container and is committed; CI
+got a web job (npm ci, tsc, vitest). 9 component tests pin the result-card
+contract: retraction banner (DECISION-1c), collapsed abstract, DOI link,
+author truncation, year-bound payload.
+
+Papers also gained an `authors TEXT[]` column with this task (migration
+0004) — the result card needed it. Extraction at ingest from
+authorships[].author.display_name; existing corpus backfilled from the raw
+records for zero credits (26,167 of 26,237 covered; the 70 NULLs have no
+author data at OpenAlex). Deliberately not in fts — author search is a
+different feature, and stemming mangles names.
 
 Shipped 2026-07-29 (task 5): `POST /api/search`, mode=bm25 only —
 ts_rank_cd over the generated fts column (honestly NOT real BM25; see

@@ -82,6 +82,32 @@ screening context could mislead more than it protects.
 
 ---
 
+## DECISION-1d: Whole stack in Docker, zero host dependencies
+
+**Date:** 2026-07-29
+
+**Decision:** The entire stack runs in Docker Compose — the frontend
+included, as a node:20-alpine service running the Vite dev server with hot
+reload via a bind mount, exposed on 5173. Zero host dependencies beyond
+Docker itself. Chosen for reproducibility and to avoid host toolchain
+drift.
+
+**Alternatives considered:** installing Node on the host and running Vite
+there, like most React setups.
+
+**Why rejected:** I don't have Node installed locally and don't want it. A
+host Node means nvm, a version that drifts from what CI and teammates run,
+and a setup step the README has to explain. One `docker compose up` from a
+clean clone should produce the whole working system.
+
+**What would change my mind:** if editor tooling becomes the bottleneck —
+TypeScript IntelliSense wants a local node_modules, which only a host npm
+install can provide. If frontend work gets heavy enough in Phase 4 that
+red-underlined imports slow me down more than toolchain drift would, a
+host Node install is back on the table.
+
+---
+
 ## Template
 
 ```text
