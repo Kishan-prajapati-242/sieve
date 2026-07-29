@@ -1,43 +1,63 @@
-# Local dev: Postgres 16 (with pgvector compiled in) + the API.
-# The worker service joins in Phase 3 when the queue exists.
+# Local dev: Postgres 16 (with pgvector compiled in), a one-shot migrate
+# service, then the API. The worker service joins in Phase 3.
 #
-# Interpolated ${...} values come from .env (compose reads it automatically).
-# The api container gets DATABASE_URL pointing at the "postgres" service name;
-# the DATABASE_URL in .env points at localhost and is for host-side tools.
+# ${VAR:-default} values make `docker compose up` work from a clean clone with
+# no .env; compose reads .env automatically when present and it wins. The dev
+# defaults are not secrets. The api/migrate containers get DATABASE_URL
+# pointing at the "postgres" service name; DATABASE_URL in .env points at
+# localhost and is for host-side tools.
 
 services:
   postgres:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:-sieve}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sieve}
+      POSTGRES_DB: ${POSTGRES_DB:-sieve}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      # -h 127.0.0.1 forces a TCP probe. During first-run initdb the image
+      # boots a temporary server that answers only on the unix socket; a
+      # socket probe reports "healthy" before the real server listens on TCP,
+      # and dependents then connect into the void.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-sieve} -d ${POSTGRES_DB:-sieve}"]
       interval: 2s
       timeout: 2s
-      retries: 15
+      retries: 30
+
+  # One-shot: applies pending migrations and exits. Keeping DDL out of the
+  # API process, but inside `docker compose up`, means a fresh clone reaches
+  # a migrated database with one command and no undocumented manual step.
+  migrate:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sieve}:${POSTGRES_PASSWORD:-sieve}@postgres:5432/${POSTGRES_DB:-sieve}
+    command: python -m api.db.migrate
+    volumes:
+      - ./api:/app/api
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   api:
     build: .
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sieve}:${POSTGRES_PASSWORD:-sieve}@postgres:5432/${POSTGRES_DB:-sieve}
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
     volumes:
       # Mount only the source, not the whole repo, so the image's installed
       # site-packages stay authoritative for dependencies.
       - ./api:/app/api
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
-      postgres:
-        # Waits for pg_isready, not merely for the container to exist —
-        # plain depends_on would let the API race a still-booting Postgres.
-        condition: service_healthy
+      # The API starts only after migrations have applied cleanly, which
+      # transitively waits for the pg_isready gate on postgres.
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   pgdata:

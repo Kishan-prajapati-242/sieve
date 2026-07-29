@@ -11,4 +11,6 @@ RUN pip install --no-cache-dir .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Render injects PORT (and health-checks it); local keeps 8000. A JSON-array
+# CMD does no shell expansion, hence the sh -c.
+CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

@@ -1,8 +1,11 @@
+# Unlike .gitignore, these patterns do not recurse implicitly — **/ is load-
+# bearing, or api/**/__pycache__ gets baked into the image and every host-side
+# pytest run busts the COPY layer cache.
 .git
 .venv
 .env
-__pycache__
-*.pyc
+**/__pycache__
+**/*.pyc
 node_modules
 docs
 bench
