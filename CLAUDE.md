@@ -57,6 +57,7 @@ sieve/
 │   ├── sieve-project-brief.md    the spec, read first
 │   ├── progress.md               current phase and next task
 │   ├── decisions.md              DECISION records, Kishan's words
+│   ├── findings.md               bug log: symptom, how found, cause, fix, measured
 │   └── plans/                    EXPLAIN ANALYZE before/after, committed
 ├── api/
 │   ├── main.py
@@ -85,6 +86,7 @@ sieve/
 - Migrations are numbered SQL files, forward-only. No auto-generated migrations.
 - Every external HTTP call: explicit timeout, retry with full jitter, and a per-source token bucket. No bare `requests.get`.
 - Latency is reported as p50, p95, p99. Never a mean.
+- Every diagnosed bug gets an entry in `docs/findings.md`: symptom, how it was found, root cause, fix, verified before/after.
 - Log structured JSON. Include a request ID.
 - Secrets in `.env`, never committed. `.env.example` stays current.
 - The README is written by Kishan. Draft only the architecture diagram and the benchmark tables when asked; leave prose alone.
