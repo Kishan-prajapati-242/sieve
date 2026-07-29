@@ -61,5 +61,30 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # DECISION-1d: the frontend toolchain lives in Docker too — no host Node.
+  # Stock node image + bind-mounted source instead of a Dockerfile: the dev
+  # "image" is just node_modules, which npm install materializes into a named
+  # volume (below) on first up. Vite serves with HMR; file watching is
+  # polling-based because inotify doesn't cross the VM bind mount (see
+  # web/vite.config.ts).
+  web:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && exec npm run dev"
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    volumes:
+      - ./web:/app
+      # Named volume shadows /app/node_modules: installs stay VM-local (a
+      # bind-mounted node_modules is punishingly slow through virtiofs) and
+      # Linux-native binaries never land on the macOS host.
+      - web_node_modules:/app/node_modules
+    depends_on:
+      # Started, not healthy: Vite only proxies /api per request, so it can
+      # boot in parallel with the API instead of serializing compose up.
+      api:
+        condition: service_started
+
 volumes:
   pgdata:
+  web_node_modules:
