@@ -1,8 +1,13 @@
 # Progress
 
 Phase: 1 (search over one source).
-Next task: the full ~50K pull (`python -m api.ingest.openalex --limit 50000`),
-then `POST /api/search` (mode=bm25), then the plain React frontend.
+BLOCKED on Kishan adding OPENALEX_API_KEY to .env (OpenAlex went
+usage-based in 2026: $0.01/day anonymous, $1/day with a free key — see
+brief Part 4). Then: `--check-budget` to confirm allowance, the full ~50K
+pull (`python -m api.ingest.openalex --limit 50000`, ~300 requests, well
+inside one day's keyed budget), then `POST /api/search` (mode=bm25), then
+the plain React frontend. Note: today's anonymous budget is exhausted
+until midnight UTC regardless.
 
 DECISION-1b resolved (2026-07-29, docs/decisions.md): corpus crawls are
 year-stratified — each query's budget splits evenly across the last 10
