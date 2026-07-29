@@ -144,13 +144,21 @@ reads: a concept-filter page bills 1 credit (`list` class), a
 page size does not change the price — so 200-work pages are the only
 sensible unit, and search-heavy crawling is the cost driver.
 
-Corpus cost at the 40/15x4 query weights, 11 year slices, 200-work pages:
-the full 200K pull is ~407 list requests (~410 credits) plus ~616 search
-requests (~6,160 credits) — **~6,600 credits, which fits in a single keyed
-day at ~66% of budget**. The 50K Phase 1 pull is ~1,870 credits (~19%).
-Specialty queries usually exhaust below their nominal budgets, so real cost
-runs lower. If the fit ever tightens, the lever is re-expressing specialty
-queries as concept/topic filters, which bill at the 1-credit list rate.
+Also measured: a bare `search=` param (entity search on /topics, full-text
+search on /works) bills 10 credits too, not 1 — the credit meter missed
+this at first and under-reported a discovery run 10x (docs/findings.md).
+
+Corpus cost, ACTUAL, from the 200K pull on 2026-07-29 (DECISION-2 topic
+composition, 11 year slices, 200-work pages): **1,435 credits for 196,031
+works across 1,040 requests — 14% of one keyed day**, reconciling exactly
+with the server's `credits_remaining` delta. The five topic queries did the
+work at 995 credits for 192,441 works (**193 works per credit**); the four
+retained phrase queries cost 440 credits for 3,590 works (**8 works per
+credit**, 24x worse) because `.search:` filters bill 10x and exhaust year
+slices below budget, paying full page price for partial pages. That ratio
+is why DECISION-2 moved the bulk of the corpus onto topic filters. Earlier
+estimate for the old concept+phrase table was ~6,600 credits for the same
+200K, i.e. the migration cut corpus cost ~4.6x.
 
 WITHOUT the key the same pull dies after ~100 requests with 429s that look
 like a rate bug and are actually billing. For exactly that reason the

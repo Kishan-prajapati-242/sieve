@@ -1,9 +1,43 @@
 # Progress
 
-Phase: 1 (search over one source).
-Next task: top up the corpus to 50K (needs Kishan's go-ahead:
-`--check-budget` first, then `python -m api.ingest.openalex --limit 50000`,
-~1,870 credits measured), then the Phase 1 acceptance check.
+Phase: 1 (search over one source). Corpus is at target; the Phase 1
+acceptance check is the remaining gate item.
+
+Shipped 2026-07-29 (DECISION-2, corpus composition v2): the full pull ran.
+**196,893 papers / 199,285 source records, 1,435 credits (1,040 requests),
+~24 minutes.** Composition from GET /api/stats (papers, first-fetch
+provenance): biomedical-clinical-text 62,751 (31.9%), general-nlp 59,452
+(30.2%), mental-health-nlp 21,895 (11.1%), clinical-informatics 18,465
+(9.4%), text-simplification 18,055 (9.2%), phrase core 1,265 (0.6%),
+unattributed 15,010 (7.6%). **Specialty share 62.2%** against the >25%
+goal. The unattributed bucket is old-corpus records no new query refetched;
+they cannot be characterized by topic because the old SELECT_FIELDS had no
+topics field, and provenance is never inferred — the old crawl was ~75%
+general concept, so that bucket skews general, making 62.2% conservative.
+Coverage: 4,056 null venue (2.1%), 655 null authors (0.3%), 28 null
+abstract, 173 retracted (flagged, visible), 181,635 distinct DOIs.
+Era split 90.3% recent (2017+) / 9.7% classics — the specialty topics are
+recency-skewed, so classics slices underfilled and the run reported it.
+Junk types skipped: 1,499 (peer-review 398, editorial 377, paratext 368,
+erratum 172, supplementary-materials 166, retraction 18).
+DB is now 1.55 GB (papers 730 MB, source_records 815 MB) — worth watching
+against the 8 GB M1 Air and the Neon free-tier subset plan in Phase 5.
+Search on the 197K corpus: 46-157 ms for k=10 (GIN index, no tuning yet);
+Phase 2's bench/latency.py replaces these smoke numbers with p50/p95/p99.
+
+Nominal budget was 205K works; 196,031 were fetched because several
+queries exhausted year slices below budget (biomedical-clinical-text
+66,013 of 70,000; text-simplification 23,925 of 25,000; mental-health
+22,503 of 25,000; the phrase queries far below, as expected). Fetches
+reconcile exactly: 170,656 new papers + 582 DOI-linked + 23,102 refreshed
++ 192 no-title + 1,499 junk-type = 196,031.
+
+Note on reading /api/stats: `per_query` in a run's own output counts works
+FETCHED by that query (a work already in the corpus counts again as a
+refresh), while /api/stats counts records/papers by FIRST-fetch query. They
+differ where pools overlap — text-simplification fetched 23,925 works but
+owns 18,055 papers, the difference being works another query saw first.
+Both are correct; they answer different questions.
 
 Shipped 2026-07-29 (independent verification): `make test` runs the pytest
 suite in Docker (Dockerfile dev target -> compose `test` service,
