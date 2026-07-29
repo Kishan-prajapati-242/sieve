@@ -16,10 +16,15 @@ from api.db.pool import close_pool, get_pool
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # wait() blocks until min_size connections are live, so a misconfigured
-    # DATABASE_URL fails the process at startup instead of on the first request.
-    get_pool().wait(timeout=10.0)
-    yield
-    close_pool()
+    # DATABASE_URL fails the process at startup instead of on the first
+    # request. The finally is load-bearing: wait() closes the pool before
+    # raising on timeout, and close_pool() resets the module global so the
+    # next startup builds a fresh pool instead of reusing the closed one.
+    try:
+        get_pool().wait(timeout=10.0)
+        yield
+    finally:
+        close_pool()
 
 
 app = FastAPI(title="sieve", lifespan=lifespan)
