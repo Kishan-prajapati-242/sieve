@@ -29,9 +29,10 @@ Usage: python -m api.ingest.openalex --limit 100   (reads DATABASE_URL)
 """
 
 import argparse
+import json
 import os
 import sys
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -41,7 +42,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from api.dedup.normalize import normalize_doi, normalize_title
-from api.ingest.http import get_json
+from api.ingest.http import QuotaExhausted, RequestMeter, get_json
 from api.ingest.ratelimit import TokenBucket
 
 BASE_URL = "https://api.openalex.org"
@@ -162,14 +163,28 @@ class IngestStats:
         )
 
 
-def make_client(transport: httpx.BaseTransport | None = None) -> httpx.Client:
+def make_client(
+    api_key: str | None = None,
+    transport: httpx.BaseTransport | None = None,
+    meter: RequestMeter | None = None,
+) -> httpx.Client:
     """The only place an OpenAlex connection is configured: explicit timeout,
-    polite-pool User-Agent. transport is injectable for tests."""
+    mailto User-Agent, and the api_key as a default query param so EVERY
+    request through this client carries it — OpenAlex bills per request and
+    a keyless request runs against the $0.01/day anonymous budget.
+
+    transport is injectable for tests; meter hooks count what a run spends.
+    """
+    event_hooks: dict[str, list[Callable[..., Any]]] = {}
+    if meter is not None:
+        event_hooks = {"request": [meter.on_request], "response": [meter.on_response]}
     return httpx.Client(
         base_url=BASE_URL,
         headers={"User-Agent": USER_AGENT},
+        params={"api_key": api_key} if api_key else {},
         timeout=httpx.Timeout(15.0, connect=5.0),
         transport=transport,
+        event_hooks=event_hooks,
     )
 
 
@@ -307,35 +322,43 @@ def ingest(
     else:
         budgets = list(split_budget(limit, [w for _, _, w in queries]))
     stats = IngestStats()
-    for (name, filter_, _), budget in zip(queries, budgets, strict=True):
-        stats.per_query[name] = 0
-        if budget == 0:
-            continue
-        slice_budgets: list[int | None]
-        if budget is None:
-            slice_budgets = [None] * len(slices)
-        else:
-            slice_budgets = list(split_budget(budget, [1.0] * len(slices)))
-        print(f"query {name}: starting (budget {'unlimited' if budget is None else budget})")
-        for (slice_name, fragment), slice_budget in zip(slices, slice_budgets, strict=True):
-            if slice_budget == 0:
+    try:
+        for (name, filter_, _), budget in zip(queries, budgets, strict=True):
+            stats.per_query[name] = 0
+            if budget == 0:
                 continue
-            sliced_filter = f"{filter_},{fragment}" if fragment else filter_
-            taken = 0
-            per_page = 200 if slice_budget is None else min(200, slice_budget)
-            for work in iter_works(client, bucket, sliced_filter, per_page=per_page):
-                if slice_budget is not None and taken >= slice_budget:
-                    break
-                with conn.transaction():
-                    outcome = store_work(conn, work)
-                taken += 1
-                stats.fetched += 1
-                stats.per_query[name] += 1
-                setattr(stats, outcome, getattr(stats, outcome) + 1)
-                if stats.fetched % 1000 == 0:
-                    print(f"  {stats.summary()}")
-            if slice_budget is not None and taken < slice_budget:
-                print(f"  {name}/{slice_name}: exhausted at {taken} of {slice_budget}")
+            slice_budgets: list[int | None]
+            if budget is None:
+                slice_budgets = [None] * len(slices)
+            else:
+                slice_budgets = list(split_budget(budget, [1.0] * len(slices)))
+            print(f"query {name}: starting (budget {'unlimited' if budget is None else budget})")
+            for (slice_name, fragment), slice_budget in zip(slices, slice_budgets, strict=True):
+                if slice_budget == 0:
+                    continue
+                sliced_filter = f"{filter_},{fragment}" if fragment else filter_
+                taken = 0
+                per_page = 200 if slice_budget is None else min(200, slice_budget)
+                for work in iter_works(client, bucket, sliced_filter, per_page=per_page):
+                    if slice_budget is not None and taken >= slice_budget:
+                        break
+                    with conn.transaction():
+                        outcome = store_work(conn, work)
+                    taken += 1
+                    stats.fetched += 1
+                    stats.per_query[name] += 1
+                    setattr(stats, outcome, getattr(stats, outcome) + 1)
+                    if stats.fetched % 1000 == 0:
+                        print(f"  {stats.summary()}")
+                if slice_budget is not None and taken < slice_budget:
+                    print(f"  {name}/{slice_name}: exhausted at {taken} of {slice_budget}")
+    except QuotaExhausted as exc:
+        # The daily budget is spent; everything stored so far is committed.
+        # Stopping is the correct move — the crawl is idempotent, so a rerun
+        # after the reset re-walks cheaply and continues where the data ends.
+        hours = exc.retry_after_s / 3600
+        print(f"stopping: {exc}")
+        print(f"budget resets in ~{hours:.1f}h; rerun then — the crawl is idempotent")
     return stats
 
 
@@ -348,16 +371,49 @@ def main() -> None:
         help="total works budget, split across queries by weight;"
         " smoke-test with --limit 100 before a full pull",
     )
+    parser.add_argument(
+        "--check-budget",
+        action="store_true",
+        help="print the remaining OpenAlex budget and reset time, then exit",
+    )
     args = parser.parse_args()
+
+    api_key = os.environ.get("OPENALEX_API_KEY")
+    if not api_key:
+        # Deliberately fatal: a keyless run silently gets the $0.01/day
+        # anonymous budget (~100 requests) instead of the free key's $1/day,
+        # and dies mid-crawl with 429s that look like a rate bug.
+        sys.exit(
+            "OPENALEX_API_KEY is not set. OpenAlex requires an API key: without one"
+            " the anonymous budget is $0.01/day; a free key raises it to $1/day."
+            " Get a key via https://openalex.org/pricing and add it to .env"
+            " (see developers.openalex.org)."
+        )
+
+    meter = RequestMeter()
+    bucket = TokenBucket(rate=OPENALEX_RATE, capacity=OPENALEX_RATE)
+
+    if args.check_budget:
+        with make_client(api_key=api_key, meter=meter) as client:
+            try:
+                info = get_json(client, "/rate-limit", params={}, bucket=bucket)
+            except QuotaExhausted as exc:
+                sys.exit(f"budget already exhausted: {exc}")
+        print(json.dumps(info, indent=2))
+        return
+
     conninfo = os.environ.get("DATABASE_URL")
     if not conninfo:
         sys.exit("DATABASE_URL is not set")
-    bucket = TokenBucket(rate=OPENALEX_RATE, capacity=OPENALEX_RATE)
-    with make_client() as client, psycopg.connect(conninfo) as conn:
+    with make_client(api_key=api_key, meter=meter) as client, psycopg.connect(conninfo) as conn:
         stats = ingest(conn, client, bucket, limit=args.limit)
     print(stats.summary())
     for name, count in stats.per_query.items():
         print(f"  {name}: {count}")
+    spent = f"requests this run: {meter.requests}"
+    if meter.remaining is not None:
+        spent += f"; server reports {meter.remaining} remaining, reset in {meter.reset_seconds}s"
+    print(spent)
 
 
 if __name__ == "__main__":

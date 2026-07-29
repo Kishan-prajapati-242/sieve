@@ -131,6 +131,53 @@ def test_every_query_gets_its_own_budget(scratch_db: str) -> None:
     assert stored == [("W1",), ("W2",), ("W5",)]
 
 
+def test_api_key_rides_on_every_request() -> None:
+    """Keyless requests run on OpenAlex's $0.01/day anonymous budget; the
+    key must be a client-level default param, not remembered per call."""
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.params.get("api_key", "MISSING"))
+        return httpx.Response(200, json={"meta": {"next_cursor": None}, "results": [make_work(1)]})
+
+    with make_client(api_key="test-key", transport=httpx.MockTransport(handler)) as client:
+        list(iter_works(client, free_bucket(), "f"))
+    assert seen == ["test-key"]
+
+
+def test_ingest_stops_cleanly_when_quota_is_exhausted(scratch_db: str) -> None:
+    """Mid-crawl quota death must return partial stats, not raise: the data
+    already stored is committed and a rerun after the reset converges."""
+    migrate(scratch_db)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params["filter"].endswith("y1"):
+            return httpx.Response(
+                200, json={"meta": {"next_cursor": None}, "results": [make_work(1), make_work(2)]}
+            )
+        return httpx.Response(
+            429, headers={"Retry-After": "17000"}, text='{"message":"Insufficient budget"}'
+        )
+
+    with (
+        make_client(transport=httpx.MockTransport(handler)) as client,
+        psycopg.connect(scratch_db) as conn,
+    ):
+        stats = ingest(
+            conn,
+            client,
+            free_bucket(),
+            limit=4,
+            queries=[("q", "f", 1.0)],
+            slices=[("y1", "y1"), ("y2", "y2")],
+        )
+        count = conn.execute("SELECT count(*) FROM source_records").fetchone()
+
+    assert stats.per_query == {"q": 2}
+    assert stats.fetched == 2
+    assert count == (2,)
+
+
 def test_year_slices_cover_span_plus_classics() -> None:
     slices = year_slices(2026)
     assert len(slices) == 11
