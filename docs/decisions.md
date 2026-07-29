@@ -53,6 +53,35 @@ approximately the recency sort.
 
 ---
 
+## DECISION-1c: What never becomes a paper, and what stays flagged
+
+**Date:** 2026-07-29
+
+**Decision:** Exclude six OpenAlex work types at ingest — paratext,
+editorial, erratum, supplementary-materials, peer-review, retraction
+(measured: 144 rows, 0.5% of a 26.4K corpus, including proceedings volumes
+that ranked beside their own member papers with identical abstracts). Raw
+source records are kept for the audit trail; skip counts are reported per
+type in run stats. Existing junk-type papers rows deleted the same way.
+
+Separately: do NOT exclude is_retracted=true papers (16 in corpus, only 1
+of which the type filter would catch). Keep them, add an is_retracted
+boolean on papers, surfaced in search results so the UI can show a
+retraction warning.
+
+**Alternatives considered:** also excluding is_retracted=true papers, as
+originally proposed.
+
+**Why rejected:** this is a screening tool: someone doing a systematic
+review needs to see a retracted paper to exclude it deliberately and check
+what cites it. Silently dropping it is worse.
+
+**What would change my mind:** if sieve stopped being a screening tool —
+in a general-audience search product, surfacing retracted work without the
+screening context could mislead more than it protects.
+
+---
+
 ## Template
 
 ```text

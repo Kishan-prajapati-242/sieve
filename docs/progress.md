@@ -19,12 +19,21 @@ acceptance wants 50K — top up with `--check-budget` then
 converge and continue). Specialty queries exhaust below nominal budgets,
 so most of the gap fills from nlp-concept.
 
-PENDING Kishan's decision (see findings.md 2026-07-29 ghost records):
-ingest-time skip of junk types (paratext/editorial/erratum/etc, 144 in
-corpus) + is_retracted (16, mostly missed by the type filter), and
-cleanup of those existing rows. Venue backfill is done (8,295 -> 471
-nulls). Dup-abstract preprint/article twins (1,273 papers) are Phase 3
-cascade work, measured and deferred.
+DECISION-1c resolved (2026-07-29, docs/decisions.md): six junk types are
+skipped at ingest (per-type skip counts in run stats); 141 existing
+junk-type papers deleted, raw records kept (corpus 26,378 -> 26,237).
+is_retracted papers stay, flagged and surfaced in search — the UI (next
+task) should render a retraction warning from that field. Venue backfill
+done (8,295 -> 471 nulls).
+
+## Phase 3 note (from the 2026-07-29 dup-abstract measurement)
+
+Add exact-abstract-hash as a dedup cascade step BEFORE trigram: 560
+duplicate-abstract groups / 1,273 papers measured, overwhelmingly
+preprint/article twins with different titles that trigram will never
+catch and DOI matching only partially covers. Cheap (md5 join), high
+precision. Kishan approved the idea 2026-07-29 — do not build until
+Phase 3.
 
 Note: uvicorn --reload does NOT fire inside the podman VM (bind-mount
 file events don't propagate) — `docker compose restart api` after editing

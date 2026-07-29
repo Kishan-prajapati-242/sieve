@@ -58,11 +58,21 @@ candidate junk types — the rest are overwhelmingly preprint/article twins
 of the same paper (391 preprints in dup groups), which is the Phase 3
 dedup cascade's job, not a type filter's.
 
-**Fix:** proposed, pending Kishan's decision — ingest-time skip of the six
-junk types plus `is_retracted`, and cleanup of the 144+16 existing rows.
-`type`, `is_paratext`, `is_retracted` are fetched and stored as of today,
-so the filter has data to act on. The dup-abstract twins stay for the
-Phase 3 cascade (exact-abstract-hash is a candidate cascade step).
+**Fix (DECISION-1c, Kishan):** ingest-time skip of the six junk types,
+counted per type in run stats; raw records kept for the audit trail.
+is_retracted papers deliberately NOT excluded — kept and flagged
+(`papers.is_retracted`, surfaced in search results), because a screening
+tool must show retractions for deliberate exclusion. The dup-abstract
+twins stay for the Phase 3 cascade (exact-abstract-hash is a candidate
+cascade step, noted in progress.md).
+
+**Verified before/after:** papers 26,378 → 26,237 (141 junk-type papers
+deleted: 81 paratext, 45 editorial, 7 erratum, 4 supplementary-materials,
+3 peer-review, 1 retraction; the other 3 of the 144 had never derived a
+paper). 0 mixed-parent papers, 0 merges affected, 172 raw records now
+deliberately unlinked, 16 papers flagged is_retracted. The original ghost
+(the sciprodllm proceedings volume) is gone from results; its member paper
+remains at rank 1.
 
 ---
 
