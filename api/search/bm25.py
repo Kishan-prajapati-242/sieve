@@ -26,7 +26,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 SEARCH_SQL = """
-SELECT id, doi, title, abstract, year, venue, citation_count,
+SELECT id, doi, title, abstract, year, venue, citation_count, is_retracted,
        ts_rank_cd(fts, q)::float8 AS score
 FROM papers, websearch_to_tsquery('english', %(query)s) AS q
 WHERE fts @@ q

@@ -16,15 +16,21 @@ from api.db.pool import close_pool
 from api.main import app
 
 PAPERS = [
-    # (title, abstract, year, citations) — chosen so one query separates them.
-    ("Clinical text simplification with transformers", "We simplify EHR notes.", 2023, 40),
-    ("A survey of machine translation", "Includes a section on text simplification.", 2019, 90),
-    ("Protein folding dynamics", "Molecular dynamics of folding pathways.", 2023, 10),
-    ("Text simplification for aphasia", None, 2021, 5),
+    # (title, abstract, year, citations, is_retracted) — one query separates them.
+    ("Clinical text simplification with transformers", "We simplify EHR notes.", 2023, 40, False),
+    (
+        "A survey of machine translation",
+        "Includes a section on text simplification.",
+        2019,
+        90,
+        False,
+    ),
+    ("Protein folding dynamics", "Molecular dynamics of folding pathways.", 2023, 10, False),
+    ("Text simplification for aphasia", None, 2021, 5, True),  # retracted, stays visible
     # Two textually identical rows: identical fts vectors, identical
     # ts_rank_cd scores — the tie the ORDER BY must break deterministically.
-    ("Tied score probe alpha", "Identical twin rows for the tie test.", 2020, 1),
-    ("Tied score probe alpha", "Identical twin rows for the tie test.", 2020, 1),
+    ("Tied score probe alpha", "Identical twin rows for the tie test.", 2020, 1, False),
+    ("Tied score probe alpha", "Identical twin rows for the tie test.", 2020, 1, False),
 ]
 
 
@@ -32,13 +38,14 @@ PAPERS = [
 def client(scratch_db: str, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     migrate(scratch_db)
     with psycopg.connect(scratch_db) as conn:
-        for title, abstract, year, citations in PAPERS:
+        for title, abstract, year, citations, is_retracted in PAPERS:
             conn.execute(
                 """
-                INSERT INTO papers (title, title_norm, abstract, year, citation_count)
-                VALUES (%s, lower(%s), %s, %s, %s)
+                INSERT INTO papers (title, title_norm, abstract, year, citation_count,
+                                    is_retracted)
+                VALUES (%s, lower(%s), %s, %s, %s, %s)
                 """,
-                (title, title, abstract, year, citations),
+                (title, title, abstract, year, citations, is_retracted),
             )
     close_pool()  # the next get_pool() must see the scratch DATABASE_URL
     monkeypatch.setenv("DATABASE_URL", scratch_db)
@@ -114,6 +121,15 @@ def test_stopword_only_query_is_empty_not_500(client: TestClient) -> None:
 )
 def test_invalid_requests_are_422(client: TestClient, body: dict) -> None:  # type: ignore[type-arg]
     assert client.post("/api/search", json=body).status_code == 422
+
+
+def test_retracted_papers_stay_visible_and_flagged(client: TestClient) -> None:
+    """DECISION-1c: a screening tool shows retractions so reviewers exclude
+    them deliberately; silently dropping them is worse."""
+    data = search(client, query="text simplification")
+    by_title = {r["title"]: r for r in data["results"]}
+    assert by_title["Text simplification for aphasia"]["is_retracted"] is True
+    assert by_title["Clinical text simplification with transformers"]["is_retracted"] is False
 
 
 def test_score_ties_break_deterministically_by_id(client: TestClient) -> None:

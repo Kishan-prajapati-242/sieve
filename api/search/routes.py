@@ -42,6 +42,9 @@ class SearchResult(BaseModel):
     year: int | None
     venue: str | None
     citation_count: int
+    # Surfaced, never filtered (DECISION-1c): the UI shows a retraction
+    # warning; a screening tool must let reviewers exclude these on purpose.
+    is_retracted: bool
 
 
 class SearchResponse(BaseModel):
