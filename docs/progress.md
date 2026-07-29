@@ -1,9 +1,13 @@
 # Progress
 
 Phase: 1 (search over one source).
-Next task: run the full ~50K pull (`python -m api.ingest.openalex`, no
---limit; ~20 min at the current bucket rate), then `POST /api/search`
-(mode=bm25), then the plain React frontend.
+BLOCKED on DECISION-1b (corpus sort order: citation vs recency vs
+year-stratified) — Kishan decides, then record it in docs/decisions.md and
+implement in iter_works before the full 50K pull. After that:
+`POST /api/search` (mode=bm25), then the plain React frontend.
+
+--limit is now a per-query budget (concept 40%, specialties 15% each,
+largest-remainder rounding); per-query counts print at the end of each run.
 
 Corpus domain (Kishan, 2026-07-28): natural language processing,
 clinical/biomedical NLP, text simplification, and mental health NLP.
