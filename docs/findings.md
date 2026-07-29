@@ -147,6 +147,25 @@ same query rerun post-cascade; the baseline to beat is 3/20 redundant.
 
 ---
 
+## 2026-07-29: 7.7% of papers have no DOI — a Phase 3 input, not a bug
+
+**The number:** 196,893 papers vs 181,635 distinct DOIs (doi is UNIQUE, so
+that equals papers-with-DOI): **15,258 papers (7.7%) have no DOI** —
+verified directly with `WHERE doi IS NULL`, same count.
+
+**How it was found:** Kishan, comparing the two totals in the post-pull
+composition report.
+
+**Why it matters (Phase 3 input):** DOI-exact is the dedup cascade's first
+and cheapest step, and it cannot reach these papers at all. They fall
+through to source-ID matching and trigram fuzzy — so the cascade's
+measured precision must be reported for the no-DOI stratum separately,
+not just overall, or the easy DOI wins will mask fuzzy-step quality.
+Recorded before Phase 3 design so the bench (bench/dedup_precision.py)
+stratifies by DOI presence from the start.
+
+---
+
 ## 2026-07-29: The credit meter had a blind spot for entity search
 
 **Symptom:** during the topics investigation, 8 requests to
