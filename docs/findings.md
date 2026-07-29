@@ -147,6 +147,34 @@ same query rerun post-cascade; the baseline to beat is 3/20 redundant.
 
 ---
 
+## 2026-07-29: The credit meter had a blind spot for entity search
+
+**Symptom:** during the topics investigation, 8 requests to
+`/topics?search=…` cost a server-verified 80 credits while the RequestMeter
+predicted 8 — off by 10x, the exact class of error the meter was built to
+prevent.
+
+**How it was found:** the bracketing habit, not a test: every probe run
+reads the free `/rate-limit` endpoint before and after, and the server
+delta (2007 → 2087) disagreed with the meter's own total on the spot.
+
+**Root cause:** `billing_class()` only recognized search-class requests by
+`.search:` inside a works `filter` param. A bare `search=` query param —
+entity search on /topics, /concepts, etc., and full-text `search=` on
+/works — also bills as search class, and the classifier fell through to
+list (1 credit).
+
+**Fix:** any request carrying a `search` param is search-class, in addition
+to the `.search:` filter rule. Regression test prices `/topics?search=`
+and `/works?search=` at 10 and a plain topics.id filter at 1.
+
+**Verified before/after:** the discovery run's 8 entity searches: meter
+said 8 credits before the fix; repriced under the fixed classifier they
+are 80, matching the server's measured delta exactly. Ingest crawls never
+used entity search, so no earlier run report was affected.
+
+---
+
 ## 2026-07-29: Score ties — invariant existed, proof did not
 
 **Symptom:** results 7 and 8 carried identical ts_rank_cd scores, raising

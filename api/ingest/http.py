@@ -87,7 +87,11 @@ class RequestMeter:
     def billing_class(request: httpx.Request) -> str:
         if request.url.path == "/rate-limit":
             return "singleton"
-        if ".search:" in request.url.params.get("filter", ""):
+        # Search-class is any request that searches, not just works filters:
+        # a bare `search=` param (entity search, works full-text) bills 10x
+        # too — measured 2026-07-29, the meter predicted 8 credits for a
+        # /topics?search= discovery run the server billed 80 for.
+        if "search" in request.url.params or ".search:" in request.url.params.get("filter", ""):
             return "search"
         return "list"
 

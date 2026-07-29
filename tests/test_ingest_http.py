@@ -177,6 +177,20 @@ def test_request_meter_prices_by_billing_class() -> None:
     assert meter.requests == 3
 
 
+def test_request_meter_prices_entity_search_as_search_class() -> None:
+    """The blind spot found 2026-07-29: /topics?search= bills as search
+    class (server delta 80 for 8 requests; the meter predicted 8). Any
+    request carrying a search param is a search, not a list."""
+    meter = RequestMeter()
+    for url in (
+        "https://t/topics?search=natural+language+processing&per-page=6",
+        "https://t/works?search=asthma",  # works full-text search param
+        "https://t/works?filter=topics.id:T10181,has_abstract:true",  # still a list
+    ):
+        meter.on_request(httpx.Request("GET", url))
+    assert meter.credits_spent == 10 + 10 + 1
+
+
 def test_request_meter_costs_can_be_overridden_by_server_table() -> None:
     meter = RequestMeter()
     meter.credit_costs.update({"search": 25})
