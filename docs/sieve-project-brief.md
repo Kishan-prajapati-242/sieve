@@ -56,7 +56,7 @@ This project has five of those, listed in Part 6. Each one is a real interview c
 - Keyword search misses papers using different terminology. Semantic search misses exact rare terms like gene symbols and model names. How do you combine two rankings with incomparable score scales?
 - Three APIs return the same paper with different IDs, different title punctuation, and different author name formats. How do you decide two records are the same paper, and how do you know your merge rate is correct?
 - External APIs rate-limit you and fail randomly. A job crashes halfway through. How do you not create duplicates on retry?
-- Your search was 800 ms at 50,000 papers. Now you have 500,000. What is actually slow, and how did you find out?
+- Your search was 800 ms at 50,000 papers. Now you have 200,000. What is actually slow, and how did you find out?
 - You claim hybrid search is better. Prove it with a number.
 
 So: your framing is right, with one correction. **Tools get your resume parsed. Decisions get you hired.** Both matter and they are different sections of the same project.
@@ -102,7 +102,7 @@ Database      PostgreSQL 16 with two extensions:
               Demo:  Neon or Supabase free tier (0.5 GB, subset of corpus)
 
 Embeddings    sentence-transformers/all-MiniLM-L6-v2 via ONNX Runtime
-              384 dimensions, CPU only, runs on an M1 MacBook Air
+              384 dimensions, CPU only, runs on an M1 MacBook Air (8 GB)
               No training. No GPU. No API cost.
 
 Queue         PostgreSQL table + SELECT ... FOR UPDATE SKIP LOCKED
@@ -137,12 +137,14 @@ All free. No paid keys. Respect the rate limits, since your ingestion pipeline e
 
 **Metadata only. Do not download PDFs.** You need: title, abstract, authors, year, venue, DOI, arXiv ID, PubMed ID, citation count, concepts/keywords, source URL. That is a few kilobytes per paper.
 
-**Corpus target:** 500,000 papers in your own domain (NLP, clinical NLP, machine learning, information retrieval). Minimum acceptable: 250,000. Below 100,000 the performance work has nothing to bite on.
+**Corpus target:** 200,000 papers in your own domain (NLP, clinical NLP, machine learning, information retrieval). Minimum acceptable: 100,000 — below that the performance work has nothing to bite on.
+
+**Hardware constraint, on the record:** the development machine is an M1 MacBook Air with 8 GB of RAM, and every benchmark runs on it. 200K is chosen so the hot working set — papers table, GIN index, HNSW graph — stays comfortably in memory alongside Postgres and the embedding process, which a 500K corpus would not. The README must name this hardware next to every number it reports; a measured claim without its machine is not a measurement.
 
 **Storage math, so you do not get surprised:**
-- Text and metadata: roughly 2 KB per paper, so 500K papers is about 1 GB.
-- Embeddings at 384 dimensions as `float32`: 1,536 bytes per paper, so 500K is about 750 MB.
-- Embeddings as `halfvec` (float16): 768 bytes per paper, so 500K is about 375 MB. Use `halfvec`. Measure the recall difference against `vector` and report it. That is a free bullet.
+- Text and metadata: roughly 2 KB per paper, so 200K papers is about 400 MB.
+- Embeddings at 384 dimensions as `float32`: 1,536 bytes per paper, so 200K is about 300 MB.
+- Embeddings as `halfvec` (float16): 768 bytes per paper, so 200K is about 150 MB. Use `halfvec`. Measure the recall difference against `vector` and report it. That is a free bullet.
 - HNSW index: budget roughly the same again as the vectors.
 
 Free managed Postgres gives you 0.5 GB. Your full corpus will not fit. **This is fine and you should handle it explicitly:**
@@ -151,7 +153,7 @@ Free managed Postgres gives you 0.5 GB. Your full corpus will not fit. **This is
 - **A 40,000 to 50,000 paper subset deploys** to Neon or Supabase free tier for the live public demo.
 - The README says exactly this, in one sentence. Being explicit about your measurement environment reads as rigor. Hiding it reads as inexperience.
 
-**Embedding time:** roughly 50 to 150 abstracts per second on M1 CPU with batching, so 500K papers takes 1 to 3 hours. Run it overnight. Make it resumable so a crash does not restart from zero (this is one of the reasons you build the queue).
+**Embedding time:** roughly 50 to 150 abstracts per second on M1 CPU with batching, so 200K papers takes roughly 25 to 70 minutes. Make it resumable so a crash does not restart from zero (this is one of the reasons you build the queue).
 
 ---
 
@@ -336,7 +338,7 @@ Different IDs, different capitalization, a trailing period, sometimes a differen
 
 ### Core 3: Ingestion pipeline that survives reality (learn: 6 hours)
 
-**The problem.** You need to pull 500,000 records from APIs that rate-limit you, return 500s, time out, and occasionally return malformed JSON. The job takes hours. Your laptop will sleep. The process will crash. Restarting from zero is not acceptable, and neither is creating duplicate rows on retry.
+**The problem.** You need to pull 200,000 records from APIs that rate-limit you, return 500s, time out, and occasionally return malformed JSON. The job takes hours (arXiv's 1-request-per-3-seconds is the binding constraint). Your laptop will sleep. The process will crash. Restarting from zero is not acceptable, and neither is creating duplicate rows on retry.
 
 **Solution.**
 
@@ -386,7 +388,7 @@ Know why the jitter is there: without it, every job that failed during the same 
 
 ### Core 4: Query latency engineering (learn: 5 hours)
 
-**The problem.** Search is fast at 50,000 papers and slow at 500,000. You need to know why, not guess.
+**The problem.** Search is fast at 50,000 papers and slow at 200,000. You need to know why, not guess.
 
 **Do it in this order. The order is the point.**
 
@@ -446,12 +448,12 @@ Build:
 - Embedding pipeline: MiniLM via ONNX Runtime, batched, writing `halfvec(384)`. Resumable.
 - HNSW index on `embedding`.
 - `mode=vector` and `mode=hybrid`. The RRF query in raw SQL.
-- Scale the corpus to 250,000, then 500,000 papers.
+- Scale the corpus to 100,000, then 200,000 papers.
 - Frontend: a mode toggle, and per-result score breakdown showing keyword rank, semantic rank, and fused score.
 - Latency instrumentation from the start. Record p50/p95/p99 per mode.
 - Tests: RRF ranking correctness on a fixture, mode switching, embedding idempotency.
 
-Acceptance: all three modes work over 500,000 papers. You can demonstrate a query where BM25 wins, one where vector wins, and one where hybrid beats both. You have latency percentiles for each mode. **Update the resume and start applying.**
+Acceptance: all three modes work over 200,000 papers. You can demonstrate a query where BM25 wins, one where vector wins, and one where hybrid beats both. You have latency percentiles for each mode. **Update the resume and start applying.**
 
 ### Phase 3: Multi-source, dedup, and the queue (Days 15 to 21)
 
@@ -498,7 +500,7 @@ Every one of these is a script in `bench/` that you can run in front of an inter
 
 | Metric | Target shape |
 | --- | --- |
-| Corpus size, per source, after merge | 500K papers, 3 sources |
+| Corpus size, per source, after merge | 200K papers, 3 sources |
 | Ingestion throughput | papers/min, per source, limits respected |
 | Merge rate | % of source records merged into an existing paper |
 | Dedup precision and recall | on 200 hand-labeled pairs, with the threshold sweep |
@@ -520,14 +522,14 @@ Numbers below are shape examples. **Replace every one with a value you measured.
 
 ### Week 2 version (two bullets, apply with this)
 
-> **Sieve: Hybrid Search over 500K Academic Papers** | Python, FastAPI, PostgreSQL, pgvector, React | github.com/...
-> - Built a search system over 512K paper records ingested from OpenAlex, combining PostgreSQL full-text retrieval with pgvector HNSW dense retrieval over 384-dimensional CPU-generated embeddings, fused by Reciprocal Rank Fusion in a single SQL query.
-> - Instrumented per-mode latency histograms and exposed a per-result score breakdown (keyword rank, semantic rank, fused score); p99 search latency 118 ms across 512K papers on commodity hardware.
+> **Sieve: Hybrid Search over 200K Academic Papers** | Python, FastAPI, PostgreSQL, pgvector, React | github.com/...
+> - Built a search system over 205K paper records ingested from OpenAlex, combining PostgreSQL full-text retrieval with pgvector HNSW dense retrieval over 384-dimensional CPU-generated embeddings, fused by Reciprocal Rank Fusion in a single SQL query.
+> - Instrumented per-mode latency histograms and exposed a per-result score breakdown (keyword rank, semantic rank, fused score); p99 search latency 118 ms across 205K papers on an 8 GB M1 MacBook Air.
 
 ### Week 4 version (three bullets, final)
 
 > **Sieve: Literature Search and Triage System** | Python, FastAPI, PostgreSQL, pgvector, React, Docker | github.com/...
-> - Built a hybrid retrieval system over 512K papers from three sources, fusing PostgreSQL full-text and pgvector HNSW rankings via Reciprocal Rank Fusion; improved nDCG@10 by 7.2 points over keyword-only retrieval on 8 hand-labeled queries.
+> - Built a hybrid retrieval system over 205K papers from three sources, fusing PostgreSQL full-text and pgvector HNSW rankings via Reciprocal Rank Fusion; improved nDCG@10 by 7.2 points over keyword-only retrieval on 8 hand-labeled queries.
 > - Designed an idempotent ingestion pipeline on a Postgres `SKIP LOCKED` queue with exponential backoff, jitter, per-source rate limiting, and dead-letter handling, sustaining 340 jobs/sec across 8 workers; deduplicated cross-source records via a DOI-to-trigram cascade at 0.98 precision and 0.91 recall on a 200-pair labeled sample.
 > - Cut p99 search latency from 840 ms to 96 ms through HNSW `ef_search` tuning against a measured recall curve, `halfvec` quantization, keyset pagination, and query-level caching; load tested to 210 RPS before p99 exceeded 200 ms.
 
