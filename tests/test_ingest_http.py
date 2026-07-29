@@ -8,7 +8,7 @@ agreement.
 import httpx
 import pytest
 
-from api.ingest.http import RetriesExhausted, get_json
+from api.ingest.http import QuotaExhausted, RequestMeter, RetriesExhausted, get_json
 from api.ingest.ratelimit import TokenBucket
 
 
@@ -90,3 +90,73 @@ def test_client_errors_raise_immediately_without_retry() -> None:
             client, "/w", params={}, bucket=free_bucket(), rng=lambda: 0.0, sleep=lambda s: None
         )
     assert len(calls) == 1
+
+
+def test_huge_retry_after_raises_quota_exhausted_without_retrying() -> None:
+    """A Retry-After measured in hours means the daily budget is gone; six
+    blind retries against it are pure waste and hide the reason."""
+    client, calls = client_returning(
+        [
+            httpx.Response(
+                429,
+                headers={"Retry-After": "17000"},
+                text='{"error":"Rate limit exceeded","message":"Insufficient budget"}',
+            )
+        ]
+    )
+    with pytest.raises(QuotaExhausted, match="Insufficient budget") as exc_info:
+        get_json(client, "/w", params={}, bucket=free_bucket(), sleep=lambda s: None)
+    assert exc_info.value.retry_after_s == 17000
+    assert len(calls) == 1
+
+
+def test_short_retry_after_is_honored_exactly() -> None:
+    """Below the ceiling, the server's own cooldown wins over our jitter."""
+    client, calls = client_returning(
+        [httpx.Response(429, headers={"Retry-After": "7"}), httpx.Response(200, json={"ok": 1})]
+    )
+    sleeps: list[float] = []
+    out = get_json(
+        client, "/w", params={}, bucket=free_bucket(), rng=lambda: 1.0, sleep=sleeps.append
+    )
+    assert out == {"ok": 1}
+    assert sleeps == [7.0]
+    assert len(calls) == 2
+
+
+def test_failure_messages_keep_the_response_body() -> None:
+    """The body is where the server explains itself; discarding it once
+    turned a billing problem into a fake rate-limit mystery."""
+    client, _ = client_returning([httpx.Response(500, text="disk melted, sorry")] * 2)
+    with pytest.raises(RetriesExhausted, match="disk melted"):
+        get_json(
+            client,
+            "/w",
+            params={},
+            bucket=free_bucket(),
+            max_attempts=2,
+            rng=lambda: 0.0,
+            sleep=lambda s: None,
+        )
+
+
+def test_request_meter_counts_retries_and_captures_budget_headers() -> None:
+    responses = [
+        httpx.Response(500),
+        httpx.Response(200, json={}, headers={"x-ratelimit-remaining": "874"}),
+    ]
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return responses.pop(0)
+
+    meter = RequestMeter()
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="https://t",
+        event_hooks={"request": [meter.on_request], "response": [meter.on_response]},
+    )
+    get_json(client, "/w", params={}, bucket=free_bucket(), rng=lambda: 0.0, sleep=lambda s: None)
+    assert meter.requests == 2  # the retry is spend too
+    assert meter.remaining == "874"

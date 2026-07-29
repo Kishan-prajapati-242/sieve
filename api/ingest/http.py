@@ -7,9 +7,17 @@ each delay is uniform in [0, min(cap, base * 2^attempt)]. The uniform draw
 is the point: clients that failed together and back off on the same fixed
 schedule retry together, re-creating the very spike that failed them.
 
-Retryable: transport errors (timeouts, resets, DNS) plus 429 and 5xx.
-Any other 4xx is a bug in our request and raises immediately — retrying a
-400 five times just spends rate budget hiding the bug.
+429 is special-cased because it carries a Retry-After header that we honor
+(the server knows its own cooldown better than our jitter does). A
+Retry-After beyond `retry_after_ceiling` means the quota is gone for hours
+— OpenAlex's daily budget resets at midnight UTC — so we raise
+QuotaExhausted immediately instead of burning six blind retries against a
+dead budget. Failure messages keep a slice of the response body: the body
+is where OpenAlex explains itself ("Insufficient budget..."), and
+discarding it once turned a billing problem into a fake rate mystery.
+
+Other 5xx and transport errors keep the jitter schedule; any other 4xx is
+a bug in our request and raises immediately.
 
 rng and sleep are injectable for tests.
 """
@@ -23,11 +31,48 @@ import httpx
 
 from api.ingest.ratelimit import TokenBucket
 
-RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
+RETRYABLE_STATUSES = frozenset({500, 502, 503, 504})
 
 
 class RetriesExhausted(Exception):
     """Every attempt failed with a retryable error; the message has the last."""
+
+
+class QuotaExhausted(Exception):
+    """The server's Retry-After exceeds our ceiling: the daily budget is gone.
+
+    retry_after_s is the server-reported wait; callers should stop the run
+    cleanly and tell the operator when to come back, not keep retrying.
+    """
+
+    def __init__(self, message: str, retry_after_s: float) -> None:
+        super().__init__(message)
+        self.retry_after_s = retry_after_s
+
+
+class RequestMeter:
+    """httpx event hooks: counts every request sent (retries included) and
+    remembers the most recent budget headers, so a run can report what it
+    actually spent — measured, not guessed."""
+
+    def __init__(self) -> None:
+        self.requests = 0
+        self.remaining: str | None = None
+        self.reset_seconds: str | None = None
+
+    def on_request(self, request: httpx.Request) -> None:
+        self.requests += 1
+
+    def on_response(self, response: httpx.Response) -> None:
+        self.remaining = response.headers.get("x-ratelimit-remaining", self.remaining)
+        self.reset_seconds = response.headers.get("x-ratelimit-reset", self.reset_seconds)
+
+
+def _retry_after_seconds(resp: httpx.Response) -> float | None:
+    try:
+        return float(resp.headers["retry-after"])
+    except (KeyError, ValueError):
+        return None
 
 
 def get_json(
@@ -39,23 +84,38 @@ def get_json(
     max_attempts: int = 6,
     base_delay: float = 1.0,
     max_delay: float = 30.0,
+    retry_after_ceiling: float = 300.0,
     rng: Callable[[], float] = random.random,
     sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
     last_failure = ""
     for attempt in range(max_attempts):
         bucket.acquire()
+        delay: float | None = None
         try:
             resp = client.get(url, params=params)
         except httpx.TransportError as exc:
             last_failure = f"{type(exc).__name__}: {exc}"
         else:
-            if resp.status_code in RETRYABLE_STATUSES:
-                last_failure = f"HTTP {resp.status_code}"
+            if resp.status_code == 429:
+                last_failure = f"HTTP 429: {resp.text[:200]}"
+                retry_after = _retry_after_seconds(resp)
+                if retry_after is not None:
+                    if retry_after > retry_after_ceiling:
+                        raise QuotaExhausted(
+                            f"{last_failure} (server asks for {retry_after:.0f}s,"
+                            f" ceiling is {retry_after_ceiling:.0f}s)",
+                            retry_after_s=retry_after,
+                        )
+                    delay = retry_after
+            elif resp.status_code in RETRYABLE_STATUSES:
+                last_failure = f"HTTP {resp.status_code}: {resp.text[:200]}"
             else:
                 resp.raise_for_status()  # non-retryable 4xx: our bug, fail now
                 data: dict[str, Any] = resp.json()
                 return data
         if attempt < max_attempts - 1:
-            sleep(rng() * min(max_delay, base_delay * 2**attempt))
+            if delay is None:
+                delay = rng() * min(max_delay, base_delay * 2**attempt)
+            sleep(delay)
     raise RetriesExhausted(f"GET {url}: {max_attempts} attempts, last failure: {last_failure}")
