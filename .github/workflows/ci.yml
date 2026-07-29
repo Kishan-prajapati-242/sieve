@@ -35,6 +35,6 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: ruff check .
       - run: ruff format --check .
-      - run: mypy api
+      - run: mypy api tests
       - run: python -m api.db.migrate
       - run: pytest -q
