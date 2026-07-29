@@ -21,6 +21,10 @@ PAPERS = [
     ("A survey of machine translation", "Includes a section on text simplification.", 2019, 90),
     ("Protein folding dynamics", "Molecular dynamics of folding pathways.", 2023, 10),
     ("Text simplification for aphasia", None, 2021, 5),
+    # Two textually identical rows: identical fts vectors, identical
+    # ts_rank_cd scores — the tie the ORDER BY must break deterministically.
+    ("Tied score probe alpha", "Identical twin rows for the tie test.", 2020, 1),
+    ("Tied score probe alpha", "Identical twin rows for the tie test.", 2020, 1),
 ]
 
 
@@ -110,6 +114,19 @@ def test_stopword_only_query_is_empty_not_500(client: TestClient) -> None:
 )
 def test_invalid_requests_are_422(client: TestClient, body: dict) -> None:  # type: ignore[type-arg]
     assert client.post("/api/search", json=body).status_code == 422
+
+
+def test_score_ties_break_deterministically_by_id(client: TestClient) -> None:
+    """Identical documents rank identically; without the id tiebreak their
+    order is whatever the executor felt like, and Phase 4 keyset pagination
+    would skip or repeat rows at page boundaries."""
+    runs = [search(client, query="tied score probe") for _ in range(3)]
+    first = runs[0]["results"]
+    assert len(first) == 2
+    assert first[0]["score"] == first[1]["score"]
+    assert first[0]["id"] < first[1]["id"]  # ascending id within equal scores
+    for run in runs[1:]:
+        assert [r["id"] for r in run["results"]] == [r["id"] for r in first]
 
 
 def test_request_id_is_echoed_or_minted(client: TestClient) -> None:
