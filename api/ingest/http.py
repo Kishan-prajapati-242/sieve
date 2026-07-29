@@ -50,18 +50,50 @@ class QuotaExhausted(Exception):
         self.retry_after_s = retry_after_s
 
 
-class RequestMeter:
-    """httpx event hooks: counts every request sent (retries included) and
-    remembers the most recent budget headers, so a run can report what it
-    actually spent — measured, not guessed."""
+# Measured 2026-07-29 by bracketing one request of each shape with free
+# /rate-limit reads; matches the server's own credit_costs table. Overridden
+# at runtime by whatever /rate-limit currently declares.
+DEFAULT_CREDIT_COSTS = {
+    "singleton": 0,
+    "list": 1,
+    "search": 10,
+    "content": 100,
+    "semantic": 10,
+    "text": 100,
+}
 
-    def __init__(self) -> None:
+
+class RequestMeter:
+    """httpx event hooks: tracks CREDITS, not just request count.
+
+    OpenAlex bills per request by endpoint class — a search-filter page
+    costs 10 credits where a plain list page costs 1 (measured 2026-07-29,
+    page size irrelevant) — so raw request counts hide a 10x spend
+    difference. Requests are classified the way OpenAlex bills them and
+    priced from the /rate-limit credit_costs table. The meter records
+    attempted spend (a 429'd request is counted even though the server
+    could not bill it); the x-ratelimit-remaining header captured from
+    responses is the server's truth to reconcile against.
+    """
+
+    def __init__(self, credit_costs: dict[str, int] | None = None) -> None:
+        self.credit_costs = dict(credit_costs or DEFAULT_CREDIT_COSTS)
         self.requests = 0
+        self.credits_spent = 0
         self.remaining: str | None = None
         self.reset_seconds: str | None = None
 
+    @staticmethod
+    def billing_class(request: httpx.Request) -> str:
+        if request.url.path == "/rate-limit":
+            return "singleton"
+        if ".search:" in request.url.params.get("filter", ""):
+            return "search"
+        return "list"
+
     def on_request(self, request: httpx.Request) -> None:
         self.requests += 1
+        self.credits_spent += self.credit_costs.get(self.billing_class(request), 1)
 
     def on_response(self, response: httpx.Response) -> None:
         self.remaining = response.headers.get("x-ratelimit-remaining", self.remaining)

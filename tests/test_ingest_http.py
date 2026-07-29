@@ -158,5 +158,27 @@ def test_request_meter_counts_retries_and_captures_budget_headers() -> None:
         event_hooks={"request": [meter.on_request], "response": [meter.on_response]},
     )
     get_json(client, "/w", params={}, bucket=free_bucket(), rng=lambda: 0.0, sleep=lambda s: None)
-    assert meter.requests == 2  # the retry is spend too
+    assert meter.requests == 2  # the retry is attempted spend too
+    assert meter.credits_spent == 2  # no filter param -> list class, 1 credit each
     assert meter.remaining == "874"
+
+
+def test_request_meter_prices_by_billing_class() -> None:
+    """Measured 2026-07-29: a search-filter page bills 10 credits, a plain
+    list page 1, /rate-limit itself 0. Request counts hide the 10x."""
+    meter = RequestMeter()
+    for url in (
+        "https://t/works?filter=concepts.id:C204321447,publication_year:2024",
+        'https://t/works?filter=title_and_abstract.search:"clinical NLP",has_abstract:true',
+        "https://t/rate-limit",
+    ):
+        meter.on_request(httpx.Request("GET", url))
+    assert meter.credits_spent == 1 + 10 + 0
+    assert meter.requests == 3
+
+
+def test_request_meter_costs_can_be_overridden_by_server_table() -> None:
+    meter = RequestMeter()
+    meter.credit_costs.update({"search": 25})
+    meter.on_request(httpx.Request("GET", "https://t/works?filter=abstract.search:x"))
+    assert meter.credits_spent == 25
