@@ -53,6 +53,16 @@ USER_AGENT = "sieve/0.1 (mailto:prajapati.kish@northeastern.edu)"
 # request budget.
 OPENALEX_RATE = 5.0
 
+# DECISION-1c: junk document types never become papers (their raw records
+# are still stored — audit trail). Measured 2026-07-29: 144 of 26,378
+# papers (paratext proceedings volumes were ranking beside their own member
+# papers, carrying identical abstracts). Deliberately NOT here:
+# is_retracted=true works — a screening tool must show retracted papers so
+# reviewers exclude them on purpose; they carry a flag instead.
+EXCLUDED_TYPES = frozenset(
+    {"paratext", "editorial", "erratum", "supplementary-materials", "peer-review", "retraction"}
+)
+
 SELECT_FIELDS = ",".join(
     [
         "id",
@@ -157,6 +167,9 @@ class IngestStats:
     linked_by_doi: int = 0
     refreshed: int = 0
     skipped_no_title: int = 0
+    # DECISION-1c: junk types skipped at ingest, counted per type so a run
+    # shows what it refused, not just what it took.
+    skipped_by_type: dict[str, int] = field(default_factory=dict)
     per_query: dict[str, int] = field(default_factory=dict)
     # Credits, not requests: search-filter pages bill 10x list pages, so the
     # spend profile is invisible in request counts. Populated when a
@@ -282,6 +295,13 @@ def store_work(conn: psycopg.Connection, work: dict[str, Any]) -> str:
         # record remains unlinked, so a future fetch with a title picks it up.
         return "skipped_no_title"
 
+    work_type = work.get("type")
+    if work_type in EXCLUDED_TYPES:
+        # Junk type (DECISION-1c): audit row kept, no paper derived. The
+        # record stays unlinked, and this same check keeps it that way on
+        # every refetch.
+        return f"skipped_type:{work_type}"
+
     doi = normalize_doi(work.get("doi"))
     ids = work.get("ids") or {}
     pubmed_id = (ids.get("pmid") or "").removeprefix("https://pubmed.ncbi.nlm.nih.gov/") or None
@@ -290,8 +310,9 @@ def store_work(conn: psycopg.Connection, work: dict[str, Any]) -> str:
     inserted = conn.execute(
         """
         INSERT INTO papers
-            (doi, title, title_norm, abstract, year, venue, citation_count, pubmed_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            (doi, title, title_norm, abstract, year, venue, citation_count, pubmed_id,
+             is_retracted)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (doi) DO NOTHING
         RETURNING id
         """,
@@ -304,6 +325,7 @@ def store_work(conn: psycopg.Connection, work: dict[str, Any]) -> str:
             venue,
             work.get("cited_by_count") or 0,
             pubmed_id,
+            bool(work.get("is_retracted")),
         ),
     ).fetchone()
 
@@ -382,7 +404,11 @@ def ingest(
                     taken += 1
                     stats.fetched += 1
                     stats.per_query[name] += 1
-                    setattr(stats, outcome, getattr(stats, outcome) + 1)
+                    if outcome.startswith("skipped_type:"):
+                        skipped = outcome.removeprefix("skipped_type:")
+                        stats.skipped_by_type[skipped] = stats.skipped_by_type.get(skipped, 0) + 1
+                    else:
+                        setattr(stats, outcome, getattr(stats, outcome) + 1)
                     if stats.fetched % 1000 == 0:
                         print(f"  {stats.summary()}")
                     if slice_budget is not None and taken >= slice_budget:
@@ -465,6 +491,8 @@ def main() -> None:
     print(stats.summary())
     for name, count in stats.per_query.items():
         print(f"  {name}: {count} works, {stats.per_query_credits.get(name, 0)} credits")
+    for skipped, count in sorted(stats.skipped_by_type.items()):
+        print(f"  skipped type={skipped}: {count}")
     spent = f"credits this run: {meter.credits_spent} ({meter.requests} requests)"
     if meter.remaining is not None:
         spent += f"; server reports {meter.remaining} credits remaining"

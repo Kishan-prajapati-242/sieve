@@ -44,12 +44,17 @@ def make_work(
     doi: str | None = None,
     title: str | None | EllipsisType = ...,  # ... means "default title"; None means "absent"
     year: int = 2024,
+    type_: str = "article",
+    is_retracted: bool = False,
 ) -> dict[str, Any]:
     return {
         "id": f"https://openalex.org/W{n}",
         "doi": doi,
         "display_name": f"Paper {n}" if title is ... else title,
         "publication_year": year,
+        "type": type_,
+        "is_paratext": type_ == "paratext",
+        "is_retracted": is_retracted,
         "primary_location": {"source": {"display_name": f"Venue {n}"}},
         "cited_by_count": n * 10,
         "abstract_inverted_index": {"About": [0], f"paper{n}.": [1]},
@@ -251,6 +256,33 @@ def test_ingest_attributes_credits_per_query(scratch_db: str) -> None:
     assert stats.per_query == {"cheap": 2, "pricey": 2}
     assert stats.per_query_credits == {"cheap": 1, "pricey": 10}
     assert meter.credits_spent == 11
+
+
+def test_junk_types_are_audited_but_never_become_papers(scratch_db: str) -> None:
+    """DECISION-1c: the six junk types keep their raw audit row but derive
+    no paper; retracted real papers DO become papers, carrying the flag."""
+    migrate(scratch_db)
+    works = [
+        make_work(1, type_="paratext"),  # the proceedings-volume ghost
+        make_work(2, type_="editorial"),
+        make_work(3, type_="article", is_retracted=True),  # stays, flagged
+        make_work(4, type_="article"),
+    ]
+    transport = paged_transport({"unused": [works]})
+
+    with make_client(transport=transport) as client, psycopg.connect(scratch_db) as conn:
+        stats = ingest(conn, client, free_bucket(), queries=[("t", "unused", 1.0)], slices=UNSLICED)
+        papers = conn.execute("SELECT title, is_retracted FROM papers ORDER BY id").fetchall()
+        audit = conn.execute("SELECT count(*) FROM source_records").fetchall()
+        unlinked = conn.execute(
+            "SELECT count(*) FROM source_records WHERE paper_id IS NULL"
+        ).fetchone()
+
+    assert stats.skipped_by_type == {"paratext": 1, "editorial": 1}
+    assert stats.new_papers == 2
+    assert papers == [("Paper 3", True), ("Paper 4", False)]
+    assert audit == [(4,)]  # every fetch is audited, skipped or not
+    assert unlinked == (2,)  # the junk rows stay unlinked forever
 
 
 def test_year_slices_cover_span_plus_classics() -> None:
