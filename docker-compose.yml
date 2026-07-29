@@ -32,7 +32,9 @@ services:
   # API process, but inside `docker compose up`, means a fresh clone reaches
   # a migrated database with one command and no undocumented manual step.
   migrate:
-    build: .
+    build:
+      context: .
+      target: runtime
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-sieve}:${POSTGRES_PASSWORD:-sieve}@postgres:5432/${POSTGRES_DB:-sieve}
       OPENALEX_API_KEY: ${OPENALEX_API_KEY:-}
@@ -44,7 +46,9 @@ services:
         condition: service_healthy
 
   api:
-    build: .
+    build:
+      context: .
+      target: runtime
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-sieve}:${POSTGRES_PASSWORD:-sieve}@postgres:5432/${POSTGRES_DB:-sieve}
       OPENALEX_API_KEY: ${OPENALEX_API_KEY:-}
@@ -60,6 +64,30 @@ services:
       # transitively waits for the pg_isready gate on postgres.
       migrate:
         condition: service_completed_successfully
+
+  # The independent check: `make test` (or `docker compose run --rm test`)
+  # runs the pytest suite in a container built from the dev target — no host
+  # Python, no trusting reported test counts. profiles: keeps it out of a
+  # plain `docker compose up`; `run` enables the profile implicitly.
+  test:
+    build:
+      context: .
+      target: dev
+    profiles: ["test"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sieve}:${POSTGRES_PASSWORD:-sieve}@postgres:5432/${POSTGRES_DB:-sieve}
+      # scratch_db issues DROP DATABASE and refuses non-local hosts; this
+      # names the one non-local host that is still ours — the compose
+      # network's database service. See tests/conftest.py.
+      SIEVE_TESTS_ALLOW_DB_HOST: postgres
+    volumes:
+      # Current source and tests, same pattern as the api service — the
+      # image only needs rebuilding when dependencies change.
+      - ./api:/app/api
+      - ./tests:/app/tests
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   # DECISION-1d: the frontend toolchain lives in Docker too — no host Node.
   # Stock node image + bind-mounted source instead of a Dockerfile: the dev

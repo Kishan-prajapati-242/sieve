@@ -28,7 +28,12 @@ def scratch_db(request: pytest.FixtureRequest) -> Iterator[str]:
     """
     params = conninfo_to_dict(os.environ["DATABASE_URL"])
     host = str(params.get("host") or "localhost")
-    if host not in ("localhost", "127.0.0.1", "::1"):
+    # Loopback is always fine. Anything else must be named explicitly via
+    # SIEVE_TESTS_ALLOW_DB_HOST — the compose test service sets it to
+    # "postgres" (its own network's database); a shell that leaks a Neon URL
+    # never has the matching opt-in, so those still skip.
+    allowed = ("localhost", "127.0.0.1", "::1", os.environ.get("SIEVE_TESTS_ALLOW_DB_HOST"))
+    if host not in allowed:
         pytest.skip(f"scratch_db issues DROP DATABASE; refusing non-local host {host!r}")
     name = re.sub(r"\W", "_", f"{params['dbname']}_t_{request.node.name}").lower()[:63]
     admin_url = os.environ["DATABASE_URL"]

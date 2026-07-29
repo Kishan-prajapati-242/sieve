@@ -9,4 +9,6 @@
 node_modules
 docs
 bench
-tests
+# tests/ is deliberately NOT ignored: the Dockerfile's dev target copies it
+# so the test image is self-contained. Only the dev stage's last layer
+# depends on it; the runtime stages never COPY it.

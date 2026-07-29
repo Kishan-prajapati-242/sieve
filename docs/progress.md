@@ -5,6 +5,19 @@ Next task: top up the corpus to 50K (needs Kishan's go-ahead:
 `--check-budget` first, then `python -m api.ingest.openalex --limit 50000`,
 ~1,870 credits measured), then the Phase 1 acceptance check.
 
+Shipped 2026-07-29 (independent verification): `make test` runs the pytest
+suite in Docker (Dockerfile dev target -> compose `test` service,
+profile-gated out of `up`); `make test-web` and `make lint` (CI's exact
+commands) likewise. No host Python/Node needed — green counts no longer
+depend on anyone's say-so. The scratch_db DROP DATABASE guard stays
+local-only by default; the test service opts in to host "postgres" via
+SIEVE_TESTS_ALLOW_DB_HOST (verified both ways: 75 pass with it, 32 skip
+without). Stage order keeps a target-less `docker build .` (= Render) on
+the runtime image — verified pytest absent there. GitHub remote now
+exists; remote main is at a2800f3 (27 commits behind), which already
+carried ci.yml, so Actions presumably ran on that push — result not
+checked from this machine. Next push runs both CI jobs (python + web).
+
 Shipped 2026-07-29 (task 6): the frontend, all-Docker (DECISION-1d,
 docs/decisions.md). `docker compose up` now brings up postgres → migrate →
 api → web; the page is at localhost:5173. web/ is Vite + React 18 + TS +
@@ -118,8 +131,8 @@ Assemble via OpenAlex concept filters plus keyword queries.
   so 500K inserts don't each pay graph maintenance; the migration carries a
   comment marking exactly where it goes.
 - CI workflow: ruff, mypy (api + tests), migrate, pytest against the same
-  pgvector image. Note: no GitHub remote is configured yet, so CI has never
-  actually run — verify on first push.
+  pgvector image. (Remote since added and a2800f3 pushed — see the
+  2026-07-29 verification entry above.)
 - 11 tests green locally (runner semantics, schema behavior, health/pool
   lifecycle).
 
