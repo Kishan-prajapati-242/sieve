@@ -19,6 +19,13 @@ acceptance wants 50K — top up with `--check-budget` then
 converge and continue). Specialty queries exhaust below nominal budgets,
 so most of the gap fills from nlp-concept.
 
+PENDING Kishan's decision (see findings.md 2026-07-29 ghost records):
+ingest-time skip of junk types (paratext/editorial/erratum/etc, 144 in
+corpus) + is_retracted (16, mostly missed by the type filter), and
+cleanup of those existing rows. Venue backfill is done (8,295 -> 471
+nulls). Dup-abstract preprint/article twins (1,273 papers) are Phase 3
+cascade work, measured and deferred.
+
 Note: uvicorn --reload does NOT fire inside the podman VM (bind-mount
 file events don't propagate) — `docker compose restart api` after editing
 api/ locally.
