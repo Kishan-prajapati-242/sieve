@@ -1,13 +1,16 @@
 # Progress
 
 Phase: 1 (search over one source).
-BLOCKED on DECISION-1b (corpus sort order: citation vs recency vs
-year-stratified) — Kishan decides, then record it in docs/decisions.md and
-implement in iter_works before the full 50K pull. After that:
-`POST /api/search` (mode=bm25), then the plain React frontend.
+Next task: the full ~50K pull (`python -m api.ingest.openalex --limit 50000`),
+then `POST /api/search` (mode=bm25), then the plain React frontend.
 
---limit is now a per-query budget (concept 40%, specialties 15% each,
+DECISION-1b resolved (2026-07-29, docs/decisions.md): corpus crawls are
+year-stratified — each query's budget splits evenly across the last 10
+years plus a pre-2017 classics slice, citation-sorted within a slice.
+--limit is a per-query budget (concept 40%, specialties 15% each,
 largest-remainder rounding); per-query counts print at the end of each run.
+Note: specialty queries will exhaust some year slices below budget at 50K —
+the run prints those shortfalls; expected, not a bug.
 
 Corpus domain (Kishan, 2026-07-28): natural language processing,
 clinical/biomedical NLP, text simplification, and mental health NLP.
