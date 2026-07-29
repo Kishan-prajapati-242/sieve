@@ -29,6 +29,11 @@ Python stopped being required in the request path.
 
 **Date:** 2026-07-29
 
+> Note (2026-07-29): the QUERY TABLE this decision stratified (concept
+> filter + four phrase queries) is superseded by DECISION-2 — the crawl
+> now runs on topic filters. The sort-order decision itself stands
+> unchanged: every query, topic or phrase, still stratifies by year.
+
 **Decision:** Stratify by year: split each query's budget evenly across the
 last ~10 publication years plus one pre-2016 "classics" slice, and sort by
 citations within each year slice.
@@ -105,6 +110,49 @@ TypeScript IntelliSense wants a local node_modules, which only a host npm
 install can provide. If frontend work gets heavy enough in Phase 4 that
 red-underlined imports slow me down more than toolchain drift would, a
 host Node install is back on the table.
+
+---
+
+## DECISION-2: Corpus composition v2 — migrate to topic filters
+
+**Date:** 2026-07-29
+
+**Context (measured, 2026-07-29):** the 26.2K corpus was ~75% general NLP,
+and the specialty phrase queries were result-capped, not budget-capped
+(clinical-nlp maxes at ~919 works total). Topping up to 50K under the old
+table would have made it ~87% general. OpenAlex has deprecated concepts
+("/concepts → Use /topics", developers.openalex.org); topic filters are
+list-class, 14x cheaper per work than phrase search (182 vs 13
+works/credit). Measured topic pools (works with abstracts): T10181 NLP
+Techniques 376K; T11710 Biomedical Text Mining 224K; T10350|T13702
+EHR/ML-in-healthcare 170K; T13629 Text Readability and Simplification
+49K; T12488 Mental Health via Writing 54K. There is no clinical-NLP
+topic, and topic intersections cannot substitute (works carry max 3
+topics: NLP∩EHR matches 15 works).
+
+**Decision:** migrate the crawl to topics, composition for 200K:
+general-nlp T10181 60K (30%), biomedical-clinical-text T11710 70K (35%),
+clinical-informatics T10350|T13702 20K (10%), text-simplification T13629
+25K (12.5%), mental-health-nlp T12488 25K (12.5%) — plus the four
+existing phrase queries, kept as a small high-precision core. Keep the
+existing 26.2K papers; upserts converge.
+
+**Alternatives considered:** the proposed 40K (20%) clinical-informatics
+share, reallocated to T11710; staying on concept + phrase queries.
+
+**Why rejected:** T10350 and T13702 are largely not NLP, so at 20% of the
+corpus they're not random hard negatives, they're clinical papers lacking
+simplification vocabulary. BM25 rejects them on exact terms while dense
+retrieval pulls them in on clinical semantics, which could make hybrid
+look worse than BM25 in Phase 4 and undercut the exact comparison the
+evaluation exists to make. Some difficulty is good, a fifth of the corpus
+is not. T11710 is actual text mining, so it's on-topic mass. Staying on
+phrase queries fails on both counts: result-capped below the specialty
+targets, and 10x the credits per page.
+
+**What would change my mind:** if Phase 4 shows hybrid winning too easily
+— hard negatives that BM25 and dense both have to work for are what make
+the eval mean something, and clinical-informatics share is the knob.
 
 ---
 
