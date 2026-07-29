@@ -1,12 +1,27 @@
 # Progress
 
 Phase: 1 (search over one source).
-Next task: the full ~50K pull (`python -m api.ingest.openalex --limit
-50000`) — measured cost ~1,870 credits of the 10,000/day keyed budget
-(list pages 1 credit, search pages 10; see brief Part 4). ~8,950 credits
-remained after 2026-07-29 testing; the pull fits today or any fresh day.
-Run `--check-budget` first. Then `POST /api/search` (mode=bm25), then the
-plain React frontend.
+Next task: the plain React frontend (search box, result list, year
+filter — deliberately plain, design later). Then the Phase 1 acceptance
+check.
+
+Shipped 2026-07-29 (task 5): `POST /api/search`, mode=bm25 only —
+ts_rank_cd over the generated fts column (honestly NOT real BM25; see
+api/search/bm25.py docstring), websearch_to_tsquery parsing, year_from/
+year_to via the param-is-NULL pattern, k 1..100, per-result rank + score.
+Structured JSON logging + request-ID middleware landed with it (the
+deferred convention). Verified live: 58 ms top-3 on the dev corpus, all
+on-topic. 68 tests green.
+
+Corpus: ~26.4K papers ingested so far (Kishan's pull, 2026-07-29). Phase 1
+acceptance wants 50K — top up with `--check-budget` then
+`python -m api.ingest.openalex --limit 50000` (idempotent; reruns
+converge and continue). Specialty queries exhaust below nominal budgets,
+so most of the gap fills from nlp-concept.
+
+Note: uvicorn --reload does NOT fire inside the podman VM (bind-mount
+file events don't propagate) — `docker compose restart api` after editing
+api/ locally.
 
 OPENALEX_API_KEY is set in Kishan's .env (required since OpenAlex went
 usage-based: $0.01/day anonymous, $1/day keyed). Every ingest run prints
