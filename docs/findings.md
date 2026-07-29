@@ -103,6 +103,50 @@ ACL-specific 3,154 → 24 (99.2%).
 
 ---
 
+## 2026-07-29: One paper, three results — the Phase 3 dedup baseline
+
+Not a bug to fix now (Kishan: phase gate first) — the observed motivation
+for the Phase 3 dedup cascade, with a measured baseline to beat.
+
+**Symptom:** Kishan's first real query on the functionally complete Phase 1
+stack, "clinical text simplification": results 13/14/15 are the same paper
+three times — "Evaluation of large Language models on pediatric asthma…"
+(2026), once in BMC Medical Informatics and Decision Making (3 citations)
+and twice on Figshare (0 each), author lists differing only by
+capitalization ("jie wu" vs "Jie Wu"). Results 19/20 are the Ascle preprint
+and its published JMIR version, differing in title suffix ("(Preprint)" vs
+": Development and Evaluation Study") and citation count (1 vs 14).
+
+**How it was found:** human eyeballs on real output, verified by rerunning
+the query and running exact-key SQL over the 20 returned ids.
+
+**Root cause:** Phase 1 dedup is DOI-exact only, and every row above has a
+distinct DOI — Figshare mints versioned DOIs (`…figshare.c.8354879` vs
+`…c.8354879.v1`), and JMIR gives preprints their own
+(`10.2196/preprints.60601` vs `10.2196/60601`).
+
+**Measured baseline (top 20, this query):** 2 duplicate groups; 5 of 20
+results sit in a duplicate group (25%); 3 of 20 are redundant copies (15%);
+17 unique papers. Which future cascade step catches what, checked against
+the actual rows: the asthma triple shares an identical `title_norm`
+(exact-title catches all 3), but only the two Figshare rows share an exact
+abstract — the BMC copy's abstract text differs, so abstract-hash alone
+merges 2 of 3. The Ascle pair evades every exact key (DOI, title_norm,
+abstract) and is trigram territory — or a source-specific DOI rule, since
+`10.2196/preprints.N` → `10.2196/N` is mechanical.
+
+**Two things this measures that the brief did not anticipate (Kishan):**
+duplicates occur within a single source — all three asthma rows are
+distinct OpenAlex works (W7128481684, W7138342378, W7138370075) — not only
+across sources; and the preprint/published pair needs a version-preference
+rule, not just a merge, since the published version has the real citation
+count.
+
+**Fix:** deferred to Phase 3 by design. The "after" for this entry is this
+same query rerun post-cascade; the baseline to beat is 3/20 redundant.
+
+---
+
 ## 2026-07-29: Score ties — invariant existed, proof did not
 
 **Symptom:** results 7 and 8 carried identical ts_rank_cd scores, raising

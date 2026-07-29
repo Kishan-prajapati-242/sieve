@@ -58,6 +58,13 @@ catch and DOI matching only partially covers. Cheap (md5 join), high
 precision. Kishan approved the idea 2026-07-29 — do not build until
 Phase 3.
 
+Baseline to beat (findings.md, 2026-07-29): query "clinical text
+simplification", 3 of the top 20 results are redundant copies (2 dup
+groups, 5/20 rows involved). Two requirements the brief missed, from that
+measurement: dedup must work WITHIN a source (three OpenAlex works for one
+paper), and preprint/published merges need a version-preference rule (the
+published row carries the real citation count), not just a merge.
+
 Note: uvicorn --reload does NOT fire inside the podman VM (bind-mount
 file events don't propagate) — `docker compose restart api` after editing
 api/ locally.
