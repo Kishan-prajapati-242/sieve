@@ -224,6 +224,32 @@ prose-ness), not the type field.
 
 ---
 
+## DECISION-2d: fp32 for the corpus encode; int8 deferred, not rejected
+
+**Date:** 2026-07-29
+
+**Decision:** the full encode runs fp32 with length-sorted batching
+(length-sorting stays — it's free and measured ~2x). int8 quantization is
+deferred to Phase 4 as a measured optimization, not rejected.
+
+**Alternatives considered:** int8 dynamic quantization now (measured
+~114 min projected vs ~230 min fp32, cosine vs fp32 mean 0.9977 / min
+0.9906 on 1,000 real papers).
+
+**Why rejected (for now):** cosine parity between int8 and fp32 vectors of
+the same document does not establish that ranking is preserved, since
+ranking depends on relative distances across the corpus and small
+perturbations reorder near-ties. The correct metric is Recall@10 of an
+int8 index against the fp32 index as ground truth, which I don't have
+yet. More decisive: this job runs overnight, so 2 hours versus 4 hours
+buys nothing I'm using.
+
+**What would change my mind:** the Phase 4 measurement itself — int8
+becomes a measured optimization with a real recall number, and that
+measurement requires the fp32 index to exist as the baseline.
+
+---
+
 ## Template
 
 ```text
