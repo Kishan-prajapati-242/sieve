@@ -10,6 +10,12 @@ dependencies = [
     "pydantic>=2.7",
     # Runtime dep since the OpenAlex client; was dev-only for the test client.
     "httpx>=0.27",
+    # The embedding path (DECISION-2b/2d): bge-small-en-v1.5 runs on ONNX
+    # Runtime CPU; tokenizers is the model's own WordPiece implementation.
+    # Runtime deps, not dev: the query path embeds at request time in Phase 2.
+    "onnxruntime>=1.20",
+    "tokenizers>=0.20",
+    "numpy>=1.26",
 ]
 
 [project.optional-dependencies]
@@ -44,6 +50,11 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
+
+# onnxruntime ships no type stubs; everything else stays strict.
+[[tool.mypy.overrides]]
+module = ["onnxruntime.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
