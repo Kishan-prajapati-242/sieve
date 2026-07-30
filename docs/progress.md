@@ -3,6 +3,27 @@
 Phase: 1 (search over one source). Corpus is at target; the Phase 1
 acceptance check is the remaining gate item.
 
+Phase 2 pre-encode prerequisites (2026-07-30): BOTH PASSED, full encode
+awaiting Kishan's go. (a) Container benchmark (bench/encode_throughput.py
+inside the compose test container — the podman VM, not the host): 13.2
+docs/s fp32, **248 min projected for 196,893 papers**, peak RSS 2.05 GB
+in the 4 GB VM (no memory raise needed; `podman machine set --memory` is
+the knob if wanted). Sustained rates in real runs measured 8.8-12.7
+docs/s, so plan for ~4.5-6 h wall clock with throttling. (b) Live
+kill-proof: SIGKILL at 2,304 committed rows -> exactly 2,304 durable on a
+fresh connection; resume --limit 2696 -> exactly 5,000 total, 0 gaps
+below the high-water mark, all 2,304 pre-kill vectors byte-identical
+(md5 diff). Those 5,000 real embeddings stay — the full encode converges
+on top of them. THE PROOF CAUGHT A REAL BUG first (findings.md
+2026-07-30): psycopg default connections made per-batch commits into
+savepoints; jobs now require autocommit connections, guarded loudly.
+Model files live in ./models/bge-small-en-v1.5/ (gitignored):
+tokenizer.json + onnx/model.onnx from BAAI/bge-small-en-v1.5. Full
+encode runbook, when approved:
+`docker compose run --rm --no-deps -v ./models/bge-small-en-v1.5:/models
+-e EMBED_MODEL_DIR=/models test python -m api.embed.backfill`
+(resumable; rerun after any interruption). HNSW index comes AFTER it.
+
 Phase 2 prep (2026-07-29, decided + measured, NOT built): DECISION-2b
 (bge-small-en-v1.5, title+abstract, 512 window, one vector per paper) and
 DECISION-2c (dataset-type stays; 0 of 120 top-20 slots polluted) are in

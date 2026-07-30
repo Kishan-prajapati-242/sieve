@@ -194,6 +194,45 @@ used entity search, so no earlier run report was affected.
 
 ---
 
+## 2026-07-30: The resumability test that couldn't fail
+
+**Symptom:** the live kill-proof (Kishan's requirement before any full
+encode): SIGKILL to the embedding backfill after its log reported
+"embedded 2304". Expected 2,304 durable rows; the database had **0**.
+Meanwhile the unit test for exactly this scenario was green.
+
+**How it was found:** a real `docker kill`, demanded precisely because "an
+unresumable multi-hour job that dies at hour 5 costs me a night." No test
+caught it; the first proof attempt (where the kill failed to fire and the
+run finished cleanly) even showed 5,000 rows — false reassurance, because
+clean exits commit.
+
+**Root cause, two layers.** Code: psycopg connections default to implicit
+transactions, so with a default connection an already-open transaction
+makes `with conn.transaction():` a SAVEPOINT — every per-batch "commit"
+rode one giant transaction that died with the process. Test: the kill
+simulation verified through the writer's own connection, and a connection
+always sees its own uncommitted work — the test could not distinguish
+durable from transaction-local, so it passed against broken code. The
+ingest loop had the same latent defect: the 200K pull's
+"crash loses at most one work" promise was false the whole time, masked
+because every run ended cleanly (QuotaExhausted is caught, clean exit
+commits at connection close).
+
+**Fix:** job entrypoints connect with `autocommit=True`, making each
+`conn.transaction()` block a real durable commit; `backfill()` and
+`ingest()` now REFUSE default-mode connections with a loud ValueError.
+Tests verify durability from a second connection, and the dying writer's
+connection is closed uncommitted, as SIGKILL leaves it.
+
+**Verified before/after:** against the pre-fix code, the new guard and
+cross-connection tests fail (verified by stashing the fix); after it, the
+whole suite passes and the repeated LIVE kill-proof holds: killed at
+2,304 rows → 2,304 durable rows survive on a fresh connection, resume
+completes to 5,000, pre-kill vectors byte-identical (see progress.md).
+
+---
+
 ## 2026-07-29: Score ties — invariant existed, proof did not
 
 **Symptom:** results 7 and 8 carried identical ts_rank_cd scores, raising
