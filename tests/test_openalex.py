@@ -126,6 +126,32 @@ def test_extract_authors_in_publication_order_or_none() -> None:
     assert extract_authors({}) is None
 
 
+def test_ingested_works_are_durable_before_the_connection_closes(scratch_db: str) -> None:
+    """Per-work commits must be real commits: a SECOND connection sees the
+    rows while the ingest connection is still open. Without autocommit the
+    per-work conn.transaction() is a savepoint in one giant transaction and
+    a mid-run kill loses everything (findings.md 2026-07-30) — this test
+    fails against that code. ingest() also refuses such a connection."""
+    migrate(scratch_db)
+    transport = paged_transport({"f": [[make_work(1)]]})
+    writer = psycopg.connect(scratch_db, autocommit=True)
+    try:
+        with make_client(transport=transport) as client:
+            ingest(writer, client, free_bucket(), queries=[("q", "f", 1.0)], slices=UNSLICED)
+        with psycopg.connect(scratch_db) as observer:
+            count = observer.execute("SELECT count(*) FROM source_records").fetchone()
+        assert count == (1,)
+    finally:
+        writer.close()
+
+    with (
+        psycopg.connect(scratch_db) as default_mode_conn,
+        make_client(transport=paged_transport({"f": [[make_work(2)]]})) as client,
+        pytest.raises(ValueError, match="autocommit"),
+    ):
+        ingest(default_mode_conn, client, free_bucket(), queries=[("q", "f", 1.0)])
+
+
 def test_provenance_is_first_fetch_and_stable_across_reruns(scratch_db: str) -> None:
     """DECISION-2: composition is a README number, so every record carries
     the query that fetched it — and refetches by an overlapping query must
@@ -138,7 +164,10 @@ def test_provenance_is_first_fetch_and_stable_across_reruns(scratch_db: str) -> 
         }
     )
 
-    with make_client(transport=transport) as client, psycopg.connect(scratch_db) as conn:
+    with (
+        make_client(transport=transport) as client,
+        psycopg.connect(scratch_db, autocommit=True) as conn,
+    ):
         ingest(conn, client, free_bucket(), queries=[("query-a", "filter-a", 1.0)], slices=UNSLICED)
         ingest(conn, client, free_bucket(), queries=[("query-b", "filter-b", 1.0)], slices=UNSLICED)
         rows = conn.execute(
@@ -154,7 +183,10 @@ def test_authors_are_stored_with_the_paper(scratch_db: str) -> None:
     transport = paged_transport({"unused-filter": [works]})
     queries = [("test", "unused-filter", 1.0)]
 
-    with make_client(transport=transport) as client, psycopg.connect(scratch_db) as conn:
+    with (
+        make_client(transport=transport) as client,
+        psycopg.connect(scratch_db, autocommit=True) as conn,
+    ):
         ingest(conn, client, free_bucket(), queries=queries, slices=UNSLICED)
         rows = conn.execute("SELECT title, authors FROM papers ORDER BY id").fetchall()
 
@@ -215,7 +247,7 @@ def test_every_query_gets_its_own_budget(scratch_db: str) -> None:
 
     with (
         make_client(transport=transport) as client,
-        psycopg.connect(scratch_db) as conn,
+        psycopg.connect(scratch_db, autocommit=True) as conn,
     ):
         stats = ingest(conn, client, free_bucket(), limit=3, queries=queries, slices=UNSLICED)
         stored = conn.execute("SELECT source_id FROM source_records ORDER BY source_id").fetchall()
@@ -257,7 +289,7 @@ def test_ingest_stops_cleanly_when_quota_is_exhausted(scratch_db: str) -> None:
 
     with (
         make_client(transport=httpx.MockTransport(handler)) as client,
-        psycopg.connect(scratch_db) as conn,
+        psycopg.connect(scratch_db, autocommit=True) as conn,
     ):
         stats = ingest(
             conn,
@@ -289,7 +321,7 @@ def test_exhausted_budget_never_fetches_the_next_page(scratch_db: str) -> None:
 
     with (
         make_client(transport=httpx.MockTransport(handler)) as client,
-        psycopg.connect(scratch_db) as conn,
+        psycopg.connect(scratch_db, autocommit=True) as conn,
     ):
         stats = ingest(
             conn, client, free_bucket(), limit=1, queries=[("q", "f", 1.0)], slices=UNSLICED
@@ -315,7 +347,7 @@ def test_ingest_attributes_credits_per_query(scratch_db: str) -> None:
 
     with (
         make_client(transport=transport, meter=meter) as client,
-        psycopg.connect(scratch_db) as conn,
+        psycopg.connect(scratch_db, autocommit=True) as conn,
     ):
         stats = ingest(conn, client, free_bucket(), queries=queries, slices=UNSLICED, meter=meter)
 
@@ -336,7 +368,10 @@ def test_junk_types_are_audited_but_never_become_papers(scratch_db: str) -> None
     ]
     transport = paged_transport({"unused": [works]})
 
-    with make_client(transport=transport) as client, psycopg.connect(scratch_db) as conn:
+    with (
+        make_client(transport=transport) as client,
+        psycopg.connect(scratch_db, autocommit=True) as conn,
+    ):
         stats = ingest(conn, client, free_bucket(), queries=[("t", "unused", 1.0)], slices=UNSLICED)
         papers = conn.execute("SELECT title, is_retracted FROM papers ORDER BY id").fetchall()
         audit = conn.execute("SELECT count(*) FROM source_records").fetchall()
@@ -373,7 +408,7 @@ def test_year_stratification_spreads_the_budget(scratch_db: str) -> None:
 
     with (
         make_client(transport=transport) as client,
-        psycopg.connect(scratch_db) as conn,
+        psycopg.connect(scratch_db, autocommit=True) as conn,
     ):
         stats = ingest(
             conn,
@@ -402,7 +437,10 @@ def test_ingest_twice_is_idempotent(scratch_db: str) -> None:
     transport = paged_transport({"unused-filter": [works]})
     queries = [("test", "unused-filter", 1.0)]
 
-    with make_client(transport=transport) as client, psycopg.connect(scratch_db) as conn:
+    with (
+        make_client(transport=transport) as client,
+        psycopg.connect(scratch_db, autocommit=True) as conn,
+    ):
         first = ingest(conn, client, free_bucket(), queries=queries, slices=UNSLICED)
         second = ingest(conn, client, free_bucket(), queries=queries, slices=UNSLICED)
 
@@ -433,7 +471,7 @@ def test_limit_stops_mid_crawl(scratch_db: str) -> None:
     pages = [[make_work(1), make_work(2)], [make_work(3)]]
     with (
         make_client(transport=paged_transport({"u": pages})) as client,
-        psycopg.connect(scratch_db) as conn,
+        psycopg.connect(scratch_db, autocommit=True) as conn,
     ):
         stats = ingest(
             conn, client, free_bucket(), limit=1, queries=[("test", "u", 1.0)], slices=UNSLICED

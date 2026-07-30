@@ -60,6 +60,14 @@ def backfill(
 ) -> int:
     """Embed up to `limit` un-embedded papers (all of them when None).
     Returns how many rows this call wrote. Safe to kill; safe to rerun."""
+    if not conn.autocommit:
+        # The savepoint trap, found by a real SIGKILL (docs/findings.md
+        # 2026-07-30): on a default connection an open implicit transaction
+        # makes conn.transaction() a SAVEPOINT, so every "committed" batch
+        # actually rides one giant transaction that dies with the process —
+        # the killed run lost all 2,304 "committed" rows. Autocommit mode
+        # makes each conn.transaction() block a real, durable commit.
+        raise ValueError("backfill requires an autocommit connection; batch commits are the point")
     written = 0
     while limit is None or written < limit:
         take = batch_rows if limit is None else min(batch_rows, limit - written)
@@ -92,7 +100,7 @@ def main() -> None:
 
     encoder = OnnxEncoder(args.model_dir)
     start = time.perf_counter()
-    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+    with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
         written = backfill(conn, encoder, limit=args.limit, batch_rows=args.batch_rows)
         remaining = conn.execute("SELECT count(*) FROM papers WHERE embedding IS NULL").fetchone()
         assert remaining is not None

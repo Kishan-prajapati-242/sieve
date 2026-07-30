@@ -397,6 +397,13 @@ def ingest(
     transaction per work: a crash mid-run loses at most one work and a rerun
     converges, never duplicates.
     """
+    if not conn.autocommit:
+        # Same savepoint trap as the embed backfill (docs/findings.md
+        # 2026-07-30): without autocommit, the per-work conn.transaction()
+        # is a savepoint inside one giant implicit transaction, and the
+        # crash-loses-one-work promise above is false — a kill loses the
+        # whole run. Every clean exit had been silently committing at close.
+        raise ValueError("ingest requires an autocommit connection; per-work commits are the point")
     if slices is None:
         slices = year_slices(datetime.now(UTC).year)
     budgets: list[int | None]
@@ -501,7 +508,10 @@ def main() -> None:
     conninfo = os.environ.get("DATABASE_URL")
     if not conninfo:
         sys.exit("DATABASE_URL is not set")
-    with make_client(api_key=api_key, meter=meter) as client, psycopg.connect(conninfo) as conn:
+    with (
+        make_client(api_key=api_key, meter=meter) as client,
+        psycopg.connect(conninfo, autocommit=True) as conn,
+    ):
         # Price this run with the server's CURRENT cost table rather than our
         # measured defaults, and show the budget before spending any of it.
         # /rate-limit itself is free (singleton class).

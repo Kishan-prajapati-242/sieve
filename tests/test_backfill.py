@@ -62,6 +62,7 @@ def db(scratch_db: str) -> str:
 def test_backfill_embeds_everything_exactly_once(db: str) -> None:
     with psycopg.connect(db) as conn:
         seed(conn, 40)
+    with psycopg.connect(db, autocommit=True) as conn:
         encoder = StubEncoder()
         written = backfill(conn, encoder, batch_rows=16)
         null_count = conn.execute("SELECT count(*) FROM papers WHERE embedding IS NULL").fetchone()
@@ -70,9 +71,20 @@ def test_backfill_embeds_everything_exactly_once(db: str) -> None:
     assert len(encoder.seen) == 40  # nothing encoded twice
 
 
+def test_backfill_refuses_a_default_mode_connection(db: str) -> None:
+    """The guard for the savepoint trap (findings.md 2026-07-30): on a
+    non-autocommit connection, per-batch 'commits' are savepoints inside
+    one giant transaction that dies with the process. Refuse loudly."""
+    with psycopg.connect(db) as conn:
+        seed(conn, 5)
+        with pytest.raises(ValueError, match="autocommit"):
+            backfill(conn, StubEncoder(), batch_rows=16)
+
+
 def test_limit_takes_the_lowest_ids_and_stops(db: str) -> None:
     with psycopg.connect(db) as conn:
         seed(conn, 30)
+    with psycopg.connect(db, autocommit=True) as conn:
         assert backfill(conn, StubEncoder(), limit=10, batch_rows=16) == 10
         embedded = conn.execute(
             "SELECT id FROM papers WHERE embedding IS NOT NULL ORDER BY id"
@@ -83,21 +95,33 @@ def test_limit_takes_the_lowest_ids_and_stops(db: str) -> None:
 
 def test_killed_run_resumes_with_no_dupes_gaps_or_rewrites(db: str) -> None:
     """The night-saving property: kill after 2 of 5 batches, restart, and
-    the union is complete, gapless, and the survivors' bytes are untouched."""
+    the union is complete, gapless, and the survivors' bytes are untouched.
+
+    Every verification runs on a DIFFERENT connection than the writer, and
+    the dying writer's connection is closed without commit — what process
+    death leaves behind. The first version of this test read through the
+    writer's own connection and passed while the code lost every row on a
+    real SIGKILL (findings.md 2026-07-30): a connection always sees its own
+    uncommitted work, so same-connection reads cannot verify durability."""
     with psycopg.connect(db) as conn:
         seed(conn, 80)
 
-        with pytest.raises(RuntimeError, match="simulated kill"):
-            backfill(conn, DiesAfter(2), batch_rows=16)
+    dying = psycopg.connect(db, autocommit=True)
+    with pytest.raises(RuntimeError, match="simulated kill"):
+        backfill(dying, DiesAfter(2), batch_rows=16)
+    dying.close()  # no commit, no goodbye — as SIGKILL would leave it
 
+    with psycopg.connect(db) as conn:
         survivors = conn.execute(
             "SELECT id, embedding::text FROM papers WHERE embedding IS NOT NULL ORDER BY id"
         ).fetchall()
-        assert len(survivors) == 32  # exactly the two committed batches
+    assert len(survivors) == 32  # exactly the two batches that committed
 
-        resume_encoder = StubEncoder()
+    resume_encoder = StubEncoder()
+    with psycopg.connect(db, autocommit=True) as conn:
         written = backfill(conn, resume_encoder, batch_rows=16)
 
+    with psycopg.connect(db) as conn:
         after: dict[int, str] = dict(
             conn.execute(
                 "SELECT id, embedding::text FROM papers WHERE embedding IS NOT NULL"
