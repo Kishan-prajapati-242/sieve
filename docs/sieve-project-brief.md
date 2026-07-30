@@ -101,7 +101,7 @@ Database      PostgreSQL 16 with two extensions:
               Local: Docker (no size limit, this is where benchmarks run)
               Demo:  Neon or Supabase free tier (0.5 GB, subset of corpus)
 
-Embeddings    sentence-transformers/all-MiniLM-L6-v2 via ONNX Runtime
+Embeddings    BAAI/bge-small-en-v1.5 via ONNX Runtime (DECISION-2b; was all-MiniLM-L6-v2)
               384 dimensions, CPU only, runs on an M1 MacBook Air (8 GB)
               No training. No GPU. No API cost.
 
@@ -477,7 +477,7 @@ Acceptance: `docker compose up` gives a working keyword search over 50,000 real 
 ### Phase 2: Hybrid search (Days 8 to 14) <- RESUME CHECKPOINT
 
 Build:
-- Embedding pipeline: MiniLM via ONNX Runtime, batched, writing `halfvec(384)`. Resumable.
+- Embedding pipeline: bge-small-en-v1.5 via ONNX Runtime (DECISION-2b), batched, writing `halfvec(384)`. Resumable.
 - HNSW index on `embedding`.
 - `mode=vector` and `mode=hybrid`. The RRF query in raw SQL.
 - Scale the corpus to 100,000, then 200,000 papers.

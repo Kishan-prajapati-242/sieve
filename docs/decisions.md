@@ -156,6 +156,47 @@ the eval mean something, and clinical-informatics share is the knob.
 
 ---
 
+## DECISION-2b: What goes into the embedding, and which model encodes it
+
+**Date:** 2026-07-29
+
+**Decision:** (a) title + abstract concatenated, degrading to title-only
+for the 28 abstract-less papers; (b) a 512-token window; (c)
+bge-small-en-v1.5 (33M params, 384 dims, CLS pooling, query-side
+instruction prefix), single vector per paper, no chunking. This supersedes
+the stack table's all-MiniLM-L6-v2 pin.
+
+**Measured (2026-07-29, full 196,893-paper corpus, real WordPiece
+tokenizer):** title+abstract median 243 tokens, p95 533; **45.3% exceeds
+256 tokens but only 5.6% exceeds 512**. MiniLM as configured truncates at
+256 (`sentence_bert_config.json`), was trained at 128, and its decoded
+truncation tails are Results/Conclusions — structured abstracts put the
+payoff last, so a 256 cap cuts the retrieval-relevant text from nearly
+half the corpus. The >512 tail is junk-skewed (109 papers over 4,096
+tokens are mostly data payloads, not prose).
+
+**Alternatives considered:** MiniLM at 512 (config-legal, but past both
+its configured cap and far past its trained length); title-repeated input
+(grows every length for no measured benefit); chunking at 256 (+115,322
+vectors, +59%, plus per-paper MAX aggregation in every vector query — to
+protect content a 512 window keeps anyway); larger models
+(nomic-embed-text, BGE-M3 — break the halfvec(384) schema and the 8 GB
+budget).
+
+**Why bge-small:** ~10-point MTEB retrieval gap over MiniLM (BEIR avg ≈52
+vs ≈42), natively trained at 512 tokens, same 384 dims so the schema and
+planned HNSW DDL are untouched. Cost: 12 layers vs 6 — roughly 4x compute
+per document at 512 vs 256 — and a query-side instruction prefix
+("Represent this sentence for searching relevant passages: ") that MUST
+be applied to queries and NEVER to documents; getting it wrong degrades
+retrieval silently, so the contract is pinned by a test before any encode.
+
+**What would change my mind:** if the 1,000-paper throughput benchmark
+projects the full encode beyond hours on the fanless 8 GB M1 Air, the
+fallback is MiniLM at 512 or bge-small at 256 — remeasure, don't assume.
+
+---
+
 ## Template
 
 ```text

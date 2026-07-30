@@ -33,7 +33,8 @@ Kishan, MS CS student. Strong on algorithms and Python. Has professional MERN ex
 Backend      Python 3.12, FastAPI, Uvicorn, Pydantic v2
 DB driver    psycopg 3 with a connection pool. Raw SQL for search paths.
 Database     PostgreSQL 16 + pg_trgm + pgvector
-Embeddings   sentence-transformers/all-MiniLM-L6-v2 via ONNX Runtime, CPU, 384 dims
+Embeddings   BAAI/bge-small-en-v1.5 via ONNX Runtime, CPU, 384 dims, 512-token window
+             (DECISION-2b superseded the MiniLM pin; query-side prefix required)
 Vectors      halfvec(384), HNSW index
 Queue        ingest_jobs table, SELECT ... FOR UPDATE SKIP LOCKED. No Redis, no Celery.
 Frontend     React 18, Vite, TypeScript, Tailwind, TanStack Query
