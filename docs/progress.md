@@ -3,6 +3,21 @@
 Phase: 1 (search over one source). Corpus is at target; the Phase 1
 acceptance check is the remaining gate item.
 
+Phase 2 prep (2026-07-29, decided + measured, NOT built): DECISION-2b
+(bge-small-en-v1.5, title+abstract, 512 window, one vector per paper) and
+DECISION-2c (dataset-type stays; 0 of 120 top-20 slots polluted) are in
+docs/decisions.md. The bge query-prefix contract is pinned in
+api/embed/texts.py + tests — the Phase 2 encoder and search path MUST
+route through it. Encode throughput measured on 1,000 real papers (ONNX,
+CPU, length-sorted batching, batch 32): fp32 14 docs/s -> ~230 min
+projected for 197K; **int8 dynamic-quantized 29 docs/s -> ~114 min**,
+int8-vs-fp32 cosine mean 0.9977 / min 0.9906, peak RSS 1.73 GB.
+Projections assume no thermal throttling — the fanless M1 Air will
+throttle on a sustained run, so the encoder must checkpoint and resume
+(the brief requires resumability anyway). Full encode NOT started, per
+Kishan. Bench deps (tokenizers, onnxruntime, numpy) live only in the host
+venv for the probe; they enter pyproject with the real encoder.
+
 Shipped 2026-07-29 (DECISION-2, corpus composition v2): the full pull ran.
 **196,893 papers / 199,285 source records, 1,435 credits (1,040 requests),
 ~24 minutes.** Composition from GET /api/stats (papers, first-fetch

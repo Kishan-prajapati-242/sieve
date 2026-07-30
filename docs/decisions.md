@@ -197,6 +197,33 @@ fallback is MiniLM at 512 or bge-small at 256 — remeasure, don't assume.
 
 ---
 
+## DECISION-2c: Dataset-type records stay in the corpus
+
+**Date:** 2026-07-29
+
+**Decision:** do NOT add `dataset` to the excluded types (15,517 papers,
+7.9% of corpus). Measured first, per the rule "if they don't pollute
+results, we keep them and move on": across six eval-domain queries
+(Kishan's real query first), **0 of 120 top-20 slots** were dataset-type.
+Token lengths confirm the noise theory: dataset abstracts are typically
+SHORTER than articles (median 129 vs 286 tokens); the data-payload tail
+(>1,024 tokens) is 1.9% of datasets (~293 records) vs 0.8% of articles.
+
+**Alternatives considered:** excluding type=dataset outright, like the
+DECISION-1c junk types.
+
+**Why rejected:** the problem isn't the type, it's that some records have
+an "abstract" that is a data payload rather than prose. Excluding
+type=dataset throws away legitimate research artifacts (Med-EASi and
+Cochrane are datasets, and a screening tool should surface them) to
+remove noise that is detectable independently by abstract shape.
+
+**What would change my mind:** if payload-shaped abstracts start ranking
+in real results — the fix would target abstract shape (token length /
+prose-ness), not the type field.
+
+---
+
 ## Template
 
 ```text
