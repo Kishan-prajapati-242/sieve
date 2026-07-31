@@ -194,6 +194,33 @@ used entity search, so no earlier run report was affected.
 
 ---
 
+## 2026-07-31: The fusion tail is the bm25 CTE ranking every match
+
+**Symptom:** hybrid p95 behaves as a floor plus a slope: across the depth
+sweep, p95 went 27.3→39.9 ms (1.46x) while p50 went 5.5→18.4 (3.3x) —
+roughly 5% of queries cost ~27 ms regardless of candidate depth.
+
+**How it was found:** Kishan, from the p95/p50 ratio falling from 5.0x at
+N=20 to 2.2x at N=500 — a depth-independent cost component. Hypothesis:
+the bm25 CTE computes ts_rank_cd and sorts over EVERY tsquery match
+before LIMIT N, so its cost tracks matched-document count, not N.
+
+**Confirmed (bench/ef_at_fixed_depth.py, N=200, per-query mean SQL
+latency vs bm25 match count):** Pearson r = 0.663; the extremes are the
+story — the widest query (a real corpus title, "Results") matches
+**81,489 documents and costs 935.4 ms mean**, the narrowest (0 matches)
+costs 12.8 ms. Spearman is only 0.293 because the median query matches
+just 1 document (websearch AND-semantics on long titles): the
+correlation is entirely tail-driven, which is exactly what a p95-floor
+looks like.
+
+**Fix:** none now, by instruction. Logged as the fusion tail driver and a
+Phase 4 target. Candidate levers for then: query-dependent depth for the
+bm25 CTE, a cheaper pre-rank proxy before ts_rank_cd, or accepting the
+tail and documenting it — measured against nDCG once labels exist.
+
+---
+
 ## 2026-07-31: A ratio across two different windows is not a speedup
 
 **Symptom:** "end-to-end only ~5.5x" — computed as 55 ms (exact scan,
