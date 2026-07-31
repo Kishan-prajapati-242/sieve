@@ -26,6 +26,8 @@ dev = [
     # local .venv. Bump deliberately, in a commit that says so.
     "ruff==0.16.0",
     "mypy==2.3.0",
+    # bench/ plots committed to the repo (recall/latency tradeoff curves).
+    "matplotlib>=3.8",
 ]
 
 [build-system]

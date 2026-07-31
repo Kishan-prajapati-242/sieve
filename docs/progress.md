@@ -3,6 +3,19 @@
 Phase: 1 (search over one source). Corpus is at target; the Phase 1
 acceptance check is the remaining gate item.
 
+Recall sweep done (2026-07-31, bench/hnsw_recall_sweep.py; table in
+results json, curve in bench/plots/hnsw_recall_sweep.png; n=520 queries,
+tie-aware recall, ground truth bench/labels/exact_top50_wide.json):
+strict_order at ef 40/160/320/640 gives r@10 0.939/0.976/0.983/0.989.
+**Ceiling: 0.989@10 / 0.992@50 at ef=640 — NOT 1.0**; that residual ~1%
+is the m=16/efc=64 construction ceiling, unreachable by search depth. A
+rebuild at higher efc costs ~40s (measured) if Phase 4 ever shows recall
+as the bottleneck. iterative_scan does not change recall where ef >= 50;
+below that, off under-returns (ef=5: 5.3 rows, r@50 0.10) and strict
+rescues (r@50 0.79). Recommendation pending Kishan's call: **ef=160**
+(r@10 0.976±0.004, sql p50 3.2ms, e2e p50 ~9.6ms). DEFAULT_EF_SEARCH
+stays 40 until he decides. Fusion untouched.
+
 Shipped 2026-07-31 (late): mode=vector, measured under the protocol
 below (bench/vector_latency.py, prewarm + 520 distinct queries + 1
 discarded warmup run + 3 measured runs). Components at k=10, ef_search

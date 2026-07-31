@@ -1,0 +1,195 @@
+{
+  "measured_at": "2026-07-31T19:49:42.445940+00:00",
+  "method": {
+    "timing_window": "sql_ms: id+distance LIMIT 50 round trip incl. per-query SET LOCALs (lean fetch, not the full-row production path); embed_ms: single-text encode, sampled once per query this session and reused across ef points; e2e: per-sample sum",
+    "hardware": "MacBook Air M1 8GB (fanless), podman VM 4 vCPU / 4GB",
+    "database": "PostgreSQL 16.14, pgvector 0.8.5, shared_buffers 128MB, in compose",
+    "protocol": "pg_prewarm('read') of index+heap; 520 distinct queries once per (iterative, ef) point; single-pass comparative curves \u2014 headline operating-point numbers come from bench/vector_latency.py",
+    "n_queries": 520,
+    "ground_truth": "bench/labels/exact_top50_wide.json (forced seq scan)",
+    "tie_handling": "hit if id in exact top-k OR distance <= boundary + 1e-09",
+    "k_fetch": 50
+  },
+  "curves": {
+    "strict_order": [
+      {
+        "ef_search": 5,
+        "recall_at_10": 0.7823,
+        "recall_at_10_se": 0.0133,
+        "recall_at_50": 0.7851,
+        "recall_at_50_se": 0.011,
+        "mean_rows_returned": 50,
+        "sql_p50_ms": 2.0,
+        "sql_p95_ms": 4.0,
+        "e2e_p50_ms": 8.3
+      },
+      {
+        "ef_search": 10,
+        "recall_at_10": 0.8483,
+        "recall_at_10_se": 0.0106,
+        "recall_at_50": 0.826,
+        "recall_at_50_se": 0.0092,
+        "mean_rows_returned": 50,
+        "sql_p50_ms": 1.8,
+        "sql_p95_ms": 3.2,
+        "e2e_p50_ms": 8.1
+      },
+      {
+        "ef_search": 20,
+        "recall_at_10": 0.9102,
+        "recall_at_10_se": 0.0076,
+        "recall_at_50": 0.8653,
+        "recall_at_50_se": 0.0072,
+        "mean_rows_returned": 50,
+        "sql_p50_ms": 2.0,
+        "sql_p95_ms": 3.4,
+        "e2e_p50_ms": 8.3
+      },
+      {
+        "ef_search": 40,
+        "recall_at_10": 0.9394,
+        "recall_at_10_se": 0.006,
+        "recall_at_50": 0.8957,
+        "recall_at_50_se": 0.0057,
+        "mean_rows_returned": 50,
+        "sql_p50_ms": 2.1,
+        "sql_p95_ms": 3.6,
+        "e2e_p50_ms": 8.4
+      },
+      {
+        "ef_search": 80,
+        "recall_at_10": 0.9567,
+        "recall_at_10_se": 0.0054,
+        "recall_at_50": 0.934,
+        "recall_at_50_se": 0.0048,
+        "mean_rows_returned": 50,
+        "sql_p50_ms": 2.2,
+        "sql_p95_ms": 3.7,
+        "e2e_p50_ms": 8.5
+      },
+      {
+        "ef_search": 160,
+        "recall_at_10": 0.976,
+        "recall_at_10_se": 0.0036,
+        "recall_at_50": 0.9699,
+        "recall_at_50_se": 0.0032,
+        "mean_rows_returned": 50,
+        "sql_p50_ms": 3.2,
+        "sql_p95_ms": 5.8,
+        "e2e_p50_ms": 9.6
+      },
+      {
+        "ef_search": 320,
+        "recall_at_10": 0.9833,
+        "recall_at_10_se": 0.0029,
+        "recall_at_50": 0.9835,
+        "recall_at_50_se": 0.0024,
+        "mean_rows_returned": 50,
+        "sql_p50_ms": 4.9,
+        "sql_p95_ms": 8.8,
+        "e2e_p50_ms": 11.4
+      },
+      {
+        "ef_search": 640,
+        "recall_at_10": 0.9887,
+        "recall_at_10_se": 0.0018,
+        "recall_at_50": 0.9922,
+        "recall_at_50_se": 0.0009,
+        "mean_rows_returned": 50,
+        "sql_p50_ms": 8.0,
+        "sql_p95_ms": 15.0,
+        "e2e_p50_ms": 14.5
+      }
+    ],
+    "off": [
+      {
+        "ef_search": 5,
+        "recall_at_10": 0.4631,
+        "recall_at_10_se": 0.0068,
+        "recall_at_50": 0.1002,
+        "recall_at_50_se": 0.0009,
+        "mean_rows_returned": 5.3,
+        "sql_p50_ms": 0.8,
+        "sql_p95_ms": 1.4,
+        "e2e_p50_ms": 7.0
+      },
+      {
+        "ef_search": 10,
+        "recall_at_10": 0.8483,
+        "recall_at_10_se": 0.0106,
+        "recall_at_50": 0.204,
+        "recall_at_50_se": 0.0014,
+        "mean_rows_returned": 10.4,
+        "sql_p50_ms": 1.0,
+        "sql_p95_ms": 1.7,
+        "e2e_p50_ms": 7.2
+      },
+      {
+        "ef_search": 20,
+        "recall_at_10": 0.9102,
+        "recall_at_10_se": 0.0076,
+        "recall_at_50": 0.4099,
+        "recall_at_50_se": 0.0022,
+        "mean_rows_returned": 20.8,
+        "sql_p50_ms": 1.1,
+        "sql_p95_ms": 1.6,
+        "e2e_p50_ms": 7.2
+      },
+      {
+        "ef_search": 40,
+        "recall_at_10": 0.9394,
+        "recall_at_10_se": 0.006,
+        "recall_at_50": 0.796,
+        "recall_at_50_se": 0.0038,
+        "mean_rows_returned": 41.4,
+        "sql_p50_ms": 1.5,
+        "sql_p95_ms": 2.4,
+        "e2e_p50_ms": 7.7
+      },
+      {
+        "ef_search": 80,
+        "recall_at_10": 0.9567,
+        "recall_at_10_se": 0.0054,
+        "recall_at_50": 0.934,
+        "recall_at_50_se": 0.0048,
+        "mean_rows_returned": 50,
+        "sql_p50_ms": 2.1,
+        "sql_p95_ms": 3.6,
+        "e2e_p50_ms": 8.4
+      },
+      {
+        "ef_search": 160,
+        "recall_at_10": 0.976,
+        "recall_at_10_se": 0.0036,
+        "recall_at_50": 0.9699,
+        "recall_at_50_se": 0.0032,
+        "mean_rows_returned": 50,
+        "sql_p50_ms": 3.1,
+        "sql_p95_ms": 5.7,
+        "e2e_p50_ms": 9.5
+      },
+      {
+        "ef_search": 320,
+        "recall_at_10": 0.9833,
+        "recall_at_10_se": 0.0029,
+        "recall_at_50": 0.9835,
+        "recall_at_50_se": 0.0024,
+        "mean_rows_returned": 50,
+        "sql_p50_ms": 4.9,
+        "sql_p95_ms": 9.3,
+        "e2e_p50_ms": 11.4
+      },
+      {
+        "ef_search": 640,
+        "recall_at_10": 0.9887,
+        "recall_at_10_se": 0.0018,
+        "recall_at_50": 0.9922,
+        "recall_at_50_se": 0.0009,
+        "mean_rows_returned": 50,
+        "sql_p50_ms": 7.7,
+        "sql_p95_ms": 15.0,
+        "e2e_p50_ms": 14.1
+      }
+    ]
+  }
+}
