@@ -114,13 +114,18 @@ def test_hybrid_unions_rankers_with_breakdown(client: TestClient) -> None:
     assert min(both_scores) > max(single_scores)
 
 
-def test_ef_search_is_auto_raised_to_depth(client: TestClient) -> None:
-    """ef < depth silently truncates the vector candidate list — the route
-    must raise ef to at least depth, and report what it actually used."""
-    data = hybrid(client, k=5, depth=300)  # ef_search defaults to 40
-    assert data["ef_search"] == 300
-    data = hybrid(client, k=5, depth=50, ef_search=500)  # explicit ef wins when larger
+def test_ef_search_defaults_and_auto_raise(client: TestClient) -> None:
+    """DECISION-2e: hybrid defaults to ef=600; an explicit ef is honored;
+    and NOTHING escapes the >= depth floor, because ef < depth silently
+    truncates the vector candidate list. The response reports what ran."""
+    data = hybrid(client, k=5, depth=300)  # no explicit ef -> hybrid default
+    assert data["ef_search"] == 600
+    data = hybrid(client, k=5, depth=700)  # default below depth -> raised
+    assert data["ef_search"] == 700
+    data = hybrid(client, k=5, depth=50, ef_search=500)  # explicit wins
     assert data["ef_search"] == 500
+    data = hybrid(client, k=5, depth=100, ef_search=20)  # explicit but truncating -> floor
+    assert data["ef_search"] == 100
 
 
 def test_search_hybrid_refuses_truncating_ef(scratch_db: str) -> None:

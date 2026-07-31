@@ -194,6 +194,43 @@ used entity search, so no earlier run report was affected.
 
 ---
 
+## 2026-07-31: The bm25 AND-semantics cliff
+
+**Symptom:** "reducing the reading difficulty of health leaflets for
+people with low literacy" returns **zero rows** in bm25 mode — the
+vector mode's top-4 for the same query are precisely on-topic.
+
+**How it was found:** the Phase 2 gate's demonstration queries; this was
+the "vector wins" example, and the zero made it starker than expected.
+
+**Root cause:** websearch_to_tsquery ANDs every term — a document must
+contain all of them to match at all. It's a cliff, not a gradient: one
+missing term takes a query from ranked results to nothing.
+
+**Two consequences, recorded for Phase 4:** (1) bm25 mode alone has a
+failure CLASS on exactly the long natural-language queries users
+actually type; (2) hybrid silently degenerates to vector-only for those
+queries, since RRF receives one input — no error, no signal, just a
+missing ranker.
+
+**Fix:** none now, by instruction. Phase 4 target: term-drop relaxation,
+OR-fallback on empty, or query preprocessing — evaluated under nDCG.
+
+---
+
+## 2026-07-31: The p95 tail is partly a benchmark artifact
+
+**Amends the fusion-tail entry below.** The widest query in the tail
+diagnosis is the corpus title "Results" — 81,489 tsquery matches, 935 ms
+— which no user would ever type. The bm25 match-count tail driver is
+real (Pearson 0.663 across 520 queries), but its measured MAGNITUDE is
+inflated by degenerate title-derived queries in the benchmark set: the
+published p95 numbers are conservative for realistic query traffic.
+(Same known-item caveat as the recall numbers, cutting the other way —
+titles inflate recall but also inflate the bm25 tail.)
+
+---
+
 ## 2026-07-31: The fusion tail is the bm25 CTE ranking every match
 
 **Symptom:** hybrid p95 behaves as a floor plus a slope: across the depth

@@ -35,6 +35,13 @@ from api.search.vector import vector_literal
 
 RRF_K = 60
 
+# DECISION-2e: recall@200 = .9857 at ef=600 vs .9431 at ef=200, and 600's
+# cost is below measurement resolution on this hardware (its p50 sits
+# inside ef=200's own cross-run range). Revisit when Phase 4 fixes the
+# bm25 tail: bm25 variance currently swamps the vector CTE, so ef's real
+# cost is invisible.
+HYBRID_DEFAULT_EF_SEARCH = 600
+
 HYBRID_SQL = """
 WITH bm25 AS (
     SELECT id,

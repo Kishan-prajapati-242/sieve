@@ -250,6 +250,60 @@ measurement requires the fp32 index to exist as the baseline.
 
 ---
 
+## DECISION-2e: Hybrid defaults — candidate depth 200, ef_search 600
+
+**Date:** 2026-07-31
+
+**Decision:** mode=hybrid defaults to depth N=200 with ef_search 600. An
+explicit ef_search is honored but still auto-raised to >= depth (the
+truncation guard); vector mode keeps its own default of 40.
+
+**Measured basis:** vector recall@200 = .9857±.0011 at ef=600 vs
+.9431±.0028 at ef=200 (bench/results_ef_at_fixed_depth.json). ef=600's
+cost is **below measurement resolution on this hardware** — its 13.6 ms
+p50 sits inside ef=200's own [12.5, 19.9] cross-run range, so the two
+are indistinguishable. That is the correct framing, not "free" and not
+"inside noise": we cannot see the cost, which is different from there
+being none.
+
+**Alternatives considered:** ef=200 (leaves 4.3 recall points
+unclaimed); ef=800 (+0.4 points for +4 ms — past the elbow); N=500
+(18.4 ms SQL p50, and the known-item caveat means the value of deeper N
+is unevidenced until labels).
+
+**Prediction to revisit (test in Phase 4):** ef is cheap because bm25's
+match-count variance swamps the vector CTE. Once Phase 4 fixes the bm25
+tail, ef=600's real cost becomes visible. Test it then, alongside the
+N/rrf_k re-tune under nDCG.
+
+---
+
+## DECISION-2f: No corpus top-up — 196,893 stands
+
+**Date:** 2026-07-31
+
+**Decision:** decline the ~25-credit general-nlp top-up that would cross
+200,000 papers. The corpus is 196,893 and stays there for Phase 2.
+
+**Alternatives considered:** topping up ~3.5K general-nlp papers to
+cross the round number.
+
+**Why rejected:** 196,893 is more credible on a resume than 200,000,
+because a precise number reads as counted and a round one reads as
+estimated. A general-nlp top-up dilutes the 62.2% specialty share I
+deliberately engineered, and specialty pools are already exhausted so
+more papers can only be general. 200K was a sizing estimate in the
+brief, never a requirement, and 197K clears the threshold that makes
+performance work meaningful by 2x. Adding papers so a rounder number
+appears in a bullet is presentation-driven, which is the same instinct
+as a p99 from 20 samples.
+
+**What would change my mind:** a real retrieval reason to grow the
+corpus — new specialty sources in Phase 3 (arXiv, PubMed) grow it for
+coverage, not for roundness.
+
+---
+
 ## Template
 
 ```text

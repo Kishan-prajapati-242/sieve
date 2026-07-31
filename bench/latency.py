@@ -7,8 +7,8 @@ measured, across_runs gate), same session, so the numbers are comparable:
 
   bm25   — search_bm25(): GIN-filtered ts_rank_cd, k=20 full rows.
   vector — search_vector(): HNSW, ef_search=40 (held default), k=20.
-  hybrid — search_hybrid(): fused statement, depth=100/ef=100 (pre-sweep
-           placeholder default unless a decided default replaces it).
+  hybrid — search_hybrid(): fused statement, depth=200/ef=600
+           (DECISION-2e production defaults).
 
 e2e adds the per-sample embed cost for vector/hybrid (bm25 embeds
 nothing); the embed-cached scenario is the SQL window alone. p99 gates to
@@ -34,7 +34,8 @@ from bench.harness import across_runs, method_record
 
 K = 20
 VECTOR_EF = 40
-HYBRID_DEPTH = 100
+HYBRID_DEPTH = 200
+HYBRID_EF = 600  # DECISION-2e defaults
 N_RUNS = 3
 WARMUP_RUNS = 1
 
@@ -82,7 +83,7 @@ def main() -> None:
                 query_vec=e["embedding"],
                 k=K,
                 depth=HYBRID_DEPTH,
-                ef_search=max(VECTOR_EF, HYBRID_DEPTH),
+                ef_search=HYBRID_EF,
             )
         )
 
@@ -100,7 +101,12 @@ def main() -> None:
             "embed-cached e2e = the sql block itself.",
             protocol=f"pg_prewarm; 520 distinct queries; per mode {WARMUP_RUNS} warmup "
             f"+ {N_RUNS} measured runs, across_runs gate; one session, all modes",
-            settings={"k": K, "vector_ef": VECTOR_EF, "hybrid_depth": HYBRID_DEPTH},
+            settings={
+                "k": K,
+                "vector_ef": VECTOR_EF,
+                "hybrid_depth": HYBRID_DEPTH,
+                "hybrid_ef": HYBRID_EF,
+            },
             embed_component={
                 "p50_ms": round(statistics.median(embed_ms), 1),
                 "note": "sampled once per query, this session",

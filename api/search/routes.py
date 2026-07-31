@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from api.db.pool import get_pool
 from api.embed.runtime import embed_query
 from api.search.bm25 import search_bm25
-from api.search.fusion import search_hybrid
+from api.search.fusion import HYBRID_DEFAULT_EF_SEARCH, search_hybrid
 from api.search.vector import DEFAULT_EF_SEARCH, search_vector
 
 logger = logging.getLogger("sieve.search")
@@ -34,14 +34,14 @@ class SearchRequest(BaseModel):
     year_from: int | None = Field(default=None, ge=1800, le=2100)
     year_to: int | None = Field(default=None, ge=1800, le=2100)
     # hnsw.ef_search (vector/hybrid): candidate-list size, the
-    # recall/latency dial. Bounds are pgvector's own. In hybrid mode the
-    # effective value is auto-raised to >= depth (ef < depth silently
-    # truncates the vector candidate list).
-    ef_search: int = Field(default=DEFAULT_EF_SEARCH, ge=1, le=1000)
-    # Hybrid candidate depth: top-N fetched from EACH ranker before RRF.
-    # Default is a pre-sweep placeholder — the depth sweep decides it
-    # jointly with ef_search (docs/progress.md 2026-07-31).
-    depth: int = Field(default=100, ge=10, le=1000)
+    # recall/latency dial. Bounds are pgvector's own. None means the mode
+    # default (vector 40, hybrid 600 — DECISION-2e); an explicit value is
+    # honored but hybrid still auto-raises to >= depth, because ef < depth
+    # silently truncates the vector candidate list.
+    ef_search: int | None = Field(default=None, ge=1, le=1000)
+    # Hybrid candidate depth: top-N fetched from EACH ranker before RRF
+    # (DECISION-2e, from the joint + fixed-depth sweeps).
+    depth: int = Field(default=200, ge=10, le=1000)
 
 
 class SearchResult(BaseModel):
@@ -107,7 +107,8 @@ def search(req: SearchRequest) -> SearchResponse:
         with get_pool().connection() as conn:
             if req.mode == "hybrid":
                 # ef < depth silently truncates the vector candidate list.
-                ef_search = max(req.ef_search, req.depth)
+                base_ef = HYBRID_DEFAULT_EF_SEARCH if req.ef_search is None else req.ef_search
+                ef_search = max(base_ef, req.depth)
                 rows = search_hybrid(
                     conn,
                     query=req.query,
@@ -122,14 +123,14 @@ def search(req: SearchRequest) -> SearchResponse:
                     rank_pairs = (("bm25", row["bm25_rank"]), ("vector", row["vector_rank"]))
                     row["sources"] = [name for name, rank in rank_pairs if rank is not None]
             else:
-                ef_search = req.ef_search
+                ef_search = DEFAULT_EF_SEARCH if req.ef_search is None else req.ef_search
                 rows = search_vector(
                     conn,
                     query_vec=query_vec,
                     k=req.k,
                     year_from=req.year_from,
                     year_to=req.year_to,
-                    ef_search=req.ef_search,
+                    ef_search=ef_search,
                 )
         retrieve_ms = round((time.perf_counter() - embed_done) * 1000, 1)
     else:
