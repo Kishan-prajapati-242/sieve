@@ -5,17 +5,20 @@ acceptance check is the remaining gate item.
 
 Joint depth/ef sweep done (2026-07-31, bench/fusion_depth_sweep.py,
 results json alongside): vector-CTE recall@N vs exact top-200 runs
-0.930/0.906/0.926/0.943/0.982 at N=20/50/100/200/500 (the N=50 DIP is
-the coupling made visible: deeper lists need MORE than proportional ef).
-Hybrid top-20 vs depth-500 reference: overlap 0.915→0.985, identical-
-order rate 0.458→0.781 (N=20→200) — convergence is gradual, no clean
-stopping depth below 500. Latency (hybrid SQL p50): 5.5→18.4ms;
+0.930/0.906/0.926/0.943/0.982 at N=20/50/100/200/500. TWO CLAIMS
+WITHDRAWN (Kishan; recorded in the results file's withdrawn_claims):
+the "N=50 dip proves the coupling" reading is confounded (both k and ef
+moved between rows — the clean evidence that ef buys recall at fixed k
+is the fixed-k sweep: recall@50 .896/.970/.984 at ef 40/160/320, plus
+the ef-at-fixed-depth sweep); and the top-20-overlap justification for
+N=200 is circular (overlap vs the deepest tested ranking reaches 1.0 by
+construction — the identical-order rate, .781 at N=200, is the honest
+column since order is what nDCG scores). Convergence is gradual, no
+clean stopping depth below 500. Latency (hybrid SQL p50): 5.5→18.4ms;
 e2e-with-embed p50 14.2→27.3ms; embed-cached (=SQL) 5.5→18.4ms. Fused
-QUALITY is explicitly not measurable pre-labels (method record says so);
-recommendation pending Kishan: N=200/ef=200 interim. Phase 4 revisits
-flagged: N and rrf_k under nDCG; whether ef should scale ABOVE N (the
-N=50 dip); the convergence proxy's circularity (reference = deepest
-tested, not truth).
+QUALITY is explicitly not measurable pre-labels (method record says so).
+Phase 4 revisits flagged: N and rrf_k under nDCG; ef>N (measured in
+bench/ef_at_fixed_depth.py); label-based quality to replace the proxy.
 
 ef_search default HELD AT 40 (Kishan, 2026-07-31) — the sweep's ef=160
 elbow answers k=10, which is not the production operating point. Two

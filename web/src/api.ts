@@ -35,8 +35,11 @@ export interface SearchResponse {
   results: SearchResult[];
 }
 
+export type SearchMode = "bm25" | "vector" | "hybrid";
+
 export interface SearchParams {
   query: string;
+  mode: SearchMode;
   year_from?: number;
   year_to?: number;
 }
@@ -45,7 +48,7 @@ export async function search(params: SearchParams): Promise<SearchResponse> {
   const res = await fetch("/api/search", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ ...params, mode: "bm25", k: 20 }),
+    body: JSON.stringify({ ...params, k: 20 }),
   });
   if (!res.ok) {
     throw new Error(`search failed: HTTP ${res.status}`);

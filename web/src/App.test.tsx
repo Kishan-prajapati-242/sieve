@@ -55,7 +55,7 @@ describe("App", () => {
     const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
     expect(body).toEqual({
       query: "text simplification",
-      mode: "bm25",
+      mode: "hybrid", // the UI default
       k: 20,
       year_from: 2020,
     });
@@ -91,6 +91,16 @@ describe("App", () => {
 
     expect(await screen.findByText("A found paper")).toBeInTheDocument();
     expect(screen.getByText(/1 results · 58\.1 ms/)).toBeInTheDocument();
+  });
+
+  it("posts the mode chosen in the toggle", async () => {
+    const spy = stubSearch({});
+    renderApp();
+    await userEvent.type(screen.getByLabelText("Query"), "anything");
+    await userEvent.click(screen.getByRole("radio", { name: "bm25" }));
+    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.mode).toBe("bm25");
   });
 
   it("does not fire a request while typing, only on submit", async () => {

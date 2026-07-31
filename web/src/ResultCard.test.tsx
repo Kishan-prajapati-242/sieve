@@ -61,6 +61,24 @@ describe("ResultCard", () => {
     expect(screen.queryByText(/Author 11/)).not.toBeInTheDocument();
   });
 
+  it("shows the fusion breakdown when the result carries one", () => {
+    render(
+      <ResultCard
+        result={makeResult({ bm25_rank: 4, vector_rank: 1, sources: ["bm25", "vector"] })}
+      />,
+    );
+    expect(screen.getByText(/keyword #4/)).toBeInTheDocument();
+    expect(screen.getByText(/semantic #1/)).toBeInTheDocument();
+    // A ranker that missed the paper renders a dash, not a fake rank.
+    render(<ResultCard result={makeResult({ bm25_rank: 7, vector_rank: null, sources: ["bm25"] })} />);
+    expect(screen.getByText(/semantic —/)).toBeInTheDocument();
+  });
+
+  it("shows no breakdown for non-hybrid results", () => {
+    render(<ResultCard result={makeResult()} />);
+    expect(screen.queryByText(/keyword #/)).not.toBeInTheDocument();
+  });
+
   it("omits optional fields without leaving artifacts", () => {
     render(
       <ResultCard

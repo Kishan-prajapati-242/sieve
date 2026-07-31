@@ -4,13 +4,16 @@
 // (query, year_from, year_to) — hitting Back to a previous search is free.
 import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { search, type SearchParams } from "./api";
+import { search, type SearchMode, type SearchParams } from "./api";
 import { ResultCard } from "./ResultCard";
+
+const MODES: SearchMode[] = ["bm25", "vector", "hybrid"];
 
 export function App() {
   const [draftQuery, setDraftQuery] = useState("");
   const [draftYearFrom, setDraftYearFrom] = useState("");
   const [draftYearTo, setDraftYearTo] = useState("");
+  const [mode, setMode] = useState<SearchMode>("hybrid");
   const [params, setParams] = useState<SearchParams | null>(null);
 
   const { data, error, isFetching } = useQuery({
@@ -24,6 +27,7 @@ export function App() {
     if (!draftQuery.trim()) return;
     setParams({
       query: draftQuery.trim(),
+      mode,
       // Empty inputs mean "no bound" — the API's param-is-NULL filter.
       ...(draftYearFrom && { year_from: Number(draftYearFrom) }),
       ...(draftYearTo && { year_to: Number(draftYearTo) }),
@@ -66,6 +70,20 @@ export function App() {
             max={2100}
           />
         </label>
+        <fieldset className="flex gap-2 items-center" aria-label="Search mode">
+          {MODES.map((m) => (
+            <label key={m} className="text-sm flex items-center gap-1">
+              <input
+                type="radio"
+                name="mode"
+                value={m}
+                checked={mode === m}
+                onChange={() => setMode(m)}
+              />
+              {m}
+            </label>
+          ))}
+        </fieldset>
         <button type="submit" className="border border-gray-600 rounded px-3 py-1">
           Search
         </button>

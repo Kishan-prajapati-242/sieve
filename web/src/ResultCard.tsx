@@ -17,6 +17,14 @@ export function ResultCard({ result }: { result: SearchResult }) {
     <li className="border border-gray-300 rounded p-3 space-y-1">
       <div className="text-sm text-gray-500">
         #{result.rank} · score {result.score.toFixed(4)}
+        {result.sources && (
+          <>
+            {" · "}
+            keyword {result.bm25_rank !== null ? `#${result.bm25_rank}` : "—"}
+            {" · "}
+            semantic {result.vector_rank !== null ? `#${result.vector_rank}` : "—"}
+          </>
+        )}
       </div>
       {result.is_retracted && (
         <div role="alert" className="border border-red-600 bg-red-50 text-red-800 rounded px-2 py-1 text-sm font-semibold">

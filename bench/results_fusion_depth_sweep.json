@@ -517,5 +517,15 @@
         "max_ms": 436.2
       }
     }
+  ],
+  "withdrawn_claims": [
+    {
+      "claim": "the N=50 recall dip (0.906 vs 0.930 at N=20) 'proves the coupling' / 'deeper lists need more than proportional ef'",
+      "withdrawn_because": "confounded: recall@20 and recall@50 are different metrics and BOTH k and ef moved between those rows. The clean evidence that ef buys recall at fixed k is the fixed-k sweep (results_hnsw_recall_sweep.json: recall@50 = .896 at ef=40, .970 at ef=160, .984 at ef=320); the ef-at-fixed-depth sweep (results_ef_at_fixed_depth.json) isolates it for @200."
+    },
+    {
+      "claim": "N=200 justified by 98.5% top-20 overlap against the depth-500 ranking",
+      "withdrawn_because": "circular: overlap against the deepest ranking tested is monotonically guaranteed to reach 1.0 and says nothing about quality. The identical-order rate (.781 at N=200) is the more honest read, since order is what nDCG scores."
+    }
   ]
 }
