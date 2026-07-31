@@ -194,6 +194,36 @@ used entity search, so no earlier run report was affected.
 
 ---
 
+## 2026-07-31: Short benchmarks don't capture thermal throttling
+
+**Symptom:** the full 196,893-paper encode took **10+ hours** against a
+248-minute projection from the 1,000-document container benchmark —
+roughly **2.4x** the projected wall clock.
+
+**How it was found:** Kishan, comparing the completed overnight run
+against the benchmark projection.
+
+**Root cause:** a 75-second benchmark runs at burst clocks; the fanless
+M1 Air throttles under sustained all-core load, and a multi-hour ONNX
+encode is exactly that. The projection was honest arithmetic on a
+measurement that could not see thermal behavior. (Directionally known —
+the projection was already labeled "assumes no throttling" — but the
+magnitude, 2.4x, was not.)
+
+**Fix:** none to code — resumability (proven 2026-07-30) is what made a
+10-hour unattended run safe. Two consequences recorded instead: (1) any
+future projection from a short benchmark on this hardware carries the
+measured ~2.4x thermal factor until a sustained measurement replaces it;
+(2) DECISION-2d's deferred int8 became materially more interesting — at
+2x throughput, int8 would have meant ~5 hours, not 10. It still waits for
+its Recall@10 measurement against the now-existing fp32 index (the
+baseline DECISION-2d required).
+
+**Verified before/after:** n/a — this entry IS the measurement: 248 min
+projected, 10+ h sustained, factor ~2.4x.
+
+---
+
 ## 2026-07-30: The resumability test that couldn't fail
 
 **Symptom:** the live kill-proof (Kishan's requirement before any full
