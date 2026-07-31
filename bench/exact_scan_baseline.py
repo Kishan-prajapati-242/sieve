@@ -1,26 +1,45 @@
-"""Exact-scan ground truth + latency baseline for the HNSW recall sweep.
+"""Exact-scan latency baseline + top-50 ground truth for the recall sweep.
 
-Run BEFORE the HNSW index exists (Kishan, 2026-07-31): exact-scan latency
-is the denominator of any HNSW speedup claim, and it is only cleanly
-measurable pre-index — afterward you would be forcing the planner off the
-index against a cache full of index pages. The top-50 ground truth feeds
-bench/hnsw_recall_sweep.py regardless of when it runs.
+v2 (2026-07-31): the first version computed p95/p99 from 20 samples — a
+max labeled as a percentile — and blended cold- and warm-cache runs
+(findings.md). This version measures on bench/harness.py rules:
 
-Emits:
-  bench/labels/exact_top50.json   — per query: text, domain, embedding,
-                                    exact top-50 (paper id + cosine distance).
-                                    Self-contained: stores the query vectors
-                                    so the sweep never depends on re-embedding.
-  bench/results_exact_scan.json   — latency stats + per-query timings +
-                                    one EXPLAIN ANALYZE showing the seq scan.
+  Warm run: 120 distinct queries (Kishan's 20 eval queries + 100 paper
+  titles sampled deterministically across the corpus — repeated identical
+  queries measure cache, not latency) x 5 interleaved repetitions = 600
+  samples, after 3 discarded warmup scans. 600 puts 6 samples beyond the
+  nearest-rank p99 (harness rule: >=5), 30 beyond p95.
 
-Run inside the compose environment (host numbers don't transfer):
-    docker compose run --rm --no-deps -v ./bench:/app/bench \
+  Cold run: cannot be forced from inside the container (dropping the VM
+  page cache and restarting postgres are host operations), so cold cycles
+  are orchestrated from the host — per cycle: restart postgres, drop the
+  VM page cache, then `--cold-single N` runs ONE query with no warmup.
+  Few samples by nature: reported as raw values + median, never
+  percentiles.
+
+The HNSW index now exists, so every run forces the sequential scan
+(enable_indexscan/enable_bitmapscan off), verifies it via EXPLAIN, and
+records scan_forced in the method block. --capture-labels regenerates
+bench/labels/exact_top50.json (forced seq scan = still exact).
+
+Host-side runbook:
+
+  cold cycles (from repo root):
+    for i in 0 1 2 3 4 5; do
+      docker compose restart postgres && sleep 5
+      podman machine ssh 'sudo sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"'
+      docker compose run --rm --no-deps -v ./bench:/app/bench \
         -v ./models/bge-small-en-v1.5:/models -e EMBED_MODEL_DIR=/models \
         -e DATABASE_URL=postgresql://sieve:sieve@postgres:5432/sieve \
-        test python bench/exact_scan_baseline.py
+        test python -m bench.exact_scan_baseline --cold-single $i >> cold.jsonl
+    done
+
+  warm run (embeds --cold-samples into the results file):
+    docker compose run ... test python -m bench.exact_scan_baseline \
+        --cold-samples cold.jsonl
 """
 
+import argparse
 import json
 import os
 import re
@@ -33,10 +52,11 @@ import psycopg
 
 from api.embed.onnx_encoder import OnnxEncoder
 from api.embed.texts import query_text
+from bench.harness import interleaved, method_record, summarize
 
-# Four queries per domain, five domains (Kishan's eval domains, 2026-07-31).
-# These double as the seed of the Phase 4 eval set.
-QUERIES: list[tuple[str, str]] = [
+# Kishan's 20 eval queries (4 x 5 domains, 2026-07-31). Also the ground-truth
+# query set; these double as the seed of the Phase 4 eval set.
+EVAL_QUERIES: list[tuple[str, str]] = [
     ("clinical-text-simplification", "simplifying clinical notes for patients"),
     ("clinical-text-simplification", "text simplification of electronic health records"),
     ("clinical-text-simplification", "automatic simplification of medical documents"),
@@ -59,6 +79,10 @@ QUERIES: list[tuple[str, str]] = [
     ("general-nlp", "question answering over long documents"),
 ]
 
+N_TITLE_QUERIES = 100
+REPS = 5
+WARMUP = 3
+
 EXACT_SQL = """
 SELECT id, (embedding <=> %(q)s::halfvec)::float8 AS distance
 FROM papers
@@ -66,98 +90,169 @@ ORDER BY embedding <=> %(q)s::halfvec
 LIMIT 50
 """
 
+# Deterministic spread of real titles across the id range: same 100 titles
+# every run, no randomness to explain away.
+TITLE_SAMPLE_SQL = """
+SELECT title FROM (
+    SELECT title, row_number() OVER (ORDER BY id) AS rn,
+           count(*) OVER () AS total
+    FROM papers
+) t
+WHERE rn %% (total / %(n)s) = 1
+LIMIT %(n)s
+"""
+
 
 def vector_literal(vec: list[float]) -> str:
     return "[" + ",".join(f"{x:.8g}" for x in vec) + "]"
 
 
-def pct(sorted_xs: list[float], p: float) -> float:
-    return sorted_xs[min(len(sorted_xs) - 1, int(p * len(sorted_xs)))]
+def force_seq_scan(conn: psycopg.Connection, probe_vec: str) -> str:
+    """Disable index paths for this session and prove it with EXPLAIN."""
+    conn.execute("SET enable_indexscan = off")
+    conn.execute("SET enable_bitmapscan = off")
+    plan = "\n".join(
+        r[0]
+        for r in conn.execute(f"EXPLAIN (ANALYZE, BUFFERS) {EXACT_SQL}", {"q": probe_vec})  # noqa: S608
+    )
+    assert "Seq Scan on papers" in plan, f"expected forced seq scan, got:\n{plan}"
+    assert "papers_embed_idx" not in plan
+    return plan
+
+
+def timed(conn: psycopg.Connection, q: str) -> float:
+    start = time.perf_counter()
+    conn.execute(EXACT_SQL, {"q": q}).fetchall()
+    return (time.perf_counter() - start) * 1000
+
+
+def cold_single(index: int) -> None:
+    """One query, no warmup, straight after a host-side cache flush."""
+    encoder = OnnxEncoder(os.environ["EMBED_MODEL_DIR"])
+    domain, text = EVAL_QUERIES[index % len(EVAL_QUERIES)]
+    emb = encoder.encode([query_text(text)])[0]
+    q = vector_literal([float(x) for x in emb])
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+        conn.execute("SET enable_indexscan = off")
+        conn.execute("SET enable_bitmapscan = off")
+        ms = timed(conn, q)
+        plan = "\n".join(
+            r[0]
+            for r in conn.execute(f"EXPLAIN {EXACT_SQL}", {"q": q})  # noqa: S608
+        )
+    assert "Seq Scan on papers" in plan
+    print(json.dumps({"query": text, "domain": domain, "cold_ms": round(ms, 1)}))
+
+
+def capture_labels(conn: psycopg.Connection, encoder: OnnxEncoder, out_dir: Path) -> None:
+    labels = []
+    for (domain, text), emb in zip(
+        EVAL_QUERIES, encoder.encode([query_text(t) for _, t in EVAL_QUERIES]), strict=True
+    ):
+        top = conn.execute(EXACT_SQL, {"q": vector_literal([float(x) for x in emb])}).fetchall()
+        labels.append(
+            {
+                "domain": domain,
+                "query": text,
+                "embedding": [float(x) for x in emb],
+                "top50": [{"id": pid, "distance": dist} for pid, dist in top],
+            }
+        )
+    (out_dir / "labels").mkdir(exist_ok=True)
+    (out_dir / "labels" / "exact_top50.json").write_text(json.dumps(labels, indent=1))
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--cold-single", type=int, default=None, metavar="I")
+    parser.add_argument("--cold-samples", type=Path, default=None, help="jsonl from cold cycles")
+    parser.add_argument("--capture-labels", action="store_true")
+    args = parser.parse_args()
+
+    if args.cold_single is not None:
+        cold_single(args.cold_single)
+        return
+
     out_dir = Path(__file__).parent
     encoder = OnnxEncoder(os.environ["EMBED_MODEL_DIR"])
-    embeddings = encoder.encode([query_text(q) for _, q in QUERIES])
-
-    labels: list[dict[str, object]] = []
-    timings_ms: list[float] = []
-    rows_scanned: list[int] = []
-    explain_text = ""
 
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
-        index_check = conn.execute(
-            "SELECT indexname FROM pg_indexes WHERE tablename='papers' AND indexdef ILIKE '%hnsw%'"
-        ).fetchall()
-        if index_check:
-            raise SystemExit(f"HNSW index already exists ({index_check}); baseline must run first")
+        titles = [t for (t,) in conn.execute(TITLE_SAMPLE_SQL, {"n": N_TITLE_QUERIES}).fetchall()]
+        texts = [text for _, text in EVAL_QUERIES] + titles
+        vecs = [
+            vector_literal([float(x) for x in e])
+            for e in encoder.encode([query_text(t) for t in texts])
+        ]
 
-        # Warm the cache with one throwaway scan so query 1 isn't measuring
-        # cold disk reads that no other query pays.
-        conn.execute(EXACT_SQL, {"q": vector_literal(list(embeddings[0]))}).fetchall()
+        explain = force_seq_scan(conn, vecs[0])
+        workers = re.search(r"Workers Launched: (\d+)", explain)
 
-        for (domain, text), emb in zip(QUERIES, embeddings, strict=True):
-            q = vector_literal([float(x) for x in emb])
-            start = time.perf_counter()
-            top = conn.execute(EXACT_SQL, {"q": q}).fetchall()
-            elapsed_ms = (time.perf_counter() - start) * 1000
-            timings_ms.append(elapsed_ms)
-            labels.append(
-                {
-                    "domain": domain,
-                    "query": text,
-                    "embedding": [float(x) for x in emb],
-                    "top50": [{"id": pid, "distance": dist} for pid, dist in top],
-                }
-            )
+        if args.capture_labels:
+            capture_labels(conn, encoder, out_dir)
 
-            plan = "\n".join(
-                r[0]
-                for r in conn.execute(
-                    f"EXPLAIN (ANALYZE, BUFFERS) {EXACT_SQL}",
-                    {"q": q},  # noqa: S608
-                ).fetchall()
-            )
-            assert "Seq Scan on papers" in plan, "baseline must be a sequential scan"
-            # Postgres parallelizes the scan (2 workers + leader) and EXPLAIN
-            # reports the Seq Scan node's rows PER PROCESS — total scanned is
-            # rows x loops, not rows (65,631 x 3 = the whole table).
-            m = re.search(
-                r"Seq Scan on papers.*?actual time=[\d.]+\.\.[\d.]+ rows=(\d+)(?:\.\d+)? "
-                r"loops=(\d+)",
-                plan,
-            )
-            assert m is not None
-            rows_scanned.append(int(m.group(1)) * int(m.group(2)))
-            if not explain_text:
-                explain_text = plan
+        for _ in range(WARMUP):
+            timed(conn, vecs[0])
 
-    ordered = sorted(timings_ms)
+        samples = [timed(conn, vecs[i]) for i in interleaved(len(vecs), REPS)]
+
+    warm = summarize(samples)
+    cold: dict[str, object] = {"note": "no cold cycles supplied"}
+    if args.cold_samples and args.cold_samples.exists():
+        cold_values = [
+            json.loads(line)["cold_ms"] for line in args.cold_samples.read_text().splitlines()
+        ]
+        cold = {
+            "n_samples": len(cold_values),
+            "values_ms": cold_values,
+            "median_ms": round(statistics.median(cold_values), 1),
+            "note": (
+                "one query per cycle: postgres restarted + VM page cache dropped "
+                "(host-orchestrated; not forceable from inside the container). "
+                "Too few samples for percentiles, by design."
+            ),
+        }
+
+    # v1 of this file (20 samples, blended cache) stays visible, marked
+    # superseded — deleting a published number is worse than correcting it.
+    superseded = None
+    results_path = out_dir / "results_exact_scan.json"
+    if results_path.exists():
+        old = json.loads(results_path.read_text())
+        if "method" not in old:  # v1 format
+            old.pop("explain_analyze_example", None)
+            superseded = {
+                "why": "p95/p99 computed from 20 samples are the max wearing a "
+                "percentile's name, and cold- and warm-cache samples were blended "
+                "(1.6x spread on identical work) — findings.md 2026-07-31",
+                **old,
+            }
+        elif "superseded_v1" in old:
+            superseded = old["superseded_v1"]
+
     results = {
         "measured_at": datetime.now(UTC).isoformat(),
-        "environment": "compose test container (podman VM), pgvector exact scan, no index",
-        "model": "BAAI/bge-small-en-v1.5 fp32 ONNX, query_text() prefix applied",
-        "n_queries": len(QUERIES),
-        "note": "percentiles over 20 queries: p99 is effectively the max",
-        "latency_ms": {
-            "p50": round(pct(ordered, 0.50), 1),
-            "p95": round(pct(ordered, 0.95), 1),
-            "p99": round(pct(ordered, 0.99), 1),
-            "mean": round(statistics.mean(ordered), 1),
-        },
-        "mean_rows_scanned": int(statistics.mean(rows_scanned)),
-        "per_query_ms": {
-            text: round(ms, 1) for (_, text), ms in zip(QUERIES, timings_ms, strict=True)
-        },
-        "explain_analyze_example": explain_text,
+        "method": method_record(
+            queries=f"{len(EVAL_QUERIES)} eval queries + {len(titles)} corpus titles "
+            "(deterministic id-spread), embedded via query_text() prefix",
+            n_distinct_queries=len(vecs),
+            repetitions=REPS,
+            interleaved=True,
+            warmup_discarded=WARMUP,
+            cache_state="warm (see cold block for cold-cache values)",
+            scan_forced="enable_indexscan=off, enable_bitmapscan=off "
+            "(HNSW index exists; verified Seq Scan via EXPLAIN)",
+            parallel_seq_scan_workers=int(workers.group(1)) if workers else 0,
+        ),
+        "warm": warm,
+        "cold": cold,
+        "explain_analyze_example": explain,
     }
+    if superseded:
+        results["superseded_v1"] = superseded
 
-    (out_dir / "labels").mkdir(exist_ok=True)
-    (out_dir / "labels" / "exact_top50.json").write_text(json.dumps(labels, indent=1))
-    (out_dir / "results_exact_scan.json").write_text(json.dumps(results, indent=2))
+    results_path.write_text(json.dumps(results, indent=2))
     summary = {k: v for k, v in results.items() if k != "explain_analyze_example"}
     print(json.dumps(summary, indent=2))
-    print("\nground truth: bench/labels/exact_top50.json")
 
 
 if __name__ == "__main__":

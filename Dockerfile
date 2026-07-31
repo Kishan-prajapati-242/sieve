@@ -25,6 +25,7 @@ CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
 FROM base AS dev
 RUN pip install --no-cache-dir ".[dev]"
 COPY tests ./tests
+COPY bench ./bench
 CMD ["pytest", "-q"]
 
 FROM base AS runtime

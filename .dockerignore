@@ -8,7 +8,7 @@
 **/*.pyc
 node_modules
 docs
-bench
-# tests/ is deliberately NOT ignored: the Dockerfile's dev target copies it
-# so the test image is self-contained. Only the dev stage's last layer
-# depends on it; the runtime stages never COPY it.
+# tests/ and bench/ are deliberately NOT ignored: the Dockerfile's dev
+# target copies both so the test image is self-contained (bench/harness.py
+# is under test like everything else). Only the dev stage's last layers
+# depend on them; the runtime stages never COPY them.

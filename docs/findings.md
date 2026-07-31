@@ -194,6 +194,41 @@ used entity search, so no earlier run report was affected.
 
 ---
 
+## 2026-07-31: A percentile computed from 20 samples is not a percentile
+
+**Symptom:** the first exact-scan baseline reported p95 = p99 = 98.7 ms.
+With n=20, nearest-rank p95 is the 19th value and p99 rounds to the 20th
+— both are just the max wearing a percentile's name. Separately, p50 61.9
+vs max 98.7 was a 1.6x spread on identical work (every query scans all
+196,893 rows), pointing at blended cold/warm cache states in one sample.
+
+**How it was found:** Kishan, reading the results file — the two
+"different" percentiles printing the same number is the tell.
+
+**Root cause:** the script computed percentiles with no minimum-sample
+guard and measured whatever cache state it happened to start in. Nothing
+enforced the difference between "a number" and "a measurement."
+
+**Fix:** bench/harness.py, now shared by every future latency script: a
+percentile is reportable only when >= 5 samples lie beyond it (p99 needs
+n >= 500, else it reports None and says why); repetitions interleave;
+warmup iterations are discarded; cold and warm cache are measured
+separately (cold = postgres restart + VM page-cache drop per single-shot
+sample, host-orchestrated since it cannot be forced from inside the
+container); every result carries a method record. The baseline was
+re-measured with the seq scan FORCED (enable_indexscan/bitmapscan off,
+EXPLAIN-verified) since the HNSW index now exists; v1 numbers stay in the
+results file marked superseded.
+
+**Verified before/after (corrected baseline, 600 warm samples = 120
+distinct queries x 5 interleaved reps):** warm p50 57.0 / p95 83.3 /
+p99 136.7 ms — the REAL p99 is 38% worse than the fake one, which was
+hiding the tail, exactly the failure mode the guard exists for. Cold
+cache (6 single-shot cycles): 1,039-1,456 ms, median 1,126 — a 20x
+cold/warm gap that the blended v1 sample averaged into invisibility.
+
+---
+
 ## 2026-07-31: Short benchmarks don't capture thermal throttling
 
 **Symptom:** the full 196,893-paper encode took **10+ hours** against a

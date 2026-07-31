@@ -58,3 +58,6 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Repo root on sys.path so tests can import bench/ (the measurement harness
+# is tested like everything else); api/ comes from the editable install.
+pythonpath = ["."]

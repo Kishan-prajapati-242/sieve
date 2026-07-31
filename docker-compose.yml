@@ -89,10 +89,11 @@ services:
       # network's database service. See tests/conftest.py.
       SIEVE_TESTS_ALLOW_DB_HOST: postgres
     volumes:
-      # Current source and tests, same pattern as the api service — the
-      # image only needs rebuilding when dependencies change.
+      # Current source, tests, and bench, same pattern as the api service —
+      # the image only needs rebuilding when dependencies change.
       - ./api:/app/api
       - ./tests:/app/tests
+      - ./bench:/app/bench
     depends_on:
       postgres:
         condition: service_healthy

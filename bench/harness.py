@@ -1,0 +1,67 @@
+"""Shared latency-measurement harness for every bench/ script.
+
+Exists because the first exact-scan baseline shipped a max labeled as a
+p99 (findings.md 2026-07-31): with 20 samples, nearest-rank p95 and p99
+are both the last value. The rules this module enforces:
+
+  - A percentile is only reported when at least MIN_BEYOND samples lie
+    beyond it (n * (1 - p) >= MIN_BEYOND). Otherwise it is None, and the
+    summary says so explicitly — no number is better than a fake one.
+  - Repetitions of the same query are interleaved (a b c a b c), never
+    clustered (a a b b c c), so per-query cache effects spread across the
+    run instead of correlating with time.
+  - Every result carries a method record: sample counts, warmup, cache
+    state, whether the plan was forced, and the hardware it ran on. A
+    number without its method is not a measurement.
+
+Convention (CLAUDE.md): p50/p95/p99, never a mean.
+"""
+
+import math
+from typing import Any
+
+# At least this many samples must lie beyond a percentile for it to be
+# reportable: p50 needs n>=10, p95 n>=100, p99 n>=500.
+MIN_BEYOND = 5
+
+
+def percentile(samples_ms: list[float], p: float) -> float | None:
+    """Nearest-rank percentile, or None when n*(1-p) < MIN_BEYOND."""
+    n = len(samples_ms)
+    if n * (1 - p) < MIN_BEYOND:
+        return None
+    rank = math.ceil(p * n)  # 1-indexed nearest rank
+    return sorted(samples_ms)[rank - 1]
+
+
+def summarize(samples_ms: list[float]) -> dict[str, Any]:
+    """p50/p95/p99 with honest Nones, plus min/max as raw tail context."""
+    out: dict[str, Any] = {"n_samples": len(samples_ms)}
+    for label, p in (("p50", 0.50), ("p95", 0.95), ("p99", 0.99)):
+        value = percentile(samples_ms, p)
+        out[label + "_ms"] = round(value, 1) if value is not None else None
+    unreportable = [k for k, v in out.items() if v is None]
+    if unreportable:
+        out["not_reportable"] = (
+            f"{', '.join(k.removesuffix('_ms') for k in unreportable)}: fewer than "
+            f"{MIN_BEYOND} samples beyond the percentile at n={len(samples_ms)}"
+        )
+    ordered = sorted(samples_ms)
+    out["min_ms"] = round(ordered[0], 1)
+    out["max_ms"] = round(ordered[-1], 1)
+    return out
+
+
+def interleaved(n_queries: int, reps: int) -> list[int]:
+    """Query indices in interleaved order: 0,1,..,n-1, 0,1,..,n-1, ..."""
+    return [i for _ in range(reps) for i in range(n_queries)]
+
+
+def method_record(**fields: Any) -> dict[str, Any]:
+    """The measurement's passport. Hardware context is constant for this
+    project and stated once here rather than re-typed per script."""
+    return {
+        "hardware": "MacBook Air M1 8GB (fanless), podman VM 4 vCPU / 4GB",
+        "database": "PostgreSQL 16.14, pgvector 0.8.5, shared_buffers 128MB, in compose",
+        **fields,
+    }
