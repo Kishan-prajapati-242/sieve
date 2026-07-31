@@ -232,6 +232,10 @@ def main() -> None:
     results = {
         "measured_at": datetime.now(UTC).isoformat(),
         "method": method_record(
+            timing_window="psycopg execute()+fetchall() round trip over the compose "
+            "network: SQL execution (forced parallel seq scan) + transfer of 50 "
+            "(id, distance) rows. Query embedding and vector-literal formatting "
+            "happen BEFORE the window — precomputed for all queries up front.",
             queries=f"{len(EVAL_QUERIES)} eval queries + {len(titles)} corpus titles "
             "(deterministic id-spread), embedded via query_text() prefix",
             n_distinct_queries=len(vecs),

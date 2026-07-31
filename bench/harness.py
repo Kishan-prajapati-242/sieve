@@ -57,10 +57,16 @@ def interleaved(n_queries: int, reps: int) -> list[int]:
     return [i for _ in range(reps) for i in range(n_queries)]
 
 
-def method_record(**fields: Any) -> dict[str, Any]:
+def method_record(*, timing_window: str, **fields: Any) -> dict[str, Any]:
     """The measurement's passport. Hardware context is constant for this
-    project and stated once here rather than re-typed per script."""
+    project and stated once here rather than re-typed per script.
+
+    timing_window is MANDATORY (2026-07-31): a latency number that doesn't
+    state where its clock starts and stops isn't a measurement — the first
+    baseline's p50 shift got misattributed to embedding cost that was
+    never inside the window."""
     return {
+        "timing_window": timing_window,
         "hardware": "MacBook Air M1 8GB (fanless), podman VM 4 vCPU / 4GB",
         "database": "PostgreSQL 16.14, pgvector 0.8.5, shared_buffers 128MB, in compose",
         **fields,

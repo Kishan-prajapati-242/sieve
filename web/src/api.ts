@@ -17,10 +17,17 @@ export interface SearchResult {
   is_retracted: boolean;
 }
 
+export interface SearchTimings {
+  embed_ms: number | null;
+  retrieve_ms: number;
+  serialize_ms: number;
+}
+
 export interface SearchResponse {
   query: string;
   mode: string;
   took_ms: number;
+  timings: SearchTimings;
   results: SearchResult[];
 }
 

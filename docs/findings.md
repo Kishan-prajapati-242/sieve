@@ -194,6 +194,44 @@ used entity search, so no earlier run report was affected.
 
 ---
 
+## 2026-07-31: The footnote that invented a mechanism
+
+**Symptom:** the corrected-baseline report attributed a warm p50 shift
+(61.9 → 57.0 ms) to "title-derived queries embed shorter texts."
+Impossible on its face: a halfvec(384) distance costs the same regardless
+of source text length, so the explanation could only hold if embedding
+time were inside the timing window. It is not — every query vector is
+precomputed before the timed loop; the window is the psycopg
+execute()+fetchall() round trip only.
+
+**How it was found:** Kishan, from the physics: the claimed mechanism
+requires a window boundary the code doesn't have.
+
+**Root cause:** a causal claim in a report that was never checked against
+the measurement's window. The number was fine; the story attached to it
+was fabricated.
+
+**Fix, measured (six 600-sample runs, forced seq scan, one container
+session):** identical-input rerun noise is ~2.7 ms at p50 (61.2 vs 58.5);
+sequential eval-only vs titles-only runs differed 6.5 ms BUT in the
+opposite direction of the footnote's claim — and when the two groups are
+interleaved within one run so thermal/order drift hits both equally, the
+gap collapses to **0.1 ms** (63.8 vs 63.7). Verdict: query composition
+has no effect on exact-scan latency; the 61.9 → 57.0 shift was
+run-to-run/environmental noise and is now attributed to nothing else.
+Also observed and worth stating: p50 is stable across runs (57-64 ms) but
+the tail is not (p99 ranged 95.8-406.9 ms across today's runs at n=600)
+— on this VM, tail claims need multi-run aggregation.
+
+**Structural fixes:** method_record() now REQUIRES a timing_window field
+— a number without its window is not a measurement; and the API's took_ms
+decomposes into embed_ms / retrieve_ms / serialize_ms (embed is null for
+bm25; in vector mode it is the fixed floor no index can reduce, and it
+gets named). Framework JSON encoding runs after the handler and is
+documented as outside took_ms.
+
+---
+
 ## 2026-07-31: A percentile computed from 20 samples is not a percentile
 
 **Symptom:** the first exact-scan baseline reported p95 = p99 = 98.7 ms.

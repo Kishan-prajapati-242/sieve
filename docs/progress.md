@@ -3,6 +3,20 @@
 Phase: 1 (search over one source). Corpus is at target; the Phase 1
 acceptance check is the remaining gate item.
 
+HNSW measurement protocol for mode=vector (agreed 2026-07-31, before any
+index numbers): interleaved repetition homogenizes cache for a seq scan
+(every query touches the whole table) but NOT for HNSW, where queries
+traverse different graph regions and per-query cache locality is real.
+So: (1) primary warm numbers only after pg_prewarm of papers_embed_idx +
+the heap, making cache state uniform across queries instead of an
+artifact of repetition order; (2) distinct-query-heavy samples (hundreds
+of distinct queries, few reps) so percentiles describe the query
+distribution, not one query's cache luck; (3) cold cache stays the
+single-shot restart+drop_caches protocol; (4) everything through
+bench/harness.py with its mandatory timing_window. took_ms in the API now
+decomposes into embed/retrieve/serialize — vector mode must fill
+embed_ms, the fixed floor HNSW cannot reduce.
+
 Shipped 2026-07-31: full corpus embedded (196,893/196,893 — Kishan's
 overnight run, 10+ h, see findings.md thermal entry) and the HNSW index
 is BUILT (migration 0006): m=16, ef_construction=64, parallel 2 workers,

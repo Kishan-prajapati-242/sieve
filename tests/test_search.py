@@ -93,6 +93,12 @@ def test_ranks_are_sequential_and_scores_descend(client: TestClient) -> None:
     assert all(s > 0 for s in scores)
     assert data["mode"] == "bm25"
     assert data["took_ms"] >= 0
+    # took_ms decomposes (findings.md 2026-07-31): bm25 embeds nothing, the
+    # parts are non-negative, and they cannot exceed the total they compose.
+    t = data["timings"]
+    assert t["embed_ms"] is None
+    assert t["retrieve_ms"] >= 0 and t["serialize_ms"] >= 0
+    assert t["retrieve_ms"] + t["serialize_ms"] <= data["took_ms"] + 0.2  # rounding slack
 
 
 def test_year_filter_bounds_results(client: TestClient) -> None:

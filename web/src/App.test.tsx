@@ -20,7 +20,14 @@ function renderApp() {
 }
 
 function stubSearch(response: Partial<SearchResponse>) {
-  const full: SearchResponse = { query: "", mode: "bm25", took_ms: 12.3, results: [], ...response };
+  const full: SearchResponse = {
+    query: "",
+    mode: "bm25",
+    took_ms: 12.3,
+    timings: { embed_ms: null, retrieve_ms: 12.0, serialize_ms: 0.3 },
+    results: [],
+    ...response,
+  };
   const spy = vi.fn().mockResolvedValue(
     new Response(JSON.stringify(full), {
       status: 200,

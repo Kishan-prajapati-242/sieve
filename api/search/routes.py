@@ -48,10 +48,26 @@ class SearchResult(BaseModel):
     is_retracted: bool
 
 
+class SearchTimings(BaseModel):
+    """took_ms decomposed, so a latency number states what it includes
+    (2026-07-31, after the baseline's window ambiguity — findings.md).
+
+    embed_ms is null for bm25 (no query embedding); Phase 2's vector mode
+    fills it, and it is the fixed floor no index can reduce. serialize_ms
+    covers response-model construction; the framework's JSON encoding runs
+    after the handler returns and is outside took_ms entirely.
+    """
+
+    embed_ms: float | None
+    retrieve_ms: float
+    serialize_ms: float
+
+
 class SearchResponse(BaseModel):
     query: str
     mode: str
     took_ms: float
+    timings: SearchTimings
     results: list[SearchResult]
 
 
@@ -62,7 +78,16 @@ def search(req: SearchRequest) -> SearchResponse:
         rows = search_bm25(
             conn, query=req.query, k=req.k, year_from=req.year_from, year_to=req.year_to
         )
-    took_ms = round((time.perf_counter() - start) * 1000, 1)
+    retrieve_done = time.perf_counter()
+    results = [SearchResult(rank=i, **row) for i, row in enumerate(rows, start=1)]
+    serialize_done = time.perf_counter()
+
+    timings = SearchTimings(
+        embed_ms=None,  # bm25 embeds nothing; vector mode will fill this
+        retrieve_ms=round((retrieve_done - start) * 1000, 1),
+        serialize_ms=round((serialize_done - retrieve_done) * 1000, 1),
+    )
+    took_ms = round((serialize_done - start) * 1000, 1)
     logger.info(
         "search",
         extra={
@@ -72,12 +97,11 @@ def search(req: SearchRequest) -> SearchResponse:
                 "k": req.k,
                 "results": len(rows),
                 "took_ms": took_ms,
+                "retrieve_ms": timings.retrieve_ms,
+                "serialize_ms": timings.serialize_ms,
             }
         },
     )
     return SearchResponse(
-        query=req.query,
-        mode=req.mode,
-        took_ms=took_ms,
-        results=[SearchResult(rank=i, **row) for i, row in enumerate(rows, start=1)],
+        query=req.query, mode=req.mode, took_ms=took_ms, timings=timings, results=results
     )

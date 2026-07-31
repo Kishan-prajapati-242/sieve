@@ -1,7 +1,7 @@
 """The harness rules that make a percentile a percentile (findings.md
 2026-07-31: n=20 shipped a max labeled p99 — these tests pin the guard)."""
 
-from bench.harness import interleaved, percentile, summarize
+from bench.harness import interleaved, method_record, percentile, summarize
 
 
 def test_percentile_refuses_thin_samples() -> None:
@@ -37,3 +37,12 @@ def test_summarize_says_what_it_cannot_report() -> None:
 def test_interleaved_spreads_repetitions() -> None:
     order = interleaved(3, 2)
     assert order == [0, 1, 2, 0, 1, 2]  # never [0, 0, 1, 1, 2, 2]
+
+
+def test_method_record_demands_a_timing_window() -> None:
+    """A number without its window is not a measurement: the field is a
+    required keyword, and it lands first in the record."""
+    rec = method_record(timing_window="execute()+fetchall() round trip", n=3)
+    assert rec["timing_window"] == "execute()+fetchall() round trip"
+    assert rec["n"] == 3
+    assert "hardware" in rec and "database" in rec
