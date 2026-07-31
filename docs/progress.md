@@ -1,7 +1,42 @@
 # Progress
 
-Phase: 1 (search over one source). Corpus is at target; the Phase 1
-acceptance check is the remaining gate item.
+Phase: 2 gate CHECKED 2026-07-31 (see below); Phase 3 (multi-source,
+dedup, queue) is next once Kishan closes the gate and calls the N/ef
+defaults.
+
+## Phase 2 acceptance check (2026-07-31)
+
+Build list: embedding pipeline (resumable, SIGKILL-proven) DONE; HNSW
+DONE (0006, 211MB); mode=vector + mode=hybrid RRF in raw SQL DONE;
+frontend mode toggle + per-result keyword/semantic/fused breakdown DONE
+(12 web tests); latency instrumentation DONE (per-request decomposition
++ bench/latency.py). Tests: RRF arithmetic on fixture, mode switching,
+embedding idempotency — all present, 106 backend + 12 web green.
+
+Acceptance: (1) all three modes verified live over the corpus — which is
+**196,893 papers, 98.4% of the 200K target** (nominal 205K budgets
+exhausted; a ~3.5K general-nlp top-up ≈ ~25 credits would cross 200K,
+needs Kishan's go). (2) Demo queries: bm25 wins "i2b2 2010 relation
+extraction challenge" (exact identifier anchors; vector drifts to
+generic relation extraction); vector wins "reducing the reading
+difficulty of health leaflets for people with low literacy" (bm25
+AND-semantics returns ZERO rows; vector top-4 on-point); hybrid beats
+both on "making medical documents easier to understand for patients"
+(hybrid top-3 = bm25's Paper Plain — which vector missed — plus vector's
+patient-friendly-notes pair — where bm25 drifted 3/5). (3) Latency
+percentiles per mode (bench/results_mode_latency.json, as-shipped
+defaults vector ef=40 / hybrid depth=100: bm25 SQL 1.9/24.8/37.8;
+vector SQL 1.9/~3.5/~4.5 (tails gated), e2e 8.9/16.2/28.6; hybrid SQL
+6.3/26.7/46.5, e2e 13.7/31.0/62.6 — bm25 and hybrid tails are the
+match-count driver, findings.md).
+
+N/ef recommendation (circular reason removed): **N=200, hybrid ef=600**
+— recall@200 = .9857±.0011 at ef=600 vs .9431 at ef=200 (+4.3 points for
+a p50 cost inside run-to-run noise: 13.6ms stable vs [12.5,19.9] range);
+ef=800 buys +0.4 more for +4ms. Non-circular support for N=200: input
+recall to the fuser and the .781 identical-order rate (order is what
+nDCG scores). Revisit both under Phase 4 labels. Defaults in code remain
+40/100 until Kishan calls it.
 
 Joint depth/ef sweep done (2026-07-31, bench/fusion_depth_sweep.py,
 results json alongside): vector-CTE recall@N vs exact top-200 runs
