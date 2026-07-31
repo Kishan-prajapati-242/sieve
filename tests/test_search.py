@@ -132,7 +132,7 @@ def test_stopword_only_query_is_empty_not_500(client: TestClient) -> None:
         {"query": ""},  # too short
         {"query": "x", "k": 0},  # k below bounds
         {"query": "x", "k": 101},  # k above bounds
-        {"query": "x", "mode": "vector"},  # Phase 2, not yet
+        {"query": "x", "mode": "hybrid"},  # Phase 2 fusion, not yet
     ],
 )
 def test_invalid_requests_are_422(client: TestClient, body: dict) -> None:  # type: ignore[type-arg]

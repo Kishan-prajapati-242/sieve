@@ -60,12 +60,17 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-sieve}:${POSTGRES_PASSWORD:-sieve}@postgres:5432/${POSTGRES_DB:-sieve}
       OPENALEX_API_KEY: ${OPENALEX_API_KEY:-}
+      # Vector mode embeds queries at request time (DECISION-2b). The model
+      # dir is gitignored; without it, bm25 works and vector mode fails
+      # loudly on first use.
+      EMBED_MODEL_DIR: /models
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
       # Mount only the source, not the whole repo, so the image's installed
       # site-packages stay authoritative for dependencies.
       - ./api:/app/api
+      - ./models/bge-small-en-v1.5:/models:ro
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       # The API starts only after migrations have applied cleanly, which

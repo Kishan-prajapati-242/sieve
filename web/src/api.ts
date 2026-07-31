@@ -28,6 +28,7 @@ export interface SearchResponse {
   mode: string;
   took_ms: number;
   timings: SearchTimings;
+  ef_search: number | null;
   results: SearchResult[];
 }
 
