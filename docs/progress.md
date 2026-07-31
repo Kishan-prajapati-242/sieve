@@ -3,6 +3,23 @@
 Phase: 1 (search over one source). Corpus is at target; the Phase 1
 acceptance check is the remaining gate item.
 
+Shipped 2026-07-31 (late): mode=vector, measured under the protocol
+below (bench/vector_latency.py, prewarm + 520 distinct queries + 1
+discarded warmup run + 3 measured runs). Components at k=10, ef_search
+40: **embed p50 7.6 ms (77% of end-to-end p50 9.9 ms — the fixed floor
+HNSW cannot reduce), SQL p50 2.3 ms / p95 4.5 ms**; tails gated to
+ranges per the stability rule (e2e p95 range 13.7-18.3). Exact-scan
+warm p50 was ~55 ms: the index cuts retrieval ~24x at p50, but
+end-to-end only ~5.5x because embedding dominates. The prefix contract
+is enforced INSIDE embed_query (bypass-proof by construction) and pinned
+end-to-end by a stubbed-encoder test; iterative_scan=strict_order fixes
+year-filter underfill (test forces the HNSW path; found along the way:
+for SELECTIVE year filters the planner correctly skips HNSW for
+papers_year_idx + sort — exact, no underfill). ef_search is request-
+tunable, echoed per response, logged. Next (Kishan's go): recall sweep
+(bench/hnsw_recall_sweep.py against bench/labels/exact_top50.json), then
+fusion.
+
 HNSW measurement protocol for mode=vector (agreed 2026-07-31, before any
 index numbers): interleaved repetition homogenizes cache for a seq scan
 (every query touches the whole table) but NOT for HNSW, where queries
