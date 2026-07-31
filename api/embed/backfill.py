@@ -40,11 +40,16 @@ def vector_literal(vec: np.ndarray) -> str:
     return "[" + ",".join(f"{x:.8g}" for x in vec) + "]"
 
 
+# Boilerplate abstracts resolve to NULL here, so document_text() takes its
+# existing title-only branch — the blocklist is a JOIN, not a second code
+# path (DECISION-2c: shape matters, not type).
 CLAIM_SQL = """
-SELECT id, title, abstract
-FROM papers
-WHERE embedding IS NULL
-ORDER BY id
+SELECT p.id, p.title,
+       CASE WHEN b.abstract_md5 IS NULL THEN p.abstract END AS abstract
+FROM papers p
+LEFT JOIN boilerplate_abstracts b ON b.abstract_md5 = md5(p.abstract)
+WHERE p.embedding IS NULL
+ORDER BY p.id
 LIMIT %(n)s
 """
 

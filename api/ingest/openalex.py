@@ -39,11 +39,16 @@ from typing import Any
 
 import httpx
 import psycopg
-from psycopg.types.json import Jsonb
 
-from api.dedup.normalize import normalize_doi, normalize_title
 from api.ingest.http import QuotaExhausted, RequestMeter, get_json
 from api.ingest.ratelimit import TokenBucket
+from api.ingest.store import (
+    PaperFields,
+    create_or_link_paper,
+    owns_paper,
+    refresh_paper,
+    upsert_record,
+)
 
 BASE_URL = "https://api.openalex.org"
 USER_AGENT = "sieve/0.1 (mailto:prajapati.kish@northeastern.edu)"
@@ -173,6 +178,9 @@ class IngestStats:
     new_papers: int = 0
     linked_by_doi: int = 0
     refreshed: int = 0
+    # Refresh that moved title/abstract, so DECISION-3a nulled the vector
+    # and the embedding queue will recompute it.
+    refreshed_text_changed: int = 0
     skipped_no_title: int = 0
     # DECISION-1c: junk types skipped at ingest, counted per type so a run
     # shows what it refused, not just what it took.
@@ -187,6 +195,7 @@ class IngestStats:
         return (
             f"fetched={self.fetched} new_papers={self.new_papers}"
             f" linked_by_doi={self.linked_by_doi} refreshed={self.refreshed}"
+            f" refreshed_text_changed={self.refreshed_text_changed}"
             f" skipped_no_title={self.skipped_no_title}"
         )
 
@@ -288,32 +297,40 @@ def iter_works(
         cursor = page["meta"].get("next_cursor")
 
 
+def paper_fields(work: dict[str, Any]) -> PaperFields:
+    """Derive the source-agnostic paper shape from an OpenAlex work."""
+    ids = work.get("ids") or {}
+    pmid = (ids.get("pmid") or "").removeprefix("https://pubmed.ncbi.nlm.nih.gov/") or None
+    return PaperFields(
+        title=str(work["display_name"]),
+        abstract=deinvert_abstract(work.get("abstract_inverted_index")),
+        year=work.get("publication_year"),
+        venue=extract_venue(work),
+        citation_count=work.get("cited_by_count") or 0,
+        doi=work.get("doi"),
+        is_retracted=bool(work.get("is_retracted")),
+        authors=extract_authors(work),
+        pubmed_id=pmid,
+    )
+
+
 def store_work(conn: psycopg.Connection, work: dict[str, Any], query_name: str | None) -> str:
     """Upsert one work; returns the IngestStats field to bump.
 
-    Rerun-safe by construction: the source_records upsert converges, an
-    already-linked record refreshes raw and stops, and only unlinked records
-    ever derive a paper. query_name is first-fetch provenance: the COALESCE
-    keeps the original attribution on refresh, so composition stats don't
-    churn with query order when pools overlap (DECISION-2).
+    Rerun-safe by construction: the source_records upsert converges and only
+    unlinked records ever DERIVE a paper. query_name is first-fetch
+    provenance: the COALESCE keeps the original attribution on refresh, so
+    composition stats don't churn with query order (DECISION-2).
+
+    An already-linked record now REFRESHES its paper rather than stopping
+    (2026-07-31): citation counts move, and — the real driver — a paper
+    retracted after its crawl would otherwise never show a warning. Text
+    changes null the embedding at the write site (DECISION-3a).
     """
     source_id = work["id"].removeprefix("https://openalex.org/")
-    row = conn.execute(
-        """
-        INSERT INTO source_records (source, source_id, raw, query_name)
-        VALUES ('openalex', %s, %s, %s)
-        ON CONFLICT (source, source_id)
-        DO UPDATE SET raw = EXCLUDED.raw,
-                      fetched_at = now(),
-                      query_name = COALESCE(source_records.query_name, EXCLUDED.query_name)
-        RETURNING id, paper_id
-        """,
-        (source_id, Jsonb(work), query_name),
-    ).fetchone()
-    assert row is not None  # RETURNING on upsert always yields the row
-    record_id, paper_id = row
-    if paper_id is not None:
-        return "refreshed"
+    record_id, paper_id = upsert_record(
+        conn, source="openalex", source_id=source_id, raw=work, query_name=query_name
+    )
 
     title = work.get("display_name")
     if not title:
@@ -328,53 +345,17 @@ def store_work(conn: psycopg.Connection, work: dict[str, Any], query_name: str |
         # every refetch.
         return f"skipped_type:{work_type}"
 
-    doi = normalize_doi(work.get("doi"))
-    ids = work.get("ids") or {}
-    pubmed_id = (ids.get("pmid") or "").removeprefix("https://pubmed.ncbi.nlm.nih.gov/") or None
-    venue = extract_venue(work)
+    fields = paper_fields(work)
+    if paper_id is not None:
+        # Only the owning record writes the paper's text; secondary records
+        # (linked by DOI collision) refresh their raw and stop, or they would
+        # fight over the row on every crawl.
+        if not owns_paper(conn, record_id, paper_id):
+            return "refreshed"
+        text_changed = refresh_paper(conn, paper_id, fields)
+        return "refreshed_text_changed" if text_changed else "refreshed"
 
-    inserted = conn.execute(
-        """
-        INSERT INTO papers
-            (doi, title, title_norm, abstract, year, venue, citation_count, pubmed_id,
-             is_retracted, authors)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (doi) DO NOTHING
-        RETURNING id
-        """,
-        (
-            doi,
-            title,
-            normalize_title(title),
-            deinvert_abstract(work.get("abstract_inverted_index")),
-            work.get("publication_year"),
-            venue,
-            work.get("cited_by_count") or 0,
-            pubmed_id,
-            bool(work.get("is_retracted")),
-            extract_authors(work),
-        ),
-    ).fetchone()
-
-    if inserted is not None:
-        paper_id, outcome = inserted[0], "new_papers"
-    else:
-        # Two OpenAlex works, one normalized DOI: link this record to the
-        # existing paper and log it — dedup cascade step 1, audited from day
-        # one. (NULL DOIs never conflict, so this branch implies doi is set.)
-        existing = conn.execute("SELECT id FROM papers WHERE doi = %s", (doi,)).fetchone()
-        assert existing is not None
-        paper_id = existing[0]
-        conn.execute(
-            """
-            INSERT INTO merges (kept_paper_id, merged_from, strategy)
-            VALUES (%s, %s, 'doi_exact')
-            """,
-            (paper_id, Jsonb({"source_record_ids": [record_id], "title": title})),
-        )
-        outcome = "linked_by_doi"
-
-    conn.execute("UPDATE source_records SET paper_id = %s WHERE id = %s", (paper_id, record_id))
+    _, outcome = create_or_link_paper(conn, record_id, fields)
     return outcome
 
 

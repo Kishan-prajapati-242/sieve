@@ -1,6 +1,27 @@
 # Progress
 
-Phase: 2 **CLOSED** by Kishan 2026-07-31. Next: Phase 3 (arXiv + PubMed
+Phase: 3 IN PROGRESS (2026-07-31). Done: refresh propagation +
+DECISION-3a (embedding nulled at every text-write site, one shared
+implementation in api/ingest/store.py so no source client can forget it),
+boilerplate blocklist (932 hashes / 3,847 papers now embed title-only),
+HNSW rebuilt, and the **arXiv client** (1 req/3s, --limit, Atom parsing,
+idempotency verified live: 100 entries twice -> papers 196,988 both runs).
+Next: dedup cascade, then queue conversion, then
+collections/screening/BibTeX.
+
+95 arXiv papers are deliberately UN-EMBEDDED right now: dedup runs before
+embedding for this source (Kishan's ordering), so they wait for the
+cascade rather than being embedded and then merged away.
+
+New in the store layer, from a test failure: refresh + DOI-collision
+linking means two records point at one paper, and each would overwrite it
+with its own title on every crawl — text flip-flopping by refresh order,
+embedding nulled forever, reruns never converging. Fixed with an owner
+predicate (lowest-id linked record writes the text). **That predicate is
+exactly what the undecided preprint-vs-published survivorship rule
+replaces** when the cascade lands.
+
+Phase 2 was **CLOSED** by Kishan 2026-07-31 (arXiv + PubMed
 clients, dedup cascade, SKIP LOCKED queue, collections/screening/BibTeX,
 stats expansion). Phase 3 inputs already recorded: dedup BEFORE fusion
 (RRF double-pays twins), exact-abstract-hash cascade step before trigram

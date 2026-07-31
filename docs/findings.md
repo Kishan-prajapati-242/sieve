@@ -194,6 +194,42 @@ used entity search, so no earlier run report was affected.
 
 ---
 
+## 2026-07-31: The drift verification was vacuous (pattern, 4th instance)
+
+**Symptom:** I reported "title drift 0, citation drift 0, missed
+retraction flags 0 across all 196,893 papers" as evidence about the
+refresh path. It is evidence of nothing.
+
+**Why it cannot work:** a drift count of 0 cannot distinguish "refresh
+propagates correctly" from "refresh is a no-op and no upstream value
+changed." All 23,102 refreshes happened inside ONE 24-minute pull, where
+no OpenAlex title or citation count would have moved anyway. Both
+hypotheses predict exactly the same observation, so the measurement had
+no power to separate them. (The code reading that accompanied it — that
+store_work returns "refreshed" before touching papers — is what actually
+established the conclusion. The SQL added false confidence, not
+evidence.)
+
+**The pattern, now four instances** (Kishan spotted every one):
+1. the durability test that read through the writer's own connection, so
+   it could not fail on uncommitted work (2026-07-30);
+2. p95 = p99 from 20 samples, where both are the max by construction;
+3. the fusion convergence proxy measured against the deepest ranking
+   tested, which reaches 1.0 by construction;
+4. this drift count, where both hypotheses predict zero.
+The shared shape: a check whose passing condition is guaranteed by its
+own construction, independent of the property under test. The habit that
+catches it is asking "what result would falsify this?" BEFORE running it
+— if no observable outcome would, it is not a test.
+
+**The real test (tests/test_refresh.py):** mutate a stored
+source_records.raw — change the title and bump cited_by_count — then run
+ingest again and assert on what papers does. That test fails against the
+old no-op refresh and passes against the propagating one, which is the
+distinction the drift count could not make.
+
+---
+
 ## 2026-07-31: Refresh staleness — confirmed, but not where expected
 
 **The claim under test (Kishan):** the 200K pull refreshed 23,102
