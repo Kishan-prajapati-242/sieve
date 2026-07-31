@@ -118,9 +118,59 @@ def tie_aware_recall(
     return hits / k
 
 
+def build_top200(conn: psycopg.Connection, labels_path: Path, out_path: Path) -> None:
+    """Exact top-200 for the same 520 queries — the joint depth/ef sweep's
+    denominator. Reuses the stored query embeddings (zero re-encoding);
+    forced seq scan, EXPLAIN-verified, like every ground-truth pass."""
+    labels = json.loads(labels_path.read_text())
+    conn.execute("SET enable_indexscan = off")
+    conn.execute("SET enable_bitmapscan = off")
+    plan = "\n".join(
+        r[0]
+        for r in conn.execute(
+            f"EXPLAIN {EXACT_SQL}",  # noqa: S608
+            {"q": vector_literal(labels[0]["embedding"]), "k": 200},
+        )
+    )
+    assert "Seq Scan on papers" in plan and "papers_embed_idx" not in plan
+    start = time.perf_counter()
+    out = []
+    for entry in labels:
+        top = conn.execute(
+            EXACT_SQL, {"q": vector_literal(entry["embedding"]), "k": 200}
+        ).fetchall()
+        out.append(
+            {
+                "query": entry["query"],
+                "embedding": entry["embedding"],
+                "top200": [{"id": pid, "distance": d} for pid, d in top],
+            }
+        )
+    out_path.write_text(json.dumps(out))
+    conn.execute("SET enable_indexscan = on")
+    conn.execute("SET enable_bitmapscan = on")
+    elapsed = time.perf_counter() - start
+    size_mb = out_path.stat().st_size / 1024**2
+    print(f"top-200 ground truth: {len(out)} queries in {elapsed:.0f}s, {size_mb:.1f} MB")
+
+
 def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--build-top200", action="store_true", help="extend ground truth to top-200 and exit"
+    )
+    args = parser.parse_args()
+
     out_dir = Path(__file__).parent
     labels_path = out_dir / "labels" / "exact_top50_wide.json"
+
+    if args.build_top200:
+        with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
+            build_top200(conn, labels_path, out_dir / "labels" / "exact_top200_wide.json")
+        return
+
     encoder = OnnxEncoder(os.environ["EMBED_MODEL_DIR"])
 
     with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
@@ -201,6 +251,10 @@ def main() -> None:
             ground_truth="bench/labels/exact_top50_wide.json (forced seq scan)",
             tie_handling=f"hit if id in exact top-k OR distance <= boundary + {TIE_EPS}",
             k_fetch=FETCH_K,
+            known_item_caveat="500/520 queries are corpus titles (known-item "
+            "retrieval, query vector near one specific document) — likely "
+            "inflates recall vs topical queries; the 20 topical eval queries "
+            "are 4% of the sample",
         ),
         "curves": curves,
     }

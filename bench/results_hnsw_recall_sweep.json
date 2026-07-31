@@ -191,5 +191,8 @@
         "e2e_p50_ms": 14.1
       }
     ]
-  }
+  },
+  "caveats": [
+    "500 of the 520 queries are corpus titles: known-item retrieval, where the query vector sits very close to one specific document vector. This likely inflates recall relative to topical queries, whose true top-k is a diffuse cluster. The 20 eval queries (topical) are 4% of the sample. (Kishan, 2026-07-31 \u2014 annotated without re-running; the numbers are unchanged.)"
+  ]
 }
