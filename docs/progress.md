@@ -3,6 +3,26 @@
 Phase: 1 (search over one source). Corpus is at target; the Phase 1
 acceptance check is the remaining gate item.
 
+Shipped 2026-07-31: full corpus embedded (196,893/196,893 — Kishan's
+overnight run, 10+ h, see findings.md thermal entry) and the HNSW index
+is BUILT (migration 0006): m=16, ef_construction=64, parallel 2 workers,
+maintenance_work_mem 1GB session-scoped. Measured: build ~36-41 s (vs
+5-15 min estimated), index 211 MB (estimate 200-260), db 2,024 MB
+(estimate 2.0-2.1 GB), VM available never below 2,086 MB. Verified
+`Index Scan using papers_embed_idx` on the ORDER BY <=> LIMIT shape.
+Two findings from the pre-build probe: (1) parallel workers share ONE
+maintenance_work_mem-sized area (pgvector v0.8.5 hnswbuild.c + live
+probe), so no per-worker OOM math; (2) that area is a single POSIX shm
+segment allocated up front, and the container /dev/shm default of 64MB
+kills the build — postgres now runs with shm_size: 2g in compose.
+Pre-index baseline captured FIRST (bench/exact_scan_baseline.py):
+exact-scan p50 61.9 ms / p95 98.7 / mean 67.7 over 20 domain queries,
+196,893 rows scanned each, EXPLAIN archived; exact top-50 ground truth
+in bench/labels/exact_top50.json (query vectors inline — the recall
+sweep never re-embeds). Next: mode=vector endpoint (query_text() prefix,
+hnsw.ef_search, iterative_scan for year filters), then the recall sweep,
+then fusion.
+
 Phase 2 pre-encode prerequisites (2026-07-30): BOTH PASSED, full encode
 awaiting Kishan's go. (a) Container benchmark (bench/encode_throughput.py
 inside the compose test container — the podman VM, not the host): 13.2

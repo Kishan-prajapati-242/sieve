@@ -10,6 +10,14 @@
 services:
   postgres:
     image: pgvector/pgvector:pg16
+    # Parallel HNSW builds allocate the whole maintenance_work_mem as ONE
+    # POSIX shared memory segment up front (pgvector v0.8.5 hnswbuild.c:
+    # esthnswarea = maintenance_work_mem * 1024, shared by all workers).
+    # Containers default /dev/shm to 64MB, which kills the build at CREATE
+    # INDEX time with "could not resize shared memory segment" — found by a
+    # 30K probe build, 2026-07-31. 2g is a cap on virtual space, not a
+    # reservation; only touched pages consume VM memory.
+    shm_size: 2g
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-sieve}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sieve}
