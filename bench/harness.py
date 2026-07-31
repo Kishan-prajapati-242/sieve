@@ -18,6 +18,7 @@ Convention (CLAUDE.md): p50/p95/p99, never a mean.
 """
 
 import math
+import statistics
 from typing import Any
 
 # At least this many samples must lie beyond a percentile for it to be
@@ -55,6 +56,43 @@ def summarize(samples_ms: list[float]) -> dict[str, Any]:
 def interleaved(n_queries: int, reps: int) -> list[int]:
     """Query indices in interleaved order: 0,1,..,n-1, 0,1,..,n-1, ..."""
     return [i for _ in range(reps) for i in range(n_queries)]
+
+
+# A percentile gets a point estimate only when it reproduces across runs.
+STABILITY_MAX_RATIO = 1.3
+
+
+def across_runs(runs: list[list[float]]) -> dict[str, Any]:
+    """Multi-run summary with a stability gate (2026-07-31: a single-run
+    p99 of 95.8 was published from the favorable end of an observed
+    95.8-406.9 spread — same species as the 20-sample p99).
+
+    Rule, applied to every percentile identically: the point estimate is
+    the MEDIAN of per-run values, reported only when max/min across runs
+    <= STABILITY_MAX_RATIO; otherwise the value is None and the observed
+    per-run range is reported instead. Environmental tails differ between
+    runs, so pooling samples would blend distributions — range over pool.
+    """
+    per_run = [summarize(r) for r in runs]
+    out: dict[str, Any] = {
+        "n_runs": len(runs),
+        "samples_per_run": [len(r) for r in runs],
+        "stability_rule": "median across runs, only when max/min <= "
+        f"{STABILITY_MAX_RATIO}; otherwise the observed range, no point estimate",
+        "per_run": per_run,
+    }
+    for key in ("p50_ms", "p95_ms", "p99_ms"):
+        values = [r[key] for r in per_run]
+        if any(v is None for v in values):
+            out[key] = None
+            out[key.removesuffix("_ms") + "_note"] = "not reportable within a run (see per_run)"
+            continue
+        if max(values) / min(values) <= STABILITY_MAX_RATIO:
+            out[key] = round(statistics.median(values), 1)
+        else:
+            out[key] = None
+            out[key.removesuffix("_ms") + "_unstable_range_ms"] = [min(values), max(values)]
+    return out
 
 
 def method_record(*, timing_window: str, **fields: Any) -> dict[str, Any]:

@@ -1,7 +1,7 @@
 """The harness rules that make a percentile a percentile (findings.md
 2026-07-31: n=20 shipped a max labeled p99 — these tests pin the guard)."""
 
-from bench.harness import interleaved, method_record, percentile, summarize
+from bench.harness import across_runs, interleaved, method_record, percentile, summarize
 
 
 def test_percentile_refuses_thin_samples() -> None:
@@ -37,6 +37,27 @@ def test_summarize_says_what_it_cannot_report() -> None:
 def test_interleaved_spreads_repetitions() -> None:
     order = interleaved(3, 2)
     assert order == [0, 1, 2, 0, 1, 2]  # never [0, 0, 1, 1, 2, 2]
+
+
+def test_across_runs_gates_unstable_percentiles_to_a_range() -> None:
+    """The published-favorable-p99 fix: a percentile that doesn't reproduce
+    across runs gets a range, never a point estimate from the good run."""
+    stable_run = [float(i) for i in range(1, 601)]  # p99=594
+    slow_run = [x * 2.0 for x in stable_run]  # p99=1188: 2x spread
+    out = across_runs([stable_run, stable_run, slow_run])
+    assert out["p99_ms"] is None
+    assert out["p99_unstable_range_ms"] == [594.0, 1188.0]
+    # p50 fails the same 1.3x gate here — the rule is uniform, not p99-only.
+    assert out["p50_ms"] is None
+    stable = across_runs([stable_run, stable_run, [x * 1.1 for x in stable_run]])
+    assert stable["p99_ms"] is not None  # 1.1x spread: median reported
+
+
+def test_across_runs_propagates_within_run_unreportability() -> None:
+    thin = [float(i) for i in range(100)]  # p99 not reportable at n=100
+    out = across_runs([thin, thin])
+    assert out["p99_ms"] is None
+    assert "per_run" in out and out["per_run"][0]["p99_ms"] is None
 
 
 def test_method_record_demands_a_timing_window() -> None:

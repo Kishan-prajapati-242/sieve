@@ -194,6 +194,42 @@ used entity search, so no earlier run report was affected.
 
 ---
 
+## 2026-07-31: Publishing the favorable end of a 4x spread
+
+**Symptom:** the corrected baseline published warm p99 = 95.8 ms as the
+official number — the LOW end of a 95.8-406.9 range observed across
+same-day runs. Same species as the 20-sample p99: a number more
+favorable than the evidence supports.
+
+**How it was found:** Kishan, comparing the published point against the
+reported spread in the same message.
+
+**Root cause:** single-run percentiles. Each run is one draw from the
+VM's environmental noise; the last draw happened to be a good one and
+last-writer-wins made it official.
+
+**Fix (range over pooling, deliberately):** pooling samples across runs
+would assume they draw from one distribution, but the tail events are
+environmental and differ between sessions — pooling would repeat the
+cold/warm blend error at the run level. Instead bench/harness.py gained
+across_runs(): every percentile gets its point estimate (median across
+>= 3 runs) only when max/min across runs <= 1.3; otherwise None plus the
+observed per-run range. The rule is uniform, not p99-special-cased. The
+method record now carries p99_stability, answering the Phase 4 question
+directly: before/after latency claims on this hardware target p50/p95;
+any p99 claim must be a multi-run range.
+
+**Verified:** the gate fired on real data — one session gated p99 to
+range [83.8, 147.6] while passing p50 (53.2, spread 1.10x) and p95
+(68.5, 1.25x). Caveat recorded: back-to-back runs share environment, so
+a within-session gate can legitimately pass (a later session produced
+p99 76.2 across three runs) while cross-session spread stays 4x — which
+is exactly why the method record forbids point-estimate p99 claims
+regardless of the gate. Prior published numbers preserved as
+superseded_v1/superseded_v2 in the results file.
+
+---
+
 ## 2026-07-31: The footnote that invented a mechanism
 
 **Symptom:** the corrected-baseline report attributed a warm p50 shift

@@ -52,7 +52,7 @@ import psycopg
 
 from api.embed.onnx_encoder import OnnxEncoder
 from api.embed.texts import query_text
-from bench.harness import interleaved, method_record, summarize
+from bench.harness import across_runs, interleaved, method_record
 
 # Kishan's 20 eval queries (4 x 5 domains, 2026-07-31). Also the ground-truth
 # query set; these double as the seed of the Phase 4 eval set.
@@ -82,6 +82,7 @@ EVAL_QUERIES: list[tuple[str, str]] = [
 N_TITLE_QUERIES = 100
 REPS = 5
 WARMUP = 3
+N_RUNS = 3
 
 EXACT_SQL = """
 SELECT id, (embedding <=> %(q)s::halfvec)::float8 AS distance
@@ -193,9 +194,12 @@ def main() -> None:
         for _ in range(WARMUP):
             timed(conn, vecs[0])
 
-        samples = [timed(conn, vecs[i]) for i in interleaved(len(vecs), REPS)]
+        # Multi-run (2026-07-31): a single run's tail is one draw from this
+        # VM's environmental noise; across_runs gates any percentile that
+        # doesn't reproduce to a range instead of a point estimate.
+        runs = [[timed(conn, vecs[i]) for i in interleaved(len(vecs), REPS)] for _ in range(N_RUNS)]
 
-    warm = summarize(samples)
+    warm = across_runs(runs)
     cold: dict[str, object] = {"note": "no cold cycles supplied"}
     if args.cold_samples and args.cold_samples.exists():
         cold_values = [
@@ -212,22 +216,33 @@ def main() -> None:
             ),
         }
 
-    # v1 of this file (20 samples, blended cache) stays visible, marked
-    # superseded — deleting a published number is worse than correcting it.
-    superseded = None
+    # Prior published numbers stay visible, marked superseded — deleting a
+    # published number is worse than correcting it.
+    prior: dict[str, object] = {}
     results_path = out_dir / "results_exact_scan.json"
     if results_path.exists():
         old = json.loads(results_path.read_text())
+        for key in ("superseded_v1", "superseded_v2"):
+            if key in old:
+                prior[key] = old[key]
         if "method" not in old:  # v1 format
             old.pop("explain_analyze_example", None)
-            superseded = {
+            prior["superseded_v1"] = {
                 "why": "p95/p99 computed from 20 samples are the max wearing a "
                 "percentile's name, and cold- and warm-cache samples were blended "
                 "(1.6x spread on identical work) — findings.md 2026-07-31",
                 **old,
             }
-        elif "superseded_v1" in old:
-            superseded = old["superseded_v1"]
+        elif "n_runs" not in old.get("warm", {}):  # v2: single-run percentiles
+            prior["superseded_v2"] = {
+                "why": "single-run p99 (95.8) published from the favorable end of "
+                "an observed 95.8-406.9 spread across same-day runs — same species "
+                "as the 20-sample p99. Percentiles now need to reproduce across "
+                "runs or they report as a range (findings.md 2026-07-31)",
+                "measured_at": old.get("measured_at"),
+                "warm": old.get("warm"),
+                "cold": old.get("cold"),
+            }
 
     results = {
         "measured_at": datetime.now(UTC).isoformat(),
@@ -245,14 +260,17 @@ def main() -> None:
             cache_state="warm (see cold block for cold-cache values)",
             scan_forced="enable_indexscan=off, enable_bitmapscan=off "
             "(HNSW index exists; verified Seq Scan via EXPLAIN)",
+            p99_stability="p99 does not reproduce across runs on this hardware "
+            "(fanless VM: environmental tail noise; see warm.per_run and "
+            "findings.md 2026-07-31). Before/after latency claims should target "
+            "p50/p95; any p99 claim needs the multi-run range, never a point.",
             parallel_seq_scan_workers=int(workers.group(1)) if workers else 0,
         ),
         "warm": warm,
         "cold": cold,
         "explain_analyze_example": explain,
+        **prior,
     }
-    if superseded:
-        results["superseded_v1"] = superseded
 
     results_path.write_text(json.dumps(results, indent=2))
     summary = {k: v for k, v in results.items() if k != "explain_analyze_example"}
