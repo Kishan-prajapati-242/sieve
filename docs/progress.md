@@ -1,8 +1,20 @@
 # Progress
 
-Phase: 2 gate CHECKED 2026-07-31 (see below); Phase 3 (multi-source,
-dedup, queue) is next once Kishan closes the gate and calls the N/ef
-defaults.
+Phase: 2 **CLOSED** by Kishan 2026-07-31. Next: Phase 3 (arXiv + PubMed
+clients, dedup cascade, SKIP LOCKED queue, collections/screening/BibTeX,
+stats expansion). Phase 3 inputs already recorded: dedup BEFORE fusion
+(RRF double-pays twins), exact-abstract-hash cascade step before trigram
+(560 groups / 1,273 papers), no-DOI stratum (15,258 papers, 7.7%) needs
+its own precision measurement, dedup baseline = 3/20 redundant on the
+"clinical text simplification" query.
+
+Gate decisions (docs/decisions.md): DECISION-2e — hybrid defaults depth
+200 / ef 600, shipped and live-verified; carries the prediction that
+ef's real cost surfaces once Phase 4 fixes the bm25 tail (test then).
+DECISION-2f — no corpus top-up; 196,893 stands, in Kishan's words.
+Per-mode latency percentiles re-measured at the shipped defaults
+(bench/results_mode_latency.json). The brief calls this the resume
+checkpoint.
 
 ## Phase 2 acceptance check (2026-07-31)
 
