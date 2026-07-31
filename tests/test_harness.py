@@ -1,7 +1,25 @@
 """The harness rules that make a percentile a percentile (findings.md
 2026-07-31: n=20 shipped a max labeled p99 — these tests pin the guard)."""
 
-from bench.harness import across_runs, interleaved, method_record, percentile, summarize
+import pytest
+
+from bench.harness import (
+    across_runs,
+    interleaved,
+    method_record,
+    percentile,
+    speedup,
+    summarize,
+)
+
+
+def test_speedup_refuses_mismatched_windows() -> None:
+    """The 5.5x-vs-6.3x lesson: scan-only over end-to-end is not a speedup."""
+    with pytest.raises(ValueError, match="window mismatch"):
+        speedup(55.0, 9.9, baseline_window="sql only", candidate_window="end-to-end")
+    ok = speedup(62.6, 9.9, baseline_window="end-to-end", candidate_window="end-to-end")
+    assert ok["speedup"] == 6.3
+    assert ok["window"] == "end-to-end"
 
 
 def test_percentile_refuses_thin_samples() -> None:

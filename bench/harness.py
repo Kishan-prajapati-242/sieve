@@ -95,6 +95,28 @@ def across_runs(runs: list[list[float]]) -> dict[str, Any]:
     return out
 
 
+def speedup(
+    baseline_ms: float, candidate_ms: float, *, baseline_window: str, candidate_window: str
+) -> dict[str, Any]:
+    """A ratio of latencies is only a speedup when both sides measure the
+    same window (2026-07-31: 55ms scan-only was divided by 9.9ms
+    end-to-end, understating the honest end-to-end ratio 6.3x as 5.5x —
+    that one happened to run conservative; the rule exists for the times
+    it wouldn't). Refuses mismatched windows outright."""
+    if baseline_window != candidate_window:
+        raise ValueError(
+            f"window mismatch: baseline={baseline_window!r} vs "
+            f"candidate={candidate_window!r} — a ratio across different windows "
+            "is not a speedup"
+        )
+    return {
+        "speedup": round(baseline_ms / candidate_ms, 1),
+        "window": baseline_window,
+        "baseline_ms": baseline_ms,
+        "candidate_ms": candidate_ms,
+    }
+
+
 def method_record(*, timing_window: str, **fields: Any) -> dict[str, Any]:
     """The measurement's passport. Hardware context is constant for this
     project and stated once here rather than re-typed per script.

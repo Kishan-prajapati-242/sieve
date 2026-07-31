@@ -8,9 +8,11 @@ below (bench/vector_latency.py, prewarm + 520 distinct queries + 1
 discarded warmup run + 3 measured runs). Components at k=10, ef_search
 40: **embed p50 7.6 ms (77% of end-to-end p50 9.9 ms — the fixed floor
 HNSW cannot reduce), SQL p50 2.3 ms / p95 4.5 ms**; tails gated to
-ranges per the stability rule (e2e p95 range 13.7-18.3). Exact-scan
-warm p50 was ~55 ms: the index cuts retrieval ~24x at p50, but
-end-to-end only ~5.5x because embedding dominates. The prefix contract
+ranges per the stability rule (e2e p95 range 13.7-18.3). Ratios, same window on both sides (harness speedup() now refuses
+anything else): retrieval-only 55/2.3 ~= 24x; end-to-end
+(7.6+55)/9.9 = **6.3x** — the originally reported 5.5x divided
+scan-only by end-to-end, a window mismatch that ran conservative
+(findings.md). The prefix contract
 is enforced INSIDE embed_query (bypass-proof by construction) and pinned
 end-to-end by a stubbed-encoder test; iterative_scan=strict_order fixes
 year-filter underfill (test forces the HNSW path; found along the way:

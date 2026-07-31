@@ -194,6 +194,32 @@ used entity search, so no earlier run report was affected.
 
 ---
 
+## 2026-07-31: A ratio across two different windows is not a speedup
+
+**Symptom:** "end-to-end only ~5.5x" — computed as 55 ms (exact scan,
+SQL-ONLY window) over 9.9 ms (vector, END-TO-END window including the
+7.6 ms embed). An exact-scan implementation of the same endpoint would
+also embed the query, so its end-to-end p50 is 62.6 ms and the honest
+ratio is **6.3x**.
+
+**How it was found:** Kishan, from the window definitions the previous
+fix had just made explicit.
+
+**Root cause:** the timing_window discipline covered measurements but not
+DERIVED numbers — a ratio silently mixed windows one message after the
+windows were formalized.
+
+**Fix:** bench/harness.py speedup() takes both windows and raises on
+mismatch; the corrected figures state their window (retrieval-only ~24x,
+end-to-end 6.3x).
+
+**Worth noting:** unlike the fabricated-mechanism footnote and the
+favorable p99, this error ran CONSERVATIVE — it understated the win. The
+direction was luck; the class of error is the same, and the guard doesn't
+care which way it points.
+
+---
+
 ## 2026-07-31: Publishing the favorable end of a 4x spread
 
 **Symptom:** the corrected baseline published warm p99 = 95.8 ms as the
