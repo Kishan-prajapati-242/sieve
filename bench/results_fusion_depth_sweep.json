@@ -1,0 +1,521 @@
+{
+  "measured_at": "2026-07-31T20:56:29.049931+00:00",
+  "method": {
+    "timing_window": "sql: search_hybrid() round trip as the API calls it (SET LOCALs + one fused statement, k=20 full rows). embed: single-text encode, sampled once per query, reused across depths. e2e_with_embed: per-sample sum. e2e_embed_cached: sql alone (models a Phase 4 query-cache hit, embed=0).",
+    "hardware": "MacBook Air M1 8GB (fanless), podman VM 4 vCPU / 4GB",
+    "database": "PostgreSQL 16.14, pgvector 0.8.5, shared_buffers 128MB, in compose",
+    "protocol": "pg_prewarm('read') index+heap; 520 distinct queries; per depth: 1 warmup + 3 measured runs, across_runs gate. ef_search = max(40, depth) \u2014 production auto-raise logic.",
+    "convergence_proxy": "hybrid QUALITY is not measurable before Phase 4 labels. overlap/identical-rate of top-20 vs depth=500 measures stability only: past the convergence depth, deeper candidates stop changing the answer. A converged ranking can still be worse.",
+    "known_item_caveat": "500/520 queries are corpus titles \u2014 inherited from the recall sweep; see results_hnsw_recall_sweep.json caveats",
+    "denominator": "bench/labels/exact_top200_wide.json (forced seq scan); recall at N=500 is capped to the top-200 denominator",
+    "k": 20
+  },
+  "points": [
+    {
+      "depth": 20,
+      "ef_search_effective": 40,
+      "vector_recall_at_n": 0.9304,
+      "vector_recall_n_capped_at": 20,
+      "vector_recall_se": 0.0056,
+      "hybrid_top20_overlap_vs_max_depth": 0.9153,
+      "hybrid_top20_identical_rate": 0.4577,
+      "sql": {
+        "n_runs": 3,
+        "samples_per_run": [
+          520,
+          520,
+          520
+        ],
+        "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
+        "per_run": [
+          {
+            "n_samples": 520,
+            "p50_ms": 5.8,
+            "p95_ms": 27.2,
+            "p99_ms": 63.6,
+            "min_ms": 2.8,
+            "max_ms": 407.4
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 5.5,
+            "p95_ms": 27.6,
+            "p99_ms": 56.2,
+            "min_ms": 3.0,
+            "max_ms": 385.2
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 5.3,
+            "p95_ms": 27.3,
+            "p99_ms": 54.6,
+            "min_ms": 2.6,
+            "max_ms": 411.6
+          }
+        ],
+        "p50_ms": 5.5,
+        "p95_ms": 27.3,
+        "p99_ms": 56.2
+      },
+      "e2e_with_embed": {
+        "n_runs": 3,
+        "samples_per_run": [
+          520,
+          520,
+          520
+        ],
+        "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
+        "per_run": [
+          {
+            "n_samples": 520,
+            "p50_ms": 14.5,
+            "p95_ms": 32.7,
+            "p99_ms": 68.6,
+            "min_ms": 7.9,
+            "max_ms": 411.7
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 14.1,
+            "p95_ms": 32.9,
+            "p99_ms": 61.0,
+            "min_ms": 8.2,
+            "max_ms": 389.5
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 14.2,
+            "p95_ms": 32.9,
+            "p99_ms": 59.6,
+            "min_ms": 7.7,
+            "max_ms": 415.9
+          }
+        ],
+        "p50_ms": 14.2,
+        "p95_ms": 32.9,
+        "p99_ms": 61.0
+      },
+      "e2e_embed_cached_p50_ms": 5.5,
+      "single_run_sql_full": {
+        "n_samples": 520,
+        "p50_ms": 5.3,
+        "p95_ms": 27.3,
+        "p99_ms": 54.6,
+        "min_ms": 2.6,
+        "max_ms": 411.6
+      }
+    },
+    {
+      "depth": 50,
+      "ef_search_effective": 50,
+      "vector_recall_at_n": 0.9064,
+      "vector_recall_n_capped_at": 50,
+      "vector_recall_se": 0.0054,
+      "hybrid_top20_overlap_vs_max_depth": 0.9354,
+      "hybrid_top20_identical_rate": 0.5154,
+      "sql": {
+        "n_runs": 3,
+        "samples_per_run": [
+          520,
+          520,
+          520
+        ],
+        "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
+        "per_run": [
+          {
+            "n_samples": 520,
+            "p50_ms": 6.4,
+            "p95_ms": 27.8,
+            "p99_ms": 67.2,
+            "min_ms": 3.3,
+            "max_ms": 363.4
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 7.4,
+            "p95_ms": 30.6,
+            "p99_ms": 109.7,
+            "min_ms": 3.1,
+            "max_ms": 392.6
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 5.5,
+            "p95_ms": 27.5,
+            "p99_ms": 43.8,
+            "min_ms": 3.0,
+            "max_ms": 466.2
+          }
+        ],
+        "p50_ms": null,
+        "p50_unstable_range_ms": [
+          5.5,
+          7.4
+        ],
+        "p95_ms": 27.8,
+        "p99_ms": null,
+        "p99_unstable_range_ms": [
+          43.8,
+          109.7
+        ]
+      },
+      "e2e_with_embed": {
+        "n_runs": 3,
+        "samples_per_run": [
+          520,
+          520,
+          520
+        ],
+        "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
+        "per_run": [
+          {
+            "n_samples": 520,
+            "p50_ms": 15.1,
+            "p95_ms": 33.6,
+            "p99_ms": 72.9,
+            "min_ms": 8.7,
+            "max_ms": 367.7
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 16.0,
+            "p95_ms": 38.8,
+            "p99_ms": 114.8,
+            "min_ms": 8.1,
+            "max_ms": 396.9
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 14.4,
+            "p95_ms": 32.9,
+            "p99_ms": 48.7,
+            "min_ms": 8.0,
+            "max_ms": 470.5
+          }
+        ],
+        "p50_ms": 15.1,
+        "p95_ms": 33.6,
+        "p99_ms": null,
+        "p99_unstable_range_ms": [
+          48.7,
+          114.8
+        ]
+      },
+      "e2e_embed_cached_p50_ms": null,
+      "single_run_sql_full": {
+        "n_samples": 520,
+        "p50_ms": 5.5,
+        "p95_ms": 27.5,
+        "p99_ms": 43.8,
+        "min_ms": 3.0,
+        "max_ms": 466.2
+      }
+    },
+    {
+      "depth": 100,
+      "ef_search_effective": 100,
+      "vector_recall_at_n": 0.926,
+      "vector_recall_n_capped_at": 100,
+      "vector_recall_se": 0.0043,
+      "hybrid_top20_overlap_vs_max_depth": 0.9612,
+      "hybrid_top20_identical_rate": 0.6577,
+      "sql": {
+        "n_runs": 3,
+        "samples_per_run": [
+          520,
+          520,
+          520
+        ],
+        "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
+        "per_run": [
+          {
+            "n_samples": 520,
+            "p50_ms": 7.9,
+            "p95_ms": 28.5,
+            "p99_ms": 104.1,
+            "min_ms": 4.1,
+            "max_ms": 404.6
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 7.2,
+            "p95_ms": 27.9,
+            "p99_ms": 51.7,
+            "min_ms": 3.9,
+            "max_ms": 466.0
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 7.5,
+            "p95_ms": 28.5,
+            "p99_ms": 53.4,
+            "min_ms": 4.3,
+            "max_ms": 377.4
+          }
+        ],
+        "p50_ms": 7.5,
+        "p95_ms": 28.5,
+        "p99_ms": null,
+        "p99_unstable_range_ms": [
+          51.7,
+          104.1
+        ]
+      },
+      "e2e_with_embed": {
+        "n_runs": 3,
+        "samples_per_run": [
+          520,
+          520,
+          520
+        ],
+        "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
+        "per_run": [
+          {
+            "n_samples": 520,
+            "p50_ms": 16.9,
+            "p95_ms": 34.7,
+            "p99_ms": 116.2,
+            "min_ms": 9.7,
+            "max_ms": 408.9
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 15.8,
+            "p95_ms": 33.6,
+            "p99_ms": 56.7,
+            "min_ms": 9.0,
+            "max_ms": 470.3
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 16.1,
+            "p95_ms": 34.3,
+            "p99_ms": 58.4,
+            "min_ms": 9.6,
+            "max_ms": 381.7
+          }
+        ],
+        "p50_ms": 16.1,
+        "p95_ms": 34.3,
+        "p99_ms": null,
+        "p99_unstable_range_ms": [
+          56.7,
+          116.2
+        ]
+      },
+      "e2e_embed_cached_p50_ms": 7.5,
+      "single_run_sql_full": {
+        "n_samples": 520,
+        "p50_ms": 7.5,
+        "p95_ms": 28.5,
+        "p99_ms": 53.4,
+        "min_ms": 4.3,
+        "max_ms": 377.4
+      }
+    },
+    {
+      "depth": 200,
+      "ef_search_effective": 200,
+      "vector_recall_at_n": 0.9431,
+      "vector_recall_n_capped_at": 200,
+      "vector_recall_se": 0.0028,
+      "hybrid_top20_overlap_vs_max_depth": 0.9851,
+      "hybrid_top20_identical_rate": 0.7808,
+      "sql": {
+        "n_runs": 3,
+        "samples_per_run": [
+          520,
+          520,
+          520
+        ],
+        "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
+        "per_run": [
+          {
+            "n_samples": 520,
+            "p50_ms": 11.1,
+            "p95_ms": 31.9,
+            "p99_ms": 67.0,
+            "min_ms": 5.7,
+            "max_ms": 484.7
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 11.2,
+            "p95_ms": 29.3,
+            "p99_ms": 96.7,
+            "min_ms": 5.3,
+            "max_ms": 439.6
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 11.3,
+            "p95_ms": 33.5,
+            "p99_ms": 71.8,
+            "min_ms": 5.1,
+            "max_ms": 612.3
+          }
+        ],
+        "p50_ms": 11.2,
+        "p95_ms": 31.9,
+        "p99_ms": null,
+        "p99_unstable_range_ms": [
+          67.0,
+          96.7
+        ]
+      },
+      "e2e_with_embed": {
+        "n_runs": 3,
+        "samples_per_run": [
+          520,
+          520,
+          520
+        ],
+        "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
+        "per_run": [
+          {
+            "n_samples": 520,
+            "p50_ms": 19.9,
+            "p95_ms": 39.0,
+            "p99_ms": 76.7,
+            "min_ms": 11.4,
+            "max_ms": 489.0
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 19.9,
+            "p95_ms": 36.2,
+            "p99_ms": 101.5,
+            "min_ms": 11.3,
+            "max_ms": 443.9
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 20.0,
+            "p95_ms": 40.7,
+            "p99_ms": 77.5,
+            "min_ms": 11.7,
+            "max_ms": 616.6
+          }
+        ],
+        "p50_ms": 19.9,
+        "p95_ms": 39.0,
+        "p99_ms": null,
+        "p99_unstable_range_ms": [
+          76.7,
+          101.5
+        ]
+      },
+      "e2e_embed_cached_p50_ms": 11.2,
+      "single_run_sql_full": {
+        "n_samples": 520,
+        "p50_ms": 11.3,
+        "p95_ms": 33.5,
+        "p99_ms": 71.8,
+        "min_ms": 5.1,
+        "max_ms": 612.3
+      }
+    },
+    {
+      "depth": 500,
+      "ef_search_effective": 500,
+      "vector_recall_at_n": 0.9821,
+      "vector_recall_n_capped_at": 200,
+      "vector_recall_se": 0.0013,
+      "hybrid_top20_overlap_vs_max_depth": 1.0,
+      "hybrid_top20_identical_rate": 1.0,
+      "sql": {
+        "n_runs": 3,
+        "samples_per_run": [
+          520,
+          520,
+          520
+        ],
+        "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
+        "per_run": [
+          {
+            "n_samples": 520,
+            "p50_ms": 18.9,
+            "p95_ms": 39.6,
+            "p99_ms": 98.1,
+            "min_ms": 7.9,
+            "max_ms": 478.2
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 18.4,
+            "p95_ms": 41.0,
+            "p99_ms": 136.7,
+            "min_ms": 8.6,
+            "max_ms": 583.4
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 18.2,
+            "p95_ms": 39.9,
+            "p99_ms": 87.3,
+            "min_ms": 7.3,
+            "max_ms": 436.2
+          }
+        ],
+        "p50_ms": 18.4,
+        "p95_ms": 39.9,
+        "p99_ms": null,
+        "p99_unstable_range_ms": [
+          87.3,
+          136.7
+        ]
+      },
+      "e2e_with_embed": {
+        "n_runs": 3,
+        "samples_per_run": [
+          520,
+          520,
+          520
+        ],
+        "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
+        "per_run": [
+          {
+            "n_samples": 520,
+            "p50_ms": 27.8,
+            "p95_ms": 47.0,
+            "p99_ms": 102.6,
+            "min_ms": 13.6,
+            "max_ms": 482.5
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 27.3,
+            "p95_ms": 50.2,
+            "p99_ms": 144.9,
+            "min_ms": 14.3,
+            "max_ms": 587.7
+          },
+          {
+            "n_samples": 520,
+            "p50_ms": 26.9,
+            "p95_ms": 48.8,
+            "p99_ms": 96.5,
+            "min_ms": 13.0,
+            "max_ms": 440.5
+          }
+        ],
+        "p50_ms": 27.3,
+        "p95_ms": 48.8,
+        "p99_ms": null,
+        "p99_unstable_range_ms": [
+          96.5,
+          144.9
+        ]
+      },
+      "e2e_embed_cached_p50_ms": 18.4,
+      "single_run_sql_full": {
+        "n_samples": 520,
+        "p50_ms": 18.2,
+        "p95_ms": 39.9,
+        "p99_ms": 87.3,
+        "min_ms": 7.3,
+        "max_ms": 436.2
+      }
+    }
+  ]
+}

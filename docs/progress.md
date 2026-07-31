@@ -3,6 +3,20 @@
 Phase: 1 (search over one source). Corpus is at target; the Phase 1
 acceptance check is the remaining gate item.
 
+Joint depth/ef sweep done (2026-07-31, bench/fusion_depth_sweep.py,
+results json alongside): vector-CTE recall@N vs exact top-200 runs
+0.930/0.906/0.926/0.943/0.982 at N=20/50/100/200/500 (the N=50 DIP is
+the coupling made visible: deeper lists need MORE than proportional ef).
+Hybrid top-20 vs depth-500 reference: overlap 0.915→0.985, identical-
+order rate 0.458→0.781 (N=20→200) — convergence is gradual, no clean
+stopping depth below 500. Latency (hybrid SQL p50): 5.5→18.4ms;
+e2e-with-embed p50 14.2→27.3ms; embed-cached (=SQL) 5.5→18.4ms. Fused
+QUALITY is explicitly not measurable pre-labels (method record says so);
+recommendation pending Kishan: N=200/ef=200 interim. Phase 4 revisits
+flagged: N and rrf_k under nDCG; whether ef should scale ABOVE N (the
+N=50 dip); the convergence proxy's circularity (reference = deepest
+tested, not truth).
+
 ef_search default HELD AT 40 (Kishan, 2026-07-31) — the sweep's ef=160
 elbow answers k=10, which is not the production operating point. Two
 reasons the decision is not decidable yet, recorded so the sweep isn't
@@ -211,6 +225,18 @@ junk-type papers deleted, raw records kept (corpus 26,378 -> 26,237).
 is_retracted papers stay, flagged and surfaced in search — the UI (next
 task) should render a retraction warning from that field. Venue backfill
 done (8,295 -> 471 nulls).
+
+## Phase 3 inputs from fusion (Kishan, 2026-07-31 — record, don't build)
+
+1. **Dedup must run BEFORE fusion, not after.** The twin pair at hybrid
+   ranks 9 and 10 ("Towards more patient friendly clinical notes...",
+   b=43/v=10 vs b=44/v=12) had adjacent ranks in BOTH rankers, so
+   duplicates will consume two slots in every hybrid top-10 — and RRF
+   actively reinforces them, since a paper present twice gets two
+   reciprocal-rank contributions.
+2. **Hybrid is ~3x vector-only latency** (29.0 vs 9.9 ms warm, single
+   observations). Fusion's cost belongs in the README next to its
+   quality win.
 
 ## Phase 3 note (from the 2026-07-29 dup-abstract measurement)
 
