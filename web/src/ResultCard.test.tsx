@@ -20,6 +20,9 @@ function makeResult(overrides: Partial<SearchResult> = {}): SearchResult {
     venue: "Proceedings of ACL 2023",
     citation_count: 40,
     is_retracted: false,
+    bm25_rank: null,
+    vector_rank: null,
+    sources: null,
     ...overrides,
   };
 }

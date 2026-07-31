@@ -15,6 +15,9 @@ export interface SearchResult {
   venue: string | null;
   citation_count: number;
   is_retracted: boolean;
+  bm25_rank: number | null;
+  vector_rank: number | null;
+  sources: string[] | null;
 }
 
 export interface SearchTimings {

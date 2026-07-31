@@ -3,6 +3,20 @@
 Phase: 1 (search over one source). Corpus is at target; the Phase 1
 acceptance check is the remaining gate item.
 
+ef_search default HELD AT 40 (Kishan, 2026-07-31) — the sweep's ef=160
+elbow answers k=10, which is not the production operating point. Two
+reasons the decision is not decidable yet, recorded so the sweep isn't
+read as settled: (1) ef_search is the candidate-list width, and recall@50
+< recall@10 at every ef >= 10 shows that asking k > ef asks for more than
+the search breadth — fusion over-fetches top-N per ranker, so what
+matters is recall at candidate depth N (if N=200, ef must be >= 200 and
+160 is already too narrow); the hybrid path auto-raises ef to >= depth
+for exactly this reason. (2) The "embed floor makes 160 cheap" argument
+dies under Phase 4's query-embedding cache: on a cache hit, ef=160's
+3.2ms vs ef=40's 2.1ms is +52% of the dominant component, not +14% of
+the total. Candidate depth and ef_search are ONE coupled decision, made
+with fusion sweep data.
+
 Recall sweep done (2026-07-31, bench/hnsw_recall_sweep.py; table in
 results json, curve in bench/plots/hnsw_recall_sweep.png; n=520 queries,
 tie-aware recall, ground truth bench/labels/exact_top50_wide.json):

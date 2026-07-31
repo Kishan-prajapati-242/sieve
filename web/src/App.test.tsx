@@ -79,6 +79,9 @@ describe("App", () => {
           venue: null,
           citation_count: 5,
           is_retracted: false,
+    bm25_rank: null,
+    vector_rank: null,
+    sources: null,
         },
       ],
     });
