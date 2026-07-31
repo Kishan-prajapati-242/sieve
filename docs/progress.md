@@ -276,6 +276,15 @@ is_retracted papers stay, flagged and surfaced in search — the UI (next
 task) should render a retraction warning from that field. Venue backfill
 done (8,295 -> 471 nulls).
 
+## Phase 3 dependency, undecided (noted 2026-07-31, do not decide now)
+
+Which side wins a preprint/published merge — title, abstract, citation
+count, venue, DOI — is still open. DECISION-3a's embedding policy (null
+the vector wherever text is written) works either way, so the merge-side
+question can be decided when the cascade is designed. Measured context
+for that decision: 524 JMIR preprint/published pairs, published side
+averages +34.6 citations, and ZERO of the pairs share an abstract.
+
 ## Phase 3 inputs from fusion (Kishan, 2026-07-31 — record, don't build)
 
 1. **Dedup must run BEFORE fusion, not after.** The twin pair at hybrid

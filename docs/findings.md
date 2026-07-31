@@ -194,6 +194,41 @@ used entity search, so no earlier run report was affected.
 
 ---
 
+## 2026-07-31: Refresh staleness — confirmed, but not where expected
+
+**The claim under test (Kishan):** the 200K pull refreshed 23,102
+papers, so abstracts do get rewritten on re-crawl; any future ingestion
+that refreshes a paper leaves its vector stale and silently wrong, at a
+magnitude that reorders results.
+
+**Confirmed as a latent bug, with one correction to the mechanism.**
+Checked the code as it stands: `store_work()` returns "refreshed" as soon
+as the source record already has a paper_id — it updates
+`source_records.raw` and **never touches the papers row at all**. So
+today the derived paper's title/abstract/citations are frozen at first
+derivation, and the vector matches the frozen text. Verified across all
+196,893 papers: title drift 0, citation drift 0, missed retraction flags
+0 — the corpus is internally consistent right now, and NOT because the
+pull finished before the encode (the encode reads papers, which refresh
+never rewrites).
+
+**Why it is still the right thing to fix:** the invariant holding is an
+accident of an unrelated limitation. The refresh path is knowingly
+incomplete — citation counts and retraction flags go stale by design
+today — and the moment refresh starts propagating text (which Phase 3's
+multi-source merge REQUIRES, since a merge picks one side's title and
+abstract), every refreshed paper's vector becomes stale with no signal.
+The staleness magnitude is measured: median 0.0027 shift vs a median
+adjacent-rank gap of 0.00213, i.e. 1.3x-43x the spacing that decides
+rank order.
+
+**Fix:** DECISION-3a — null the embedding at every text-write site, let
+the `embedding IS NULL` queue re-embed. Not yet implemented; the
+correction above means it is preventive rather than remedial, and no
+back-fill sweep of existing rows is needed.
+
+---
+
 ## 2026-07-31: The bm25 AND-semantics cliff
 
 **Symptom:** "reducing the reading difficulty of health leaflets for

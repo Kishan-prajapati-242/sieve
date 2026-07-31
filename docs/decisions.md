@@ -304,6 +304,43 @@ coverage, not for roundness.
 
 ---
 
+## DECISION-3a: Embedding freshness — null the vector where text is written
+
+**Date:** 2026-07-31
+
+**Decision:** unconditional freshness (option B), implemented as
+null-on-text-change rather than a hash column. Every stored vector must
+be the embedding of that paper's current document_text(). Enforce it at
+the point text is written: `ON CONFLICT DO UPDATE` and the merge path
+both set `embedding = NULL` when title or abstract differs from the
+stored value, and the existing `embedding IS NULL` work queue re-embeds.
+Also approved: post-merge HNSW rebuild (36 s measured), and
+dedup-before-embedding as the default ordering for Phase 3 ingestion.
+
+**Alternatives considered:** keep the survivor's vector (stale); keep
+both vectors (reintroduces the duplicate RRF double-pays); conditional
+re-embedding via a stored text hash (option D, ~63 s cheaper).
+
+**Why rejected:** the hash column creates a second invariant every
+text-mutating path must maintain, and forgetting it yields a stale vector
+the system believes is fresh. Nulling at the write site has no such
+failure mode. The 63-second saving from conditional re-embedding does not
+buy permanent complexity.
+
+**Measured basis:** twin pairs whose abstracts differ shift their vector
+by median 0.0027 (p90 0.0915), while adjacent ranks inside a top-10 are
+separated by a median of only 0.00213 — so a stale vector is 1.3x to 43x
+the rank spacing, i.e. large enough to reorder results. 47% of exact-
+title twin pairs have differing abstracts; all 524 JMIR preprint/
+published pairs do.
+
+**What would change my mind:** nothing about the invariant; the
+implementation could change if a text-write path appears where nulling is
+impractical (e.g. bulk SQL maintenance), in which case that path needs
+its own re-embed sweep, not a hash.
+
+---
+
 ## Template
 
 ```text
