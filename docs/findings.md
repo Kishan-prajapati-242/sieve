@@ -194,6 +194,40 @@ used entity search, so no earlier run report was affected.
 
 ---
 
+## 2026-07-31: The dedup cascade was quadratic as first written
+
+**Symptom:** the cascade's first draft ran for **11 minutes without
+completing a single strategy** on 197K papers, and had to be killed.
+
+**How it was found:** running it. `pg_stat_activity` showed three parallel
+workers 650 seconds into the same `count(*)` over one strategy.
+
+**Root cause, two independent ones:**
+1. Every exact-key strategy was written as a self-join —
+   `FROM papers a JOIN papers b ON md5(a.abstract) = md5(b.abstract)` —
+   on expressions with no index. That is O(n^2): ~3.9e10 candidate row
+   comparisons for a step whose answer is a grouping.
+2. The trigram step's `%` operator uses `pg_trgm.similarity_threshold`,
+   which **defaults to 0.3**. So it generated the candidate set for
+   similarity >= 0.3 and only then filtered to 0.92 in the WHERE clause —
+   paying for orders of magnitude more candidates than the query wanted.
+
+**Fix:** exact strategies became `GROUP BY key HAVING count(*) > 1`,
+fanning pairs out from each group's first member (a star, not a clique).
+Union-find rebuilds the identical connected component from the star, so
+the result is unchanged while the work drops from quadratic to a single
+grouped pass — **seconds instead of never finishing**. The trigram step
+now sets `pg_trgm.similarity_threshold` to the sweep value so the GIN
+index prefilters at the real threshold. Migration 0008 adds the four
+missing indexes (arxiv_id, pubmed_id, md5(abstract), title_norm+year),
+which matter for the per-record cascade ingestion will call.
+
+**The general lesson:** "find all pairs matching on a key" is a GROUPING,
+not a join. Writing it as a join asks the database for the cross product
+of the answer.
+
+---
+
 ## 2026-07-31: NULL embeddings are now routine, and invisible
 
 **The risk:** DECISION-3a (null the vector wherever text moves) plus

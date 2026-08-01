@@ -38,39 +38,51 @@ import psycopg
 
 TRGM_THRESHOLD = 0.92
 
-# Each strategy returns (a_id, b_id, similarity). a_id < b_id everywhere so
-# a pair cannot appear twice in mirrored order.
+# Each strategy returns (a_id, b_id, similarity). Exact-key steps are
+# GROUPED, not self-joined: a self-join on an unindexed expression is
+# O(n^2) and hung for 11 minutes on 197K papers before being killed. Group
+# by the key, then fan out pairs from the group's first member — union-find
+# rebuilds the same component from that star, at a fraction of the cost.
 STRATEGY_SQL: dict[str, str] = {
     # papers.doi is UNIQUE, so this can only fire if that constraint is ever
     # relaxed. It runs anyway: a silent zero is information.
     "doi_exact": """
-        SELECT a.id, b.id, 1.0
-        FROM papers a JOIN papers b ON a.doi = b.doi AND a.id < b.id
-        WHERE a.doi IS NOT NULL
+        SELECT ids[1], unnest(ids[2:]), 1.0 FROM (
+            SELECT array_agg(id ORDER BY id) AS ids FROM papers
+            WHERE doi IS NOT NULL GROUP BY doi HAVING count(*) > 1
+        ) g
     """,
     "id_exact": """
-        SELECT a.id, b.id, 1.0
-        FROM papers a JOIN papers b
-          ON a.id < b.id
-         AND ((a.arxiv_id IS NOT NULL AND a.arxiv_id = b.arxiv_id)
-           OR (a.pubmed_id IS NOT NULL AND a.pubmed_id = b.pubmed_id))
+        SELECT ids[1], unnest(ids[2:]), 1.0 FROM (
+            SELECT array_agg(id ORDER BY id) AS ids FROM papers
+            WHERE arxiv_id IS NOT NULL GROUP BY arxiv_id HAVING count(*) > 1
+            UNION ALL
+            SELECT array_agg(id ORDER BY id) FROM papers
+            WHERE pubmed_id IS NOT NULL GROUP BY pubmed_id HAVING count(*) > 1
+        ) g
     """,
     "abstract_hash": """
-        SELECT a.id, b.id, 1.0
-        FROM papers a JOIN papers b ON a.id < b.id AND md5(a.abstract) = md5(b.abstract)
-        WHERE a.abstract IS NOT NULL
-          AND NOT EXISTS (
-              SELECT 1 FROM boilerplate_abstracts x WHERE x.abstract_md5 = md5(a.abstract)
-          )
+        SELECT ids[1], unnest(ids[2:]), 1.0 FROM (
+            SELECT array_agg(p.id ORDER BY p.id) AS ids
+            FROM papers p
+            WHERE p.abstract IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM boilerplate_abstracts x
+                  WHERE x.abstract_md5 = md5(p.abstract)
+              )
+            GROUP BY md5(p.abstract) HAVING count(*) > 1
+        ) g
     """,
     "title_exact": """
-        SELECT a.id, b.id, 1.0
-        FROM papers a JOIN papers b
-          ON a.id < b.id AND a.title_norm = b.title_norm AND a.year = b.year
-        WHERE a.year IS NOT NULL AND length(a.title_norm) >= 20
+        SELECT ids[1], unnest(ids[2:]), 1.0 FROM (
+            SELECT array_agg(id ORDER BY id) AS ids FROM papers
+            WHERE year IS NOT NULL AND length(title_norm) >= 20
+            GROUP BY title_norm, year HAVING count(*) > 1
+        ) g
     """,
     # The GIN trigram index drives `%`; similarity() then scores survivors.
-    # Same year AND a shared author surname, both required.
+    # Same year AND a shared author surname, both required — the surname is
+    # the guard against generic titles ("Results", twice in 2024).
     "title_trgm": """
         SELECT a.id, b.id, similarity(a.title_norm, b.title_norm)::float8 AS sim
         FROM papers a JOIN papers b
