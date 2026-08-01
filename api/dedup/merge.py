@@ -113,11 +113,20 @@ def merge_group(
         ([m["id"] for m in members],),
     ).fetchall()
 
+    # Earlier merges may name a loser as their kept_paper_id — a paper that
+    # survived one merge can lose the next. The FK forbids deleting it, so
+    # those rows follow the survivor and the old mapping is snapshotted.
+    loser_ids = [m["id"] for m in losers]
+    prior_merges = conn.execute(
+        "SELECT id, kept_paper_id FROM merges WHERE kept_paper_id = ANY(%s)", (loser_ids,)
+    ).fetchall()
+
     snapshot = {
         "survivor_id": survivor["id"],
         "survivor_before": {k: survivor[k] for k in SNAPSHOT_FIELDS},
         "deleted_papers": [{k: m[k] for k in SNAPSHOT_FIELDS} for m in losers],
         "source_record_map": [{"record_id": r[0], "paper_id": r[1]} for r in record_map],
+        "prior_merge_map": [{"merge_id": r[0], "kept_paper_id": r[1]} for r in prior_merges],
         "member_ids": [m["id"] for m in members],
     }
 
@@ -130,13 +139,26 @@ def merge_group(
     ).fetchone()
     assert merge_row is not None
 
-    # Repoint every record at the survivor, then apply survivorship, then
-    # delete the losers. Order matters: the FK on source_records.paper_id
-    # must never point at a deleted row.
+    # ORDER IS THE WHOLE GAME here, and getting it wrong cost 536 failed
+    # groups on the first run (docs/findings.md 2026-08-01):
+    #   1. repoint source_records  — the FK must never point at a dead row;
+    #   2. repoint prior merges    — same FK problem on merges.kept_paper_id;
+    #   3. DELETE the losers       — BEFORE the survivor takes their DOI;
+    #   4. update the survivor     — now that the donor row is gone, copying
+    #      its DOI cannot collide with papers_doi_key.
+    # Doing (4) before (3) makes two live rows briefly share a unique DOI,
+    # which the constraint rejects — the survivor was inheriting a DOI from
+    # a row that still existed.
     conn.execute(
         "UPDATE source_records SET paper_id = %s WHERE paper_id = ANY(%s)",
-        (survivor["id"], [m["id"] for m in losers]),
+        (survivor["id"], loser_ids),
     )
+    conn.execute(
+        "UPDATE merges SET kept_paper_id = %s WHERE kept_paper_id = ANY(%s)",
+        (survivor["id"], loser_ids),
+    )
+    conn.execute("DELETE FROM papers WHERE id = ANY(%s)", (loser_ids,))
+
     text_moved = (
         updates["title"] != survivor["title"] or updates["abstract"] != survivor["abstract"]
     )
@@ -150,7 +172,6 @@ def merge_group(
         """,
         {**updates, "id": survivor["id"], "text_moved": text_moved},
     )
-    conn.execute("DELETE FROM papers WHERE id = ANY(%s)", ([m["id"] for m in losers],))
 
     return {
         "merge_id": merge_row[0],
@@ -172,18 +193,9 @@ def rollback(conn: psycopg.Connection, merge_id: int) -> dict[str, Any]:
     if "deleted_papers" not in snap:
         raise ValueError(f"merge {merge_id} predates snapshots and cannot be rolled back")
 
-    cols = ", ".join(SNAPSHOT_FIELDS)
-    placeholders = ", ".join(f"%({f})s" for f in SNAPSHOT_FIELDS)
-    for paper in snap["deleted_papers"]:
-        conn.execute(
-            f"INSERT INTO papers ({cols}) VALUES ({placeholders})",  # noqa: S608
-            paper,
-        )
-    for entry in snap["source_record_map"]:
-        conn.execute(
-            "UPDATE source_records SET paper_id = %s WHERE id = %s",
-            (entry["paper_id"], entry["record_id"]),
-        )
+    # Mirror image of the merge order: give the survivor its OWN fields back
+    # first, so reinserting a deleted paper cannot collide on the DOI the
+    # survivor inherited from it.
     before = snap["survivor_before"]
     conn.execute(
         """
@@ -196,5 +208,22 @@ def rollback(conn: psycopg.Connection, merge_id: int) -> dict[str, Any]:
         """,
         before,
     )
+    cols = ", ".join(SNAPSHOT_FIELDS)
+    placeholders = ", ".join(f"%({f})s" for f in SNAPSHOT_FIELDS)
+    for paper in snap["deleted_papers"]:
+        conn.execute(
+            f"INSERT INTO papers ({cols}) VALUES ({placeholders})",  # noqa: S608
+            paper,
+        )
+    for entry in snap.get("prior_merge_map", []):
+        conn.execute(
+            "UPDATE merges SET kept_paper_id = %s WHERE id = %s",
+            (entry["kept_paper_id"], entry["merge_id"]),
+        )
+    for entry in snap["source_record_map"]:
+        conn.execute(
+            "UPDATE source_records SET paper_id = %s WHERE id = %s",
+            (entry["paper_id"], entry["record_id"]),
+        )
     conn.execute("DELETE FROM merges WHERE id = %s", (merge_id,))
     return {"restored": [p["id"] for p in snap["deleted_papers"]], "survivor": before["id"]}

@@ -194,6 +194,45 @@ used entity search, so no earlier run report was affected.
 
 ---
 
+## 2026-08-01: Merge ordering — 536 groups refused by their own constraints
+
+**Symptom:** the merge run completed but **536 of 7,712 groups (7%) failed**
+with two distinct database errors. Every failure rolled back cleanly (one
+transaction per group, 0 orphaned records), so the corpus stayed consistent
+— just incomplete.
+
+**Two ordering bugs, both about doing things in the wrong sequence:**
+
+1. `duplicate key value violates unique constraint "papers_doi_key"`.
+   DECISION-3b lets a survivor with no DOI inherit one from a loser. The
+   code updated the survivor and THEN deleted the loser, so for the length
+   of one statement two live rows held the same DOI — which the unique
+   constraint exists to forbid. The donor has to die first.
+
+2. `violates foreign key constraint "merges_kept_paper_id_fkey"`. A paper
+   that SURVIVES one merge can LOSE the next, and the earlier merges row
+   still names it as kept_paper_id. The FK blocks the delete. The audit
+   trail has to follow the survivor.
+
+**Fix:** one explicit order in merge_group, with the reason in a comment:
+repoint source_records -> repoint prior merges -> DELETE losers -> update
+the survivor. Rollback runs the mirror image (restore the survivor's own
+fields BEFORE reinserting the donor), for the same collision reason.
+prior_merge_map joins the snapshot so rollback restores the audit chain.
+
+**Verified before/after:** three regression tests — DOI inheritance from a
+deleted donor, a paper losing a merge after surviving one, and rollback
+round-trip after DOI inheritance. All three FAIL against the old order and
+pass against the new one (checked by reverting the fix, not assumed).
+
+**Worth noting about the failure mode:** these 536 were loud. The
+constraints caught every one, each group rolled back atomically, and the
+run reported a count instead of producing silent corruption. That is the
+schema doing its job — the UNIQUE and FK constraints that made the merge
+fail are the same ones that made failure safe.
+
+---
+
 ## 2026-08-01: The index a foreign key does not create (pattern, 3rd instance)
 
 **Symptom:** the merge executor ran 90 minutes to reach 45% (5,730 of

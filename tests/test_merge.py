@@ -162,3 +162,70 @@ def test_is_retracted_survives_from_any_member() -> None:
     ]
     survivor = choose_survivor(members)
     assert merged_fields(survivor, members)["is_retracted"] is True
+
+
+def test_survivor_inherits_a_dois_from_a_deleted_donor(db: str) -> None:
+    """The 536-failure bug, first form: a survivor with no DOI inherits the
+    loser's. If the survivor is updated BEFORE the loser is deleted, two
+    live rows momentarily share a DOI and papers_doi_key rejects the merge."""
+    with psycopg.connect(db, autocommit=True) as conn:
+        # Survivor (published, has venue) carries NO doi; the preprint does.
+        conn.execute("UPDATE papers SET doi = NULL WHERE id = 101")
+        with conn.transaction():
+            res = merge_group(conn, [100, 101], "title_exact", 1.0)
+        row = conn.execute("SELECT id, doi FROM papers").fetchall()
+
+    assert res["survivor_id"] == 101
+    assert row == [(101, "10.2196/preprints.60601")]  # inherited, no collision
+
+
+def test_a_paper_can_lose_a_second_merge_after_surviving_a_first(db: str) -> None:
+    """The 536-failure bug, second form: merges.kept_paper_id references the
+    survivor of an earlier merge. When that paper later LOSES a merge, the
+    FK blocks the delete unless the old merge row follows the new survivor."""
+    with psycopg.connect(db, autocommit=True) as conn:
+        seed(
+            conn,
+            [
+                {
+                    **PREPRINT,
+                    "id": 102,
+                    "doi": "10.2196/preprints.9",
+                    "arxiv_id": "9.9",
+                    "title": "Ascle: A Toolkit for Medical Text (Preprint)",
+                }
+            ],
+        )
+        # First merge: 102 loses to 100 (both preprints, lowest id wins).
+        with conn.transaction():
+            first = merge_group(conn, [100, 102], "title_exact", 1.0)
+        assert first["survivor_id"] == 100
+
+        # Second merge: 100 — an existing kept_paper_id — now loses to the
+        # published 101. Without repointing, the FK aborts this.
+        with conn.transaction():
+            second = merge_group(conn, [100, 101], "preprint_trgm", 0.694)
+        assert second["survivor_id"] == 101
+        assert second["deleted"] == [100]
+
+        kept = conn.execute("SELECT DISTINCT kept_paper_id FROM merges ORDER BY 1").fetchall()
+        live = conn.execute("SELECT id FROM papers ORDER BY id").fetchall()
+
+    assert kept == [(101,)]  # the earlier merge followed the survivor
+    assert live == [(101,)]
+
+
+def test_rollback_after_doi_inheritance_round_trips(db: str) -> None:
+    """Rollback must undo DOI inheritance in the mirror order, or restoring
+    the deleted donor collides with the DOI the survivor took from it."""
+    with psycopg.connect(db, autocommit=True) as conn:
+        conn.execute("UPDATE papers SET doi = NULL WHERE id = 101")
+        before = snapshot(conn)
+        with conn.transaction():
+            res = merge_group(conn, [100, 101], "title_exact", 1.0)
+        with conn.transaction():
+            rollback(conn, res["merge_id"])
+        after = snapshot(conn)
+
+    assert after["papers"] == before["papers"]
+    assert after["records"] == before["records"]
