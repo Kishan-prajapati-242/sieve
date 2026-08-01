@@ -51,5 +51,43 @@ TRGM_THRESHOLD = 0.92
 MAX_GROUP_SIZE = 8
 
 
+# The THIRD form of the shared-parent structure, found by reading 15
+# preprint-pass pairs by hand (2026-08-01): a child whose title CONTAINS the
+# parent's, carrying a part-indicating prefix. "Additional file 2 of X" vs
+# "X" scores 0.921 — above the gate — and the enumerator rule cannot see it
+# because the titles do not differ only in digits.
+#
+# Applied only when the titles DIFFER: two versioned deposits of the same
+# supplementary file have identical titles and are genuine duplicates
+# (the asthma fixture's Additional-file pairs), so they must stay mergeable.
+PART_PREFIX = (
+    r"^(additional file|additional table|additional figure|supplementary|supplemental"
+    r"|supporting information|appendix|figure s?[0-9]|table s?[0-9]|data (from|for)"
+    r"|dataset for|multimedia appendix)"
+)
+
+PART_SIBLINGS = (
+    """(
+    {a} <> {b}
+    AND ({a} ~ '"""
+    + PART_PREFIX
+    + """' OR {b} ~ '"""
+    + PART_PREFIX
+    + """')
+)"""
+)
+
+
 def enum_siblings_sql(a_col: str, b_col: str) -> str:
     return ENUM_SIBLINGS.format(a=a_col, b=b_col)
+
+
+def part_siblings_sql(a_col: str, b_col: str) -> str:
+    """True when one title is a PART of the other's work (supplementary file,
+    figure, appendix) rather than another copy of it."""
+    return PART_SIBLINGS.format(a=a_col, b=b_col)
+
+
+def sibling_sql(a_col: str, b_col: str) -> str:
+    """Every shared-parent form in one predicate: refuse the pair."""
+    return f"({enum_siblings_sql(a_col, b_col)} OR {part_siblings_sql(a_col, b_col)})"

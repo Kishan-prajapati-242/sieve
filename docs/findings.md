@@ -194,6 +194,50 @@ used entity search, so no earlier run report was affected.
 
 ---
 
+## 2026-08-01: The index a foreign key does not create (pattern, 3rd instance)
+
+**Symptom:** the merge executor ran 90 minutes to reach 45% (5,730 of
+12,796 groups) and projected 3.3 hours. Kishan read pg_stat_activity: a
+parallel seq scan, three processes, ~1.5 s per execution — arithmetic that
+matches ~1 second per group exactly.
+
+**Diagnosed with EXPLAIN ANALYZE, not by guessing.** The papers lookup was
+fine — `Index Scan using papers_pkey`. The cost was entirely inside a
+correlated subquery:
+
+    Index Scan using papers_pkey on papers   (actual time=1135.8..1140.3)
+      -> Parallel Seq Scan on source_records (actual time=2.2..1120.1)
+    Execution Time: 1140.490 ms
+
+**Root cause:** `source_records.paper_id` has REFERENCED `papers(id)`
+since migration 0002, and **PostgreSQL does not index the referencing side
+of a foreign key.** Every "which records belong to this paper" question
+was a parallel seq scan of the largest table in the database (815 MB).
+
+**Fix:** migration 0009, a partial index on `source_records(paper_id)`.
+**Verified before/after with EXPLAIN, not asserted:** 1,140.490 ms ->
+0.608 ms, a 1,875x speedup, and the plan changes from Parallel Seq Scan to
+`Index Scan using source_records_paper_id_idx`. Three hot paths were
+paying this, not only the merge: `owns_paper()` on EVERY record refresh
+during ingestion, the /api/stats attribution query, and the merge remap.
+
+**Third instance of one class**, after the quadratic self-join and the
+pg_trgm GUC default: *a set operation written so the database re-scans
+instead of looking up.*
+
+  * quadratic self-join — asked for a cross product to answer a grouping;
+  * pg_trgm threshold — asked for every pair above 0.3 to answer a
+    question about 0.92;
+  * this — asked for a table scan to answer a key lookup.
+
+**The shared tell, and it is the useful part: a query taking SECONDS when
+the code implies MILLISECONDS means the planner is not doing what the code
+says.** Not "the data is big" and not "the database is slow" — those were
+the tempting readings each time. The habit that catches all three is
+running EXPLAIN before accepting any per-item cost above a millisecond.
+
+---
+
 ## 2026-08-01: Shared parents, not bad strings — the sibling rule
 
 **The generalization (Kishan).** Four separate bugs turned out to be one
@@ -254,12 +298,24 @@ Why so few: the strategies are mostly EXACT (identical abstract, identical
 title+year), and exact keys are transitive by construction. Only
 title_trgm can chain, and it now contributes 1,144 of 16,680 pairs (6.9%).
 
+**Correction to the reasoning (Kishan, 2026-08-01).** An earlier draft
+said chaining is rare "because exact keys are transitive by construction".
+That is now FALSE and the error mattered: the sibling rule added a
+title-similarity condition to abstract_hash, so it is no longer an exact
+key and CAN chain. Left uncorrected, "exact keys cannot chain" would later
+have justified dropping the group-size cap.
+
+The correct reasoning: chaining is rare here because the conditions are
+STRONG (identical abstract plus similar title; identical title plus year),
+not because they are exact. That is an empirical property of this corpus,
+not a guarantee.
+
 **Decision: no near-clique requirement, no chain-depth cap, no separate
-transitive threshold.** All three would add a rule to prevent 1% of
-components from being slightly loose, and the group-size cap already
-catches the shape that would make chaining dangerous — a long chain
-produces a large component, and components over 8 are refused. Revisit if
-the trigram share of pairs grows (PubMed will test this).
+transitive threshold** — all three would add permanent machinery to tighten
+1% of components. **The group-size cap is therefore load-bearing, not
+belt-and-braces:** any long chain produces a large component, and
+components over 8 are refused. It must not be dropped. Revisit if the
+fuzzy share of pairs grows (PubMed will test this).
 
 ---
 

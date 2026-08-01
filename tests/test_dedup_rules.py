@@ -19,7 +19,7 @@ import psycopg
 import pytest
 
 from api.db.migrate import migrate
-from api.dedup.rules import ABSTRACT_TITLE_SIM, TRGM_THRESHOLD, enum_siblings_sql
+from api.dedup.rules import ABSTRACT_TITLE_SIM, TRGM_THRESHOLD, sibling_sql
 
 # (id, title, year, doi, abstract_key) — abstract_key stands in for the
 # real abstract: equal keys mean byte-identical abstracts upstream.
@@ -112,7 +112,7 @@ def pairs_by_abstract(conn: psycopg.Connection) -> set[tuple[int, int]]:
         SELECT c.a, c.b FROM cand c
         JOIN papers pa ON pa.id=c.a JOIN papers pb ON pb.id=c.b
         WHERE similarity(pa.title_norm, pb.title_norm) >= {ABSTRACT_TITLE_SIM}
-          AND NOT {enum_siblings_sql("pa.title_norm", "pb.title_norm")}
+          AND NOT {sibling_sql("pa.title_norm", "pb.title_norm")}
         """
     ).fetchall()
     return {(int(a), int(b)) for a, b in rows}
@@ -125,7 +125,7 @@ def pairs_by_title_trgm(conn: psycopg.Connection) -> set[tuple[int, int]]:
           ON a.id < b.id AND a.year = b.year
         WHERE similarity(a.title_norm, b.title_norm) >= {TRGM_THRESHOLD}
           AND a.title_norm <> b.title_norm
-          AND NOT {enum_siblings_sql("a.title_norm", "b.title_norm")}
+          AND NOT {sibling_sql("a.title_norm", "b.title_norm")}
         """
     ).fetchall()
     return {(int(a), int(b)) for a, b in rows}

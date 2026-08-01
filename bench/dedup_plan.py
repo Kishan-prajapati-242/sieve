@@ -29,7 +29,7 @@ from typing import Any
 import psycopg
 
 from api.dedup.cascade import SURVIVOR_SQL, UnionFind
-from api.dedup.rules import ABSTRACT_TITLE_SIM, MAX_GROUP_SIZE, TRGM_THRESHOLD, enum_siblings_sql
+from api.dedup.rules import ABSTRACT_TITLE_SIM, MAX_GROUP_SIZE, TRGM_THRESHOLD, sibling_sql
 
 LOOSEST = 0.85
 SWEEP = [0.85, 0.90, 0.92, 0.95, 0.98]
@@ -58,7 +58,7 @@ CREATE INDEX ON dd_sn_pp (surname, year);
 CREATE TABLE dd_scored AS
 SELECT DISTINCT ON (a,b) a, b, sim, enum_sib FROM (
   SELECT s1.id a, s2.id b, similarity(s1.title_norm, s2.title_norm) sim,
-         {enum_siblings_sql("s1.title_norm", "s2.title_norm")} AS enum_sib
+         {sibling_sql("s1.title_norm", "s2.title_norm")} AS enum_sib
   FROM dd_sn s1 JOIN dd_sn s2
     ON s1.surname = s2.surname AND s1.year = s2.year AND s1.id < s2.id
   WHERE length(s1.surname) >= 3 AND s1.title_norm <> s2.title_norm
@@ -69,14 +69,14 @@ CREATE TABLE dd_scored_pp AS
 SELECT DISTINCT ON (a,b) a, b, sim, enum_sib FROM (
   SELECT least(s1.id,s2.id) a, greatest(s1.id,s2.id) b,
          similarity(s1.title_norm, s2.title_norm) sim,
-         {enum_siblings_sql("s1.title_norm", "s2.title_norm")} AS enum_sib
+         {sibling_sql("s1.title_norm", "s2.title_norm")} AS enum_sib
   FROM dd_sn_pp s1 JOIN dd_sn s2 ON s2.surname = s1.surname AND s2.year = s1.year + 1
   WHERE length(s1.surname) >= 3 AND s1.id <> s2.id
     AND abs(s1.len - s2.len) <= ceil(least(s1.len,s2.len) * {SLACK}) + 2
   UNION ALL
   SELECT least(s1.id,s2.id), greatest(s1.id,s2.id),
          similarity(s1.title_norm, s2.title_norm),
-         {enum_siblings_sql("s1.title_norm", "s2.title_norm")}
+         {sibling_sql("s1.title_norm", "s2.title_norm")}
   FROM dd_sn_pp s1 JOIN dd_sn s2 ON s2.surname = s1.surname AND s2.year = s1.year - 1
   WHERE length(s1.surname) >= 3 AND s1.id <> s2.id
     AND abs(s1.len - s2.len) <= ceil(least(s1.len,s2.len) * {SLACK}) + 2
@@ -97,7 +97,7 @@ WITH grp AS (
   WHERE i < j
 )
 SELECT c.a, c.b, similarity(pa.title_norm, pb.title_norm) sim,
-       {enum_siblings_sql("pa.title_norm", "pb.title_norm")} AS enum_sib
+       {sibling_sql("pa.title_norm", "pb.title_norm")} AS enum_sib
 FROM cand c JOIN papers pa ON pa.id=c.a JOIN papers pb ON pb.id=c.b;
 """
 
