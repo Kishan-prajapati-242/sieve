@@ -237,6 +237,32 @@ tests/test_dedup_rules.py so no future rule can adopt it silently.
 
 ---
 
+## 2026-08-01: Chaining is a real risk that barely materialized
+
+**The concern (Kishan):** union-find over pairwise edges assumes
+similarity is transitive. A~B and B~C does not give A~C, so a component
+can be a CHAIN of locally-similar records that are globally dissimilar.
+
+**Measured, on every component of 4+ members (304 of them):** edge density
+(edges found / pairs possible) and mean pairwise title similarity across
+the whole component, not just the matched edges. **3 components of 304
+(1%) are chains** by the test "mean pairwise similarity below the merge
+threshold", and the worst has mean 0.890 / min 0.802 against a 0.92 gate —
+so even the chains are shallow, not runaway.
+
+Why so few: the strategies are mostly EXACT (identical abstract, identical
+title+year), and exact keys are transitive by construction. Only
+title_trgm can chain, and it now contributes 1,144 of 16,680 pairs (6.9%).
+
+**Decision: no near-clique requirement, no chain-depth cap, no separate
+transitive threshold.** All three would add a rule to prevent 1% of
+components from being slightly loose, and the group-size cap already
+catches the shape that would make chaining dangerous — a long chain
+produces a large component, and components over 8 are refused. Revisit if
+the trigram share of pairs grows (PubMed will test this).
+
+---
+
 ## 2026-08-01: The Ascle family is a recall gap, not a trigram win
 
 **Symptom:** Phase 1 recorded the Ascle preprint/published pair as "trigram
