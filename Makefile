@@ -39,3 +39,10 @@ dedup-precision:
 	docker compose run --rm --no-deps -v ./bench:/app/bench -v ./api:/app/api \
 	  -e DATABASE_URL=postgresql://sieve:sieve@postgres:5432/sieve \
 	  test python -m bench.dedup_precision
+
+# Inter-annotator agreement (your labels vs the model's second opinion).
+.PHONY: dedup-agreement
+dedup-agreement:
+	docker compose run --rm --no-deps -v ./bench:/app/bench -v ./api:/app/api \
+	  -e DATABASE_URL=postgresql://sieve:sieve@postgres:5432/sieve \
+	  test python -m bench.dedup_agreement

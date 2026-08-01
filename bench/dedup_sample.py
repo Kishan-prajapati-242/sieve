@@ -36,15 +36,36 @@ from api.dedup.rules import (
     part_siblings_sql,
 )
 
-TARGET = 200
+TARGET = 120
 SEED = 20260801
 
-# Explicit allocation overrides. acc_title_exact_group is the stratum whose
-# labels decide the MAX_GROUP_SIZE question, and the sqrt rule gave it 6 —
-# too few to tell 20% bad from 60% bad (Kishan, 2026-08-01). The weighting
-# in dedup_precision.py corrects for the oversample, so buying resolution
-# here costs nothing but labeling time.
-MIN_ALLOC = {"acc_title_exact_group": 20}
+# Allocation is EXPLICIT, not formula-derived, because the three groups of
+# strata are being bought for different reasons (Kishan, 2026-08-01):
+#
+#   acc_title_exact_group  20 — decides the MAX_GROUP_SIZE question, and 6
+#                               labels cannot tell 20% bad from 60% bad.
+#   every ref_* stratum    unchanged — they are the ONLY recall signal, so
+#                               thinning them buys nothing measurable.
+#   the large acc_* strata thinned proportionally to fit 120 total.
+#
+# Consequence, stated rather than buried: acc_title_trgm and acc_jmir_doi
+# land at 3 labels each. Their PER-STRATUM precision is uninformative at
+# that size; they still contribute correctly to the weighted overall
+# estimate, which is what the inverse-probability weights are for.
+ALLOC = {
+    "acc_abstract_hash": 12,
+    "acc_title_exact_pair": 8,
+    "acc_title_exact_group": 20,
+    "acc_title_trgm": 3,
+    "acc_preprint_trgm": 5,
+    "acc_jmir_doi": 3,
+    "ref_below_threshold_sameyear": 12,
+    "ref_below_threshold_preprint": 6,
+    "ref_enumerated_sibling": 15,
+    "ref_part_sibling": 5,
+    "ref_abstract_low_title": 15,
+    "ref_size_capped": 16,
+}
 
 ENUM = enum_siblings_sql("pa.title_norm", "pb.title_norm")
 PART = part_siblings_sql("pa.title_norm", "pb.title_norm")
@@ -158,15 +179,8 @@ def main() -> None:
             # Materialise only what we sample, to avoid fetching whole tables.
             strata[name]["_pairs"] = pairs
 
-    # Allocate the 200 across strata: proportional to sqrt(population) so
-    # small strata (jmir_doi, part-sibling) still get enough labels to say
-    # anything, while big ones stay dominant. Weights correct for this later.
     names = list(strata)
-    weights = {n: max(1.0, strata[n]["population"]) ** 0.5 for n in names}
-    total_w = sum(weights.values())
-    alloc = {n: max(MIN_ALLOC.get(n, 5), round(TARGET * weights[n] / total_w)) for n in names}
-    for n in names:
-        alloc[n] = min(alloc[n], strata[n]["population"])
+    alloc = {n: min(ALLOC.get(n, 5), strata[n]["population"]) for n in names}
 
     sample: list[dict[str, Any]] = []
     with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:

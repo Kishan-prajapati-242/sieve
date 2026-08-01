@@ -199,6 +199,47 @@ used entity search, so no earlier run report was affected.
 
 ---
 
+## 2026-08-01: Why the model's dedup labels cannot be ground truth
+
+The labeling harness has two annotators: Kishan and the model. Only one
+of them can serve as the reference, and it is not the model.
+
+**The circularity.** The cascade IS the model's judgment — every rule in
+api/dedup/rules.py, every threshold, the survivorship policy, the group
+cap. Scoring those rules against labels produced by the same judgment
+measures SELF-AGREEMENT, not correctness. A systematic blind spot in the
+rules is reproduced exactly in the labels, and the metric reports it as
+success. The model's labels are useful for one thing only: as a second
+annotator whose DISAGREEMENTS with Kishan point at pairs worth arguing
+about.
+
+**The empirical case, which is stronger than the argument.** Five hand-
+reads in this project, each on data the model had already analyzed and
+signed off:
+
+  1. junk types / paratext (2026-07-29) — proceedings volumes ranking
+     beside their own member papers;
+  2. the boilerplate blocklist (2026-07-31) — 12 of 45 "legitimate"
+     abstracts were dedup landmines, found only by re-asking the question;
+  3. the 15 preprint-pass pairs (2026-08-01) — 14 clean, 1 a
+     parent/child pair that produced the part-sibling rule;
+  4. the 15 title_exact pairs (2026-08-01) — 2-member groups clean,
+     groups of 4+ full of generic titles and versioned releases,
+     including a Zenodo ERROR MESSAGE merged across 5 records;
+  5. the p95 / merge-order / FK-index diagnoses, each of which the model
+     had accepted as "expected cost" until the numbers were read.
+
+In every case the model's prior analysis had passed the data as fine.
+Five for five. That is the base rate that decides whose labels are the
+reference.
+
+**So:** Kishan's labels are the ground truth. The model's are a second
+opinion, agreement is reported with Cohen's kappa rather than raw
+agreement (raw is inflated when one class dominates), and only the
+disagreements are surfaced for adjudication.
+
+---
+
 ## 2026-08-01: Merge ordering — 536 groups refused by their own constraints
 
 **Symptom:** the merge run completed but **536 of 7,712 groups (7%) failed**
