@@ -341,6 +341,38 @@ its own re-embed sweep, not a hash.
 
 ---
 
+## DECISION-3b: Merge survivorship — published wins over preprint
+
+**Date:** 2026-07-31
+
+**Decision:** when a merge group contains a published version and a
+preprint, the published side wins **title, abstract, and venue**.
+`arxiv_id` and `pubmed_id` are kept from whichever side has them, because
+a screening tool should cite the published version and still link the
+free PDF. `citation_count` takes the **max, not the sum** — summing
+double-counts anyone who cited both. Where neither side is clearly
+published, fall back to **lowest id** for determinism.
+
+This replaces the owner-predicate placeholder in api/ingest/store.py
+(lowest-id linked record writes the text), which existed only to stop two
+DOI-linked records overwriting each other on every crawl.
+
+**Alternatives considered:** preprint wins (earlier, more "original");
+newest-updated wins; summing citation counts.
+
+**Why rejected:** the measurement settles it — all 524 JMIR
+preprint/published pairs rewrote the abstract, and the rewritten one is
+canonical: it is the version that passed review and the version a
+reviewer will read. Summing citations is simply wrong arithmetic on
+overlapping sets.
+
+**What would change my mind:** a source where the "published" version is
+a paywalled abridgement and the preprint carries the full text — then
+abstract and title would want different survivorship rules, which the
+per-field structure here already allows.
+
+---
+
 ## Template
 
 ```text

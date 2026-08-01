@@ -194,6 +194,26 @@ used entity search, so no earlier run report was affected.
 
 ---
 
+## 2026-07-31: NULL embeddings are now routine, and invisible
+
+**The risk:** DECISION-3a (null the vector wherever text moves) plus
+dedup-before-embedding made NULL embeddings a NORMAL state rather than an
+anomaly. Right now 95 arXiv papers sit un-embedded by design.
+
+**Why it needs surfacing:** a NULL-embedding paper is invisible to vector
+search and contributes nothing to fusion, while still appearing via bm25.
+So the failure mode is not an error — it is *slightly worse results*,
+which nothing alerts on and no test catches. A refresh storm or a stalled
+backfill would degrade retrieval quietly for as long as nobody looked.
+
+**Fix:** GET /api/stats reports embedding coverage — total, embedded,
+NULL, and the NULL count split by cause where the cause is knowable
+(never embedded vs. invalidated by a text change vs. awaiting dedup).
+Making it a number on an endpoint means the next stats-driven README
+table shows it too.
+
+---
+
 ## 2026-07-31: The drift verification was vacuous (pattern, 4th instance)
 
 **Symptom:** I reported "title drift 0, citation drift 0, missed

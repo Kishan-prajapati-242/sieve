@@ -49,11 +49,32 @@ def client(scratch_db: str, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestCli
                 """,
                 (source_id, paper_id, query_name),
             )
+        # A second-source record, so embedding coverage can distinguish
+        # "awaiting dedup" from "stalled".
+        conn.execute(
+            """
+            INSERT INTO source_records (source, source_id, raw, paper_id, query_name)
+            VALUES ('arxiv', 'A1', '{}', %s, 'arxiv-cl')
+            """,
+            (ids[2],),
+        )
     close_pool()
     monkeypatch.setenv("DATABASE_URL", scratch_db)
     with TestClient(app) as c:
         yield c
     close_pool()
+
+
+def test_stats_reports_embedding_coverage(client: TestClient) -> None:
+    """NULL embeddings are routine now and fail silently (findings.md
+    2026-07-31): the seed leaves all 3 papers un-embedded, and one of them
+    is arXiv-sourced, i.e. deliberately awaiting dedup rather than stalled."""
+    cov = client.get("/api/stats").json()["embedding_coverage"]
+    assert cov["total"] == 3
+    assert cov["embedded"] == 0
+    assert cov["missing"] == 3
+    assert cov["missing_awaiting_dedup"] == 1  # the arxiv-linked paper
+    assert cov["missing"] == cov["embedded"] + cov["missing"] - cov["embedded"]
 
 
 def test_stats_reports_composition_with_first_fetch_attribution(client: TestClient) -> None:
@@ -62,7 +83,7 @@ def test_stats_reports_composition_with_first_fetch_attribution(client: TestClie
     data = resp.json()
     assert data["papers"] == 3
     assert data["retracted_papers"] == 1
-    assert data["source_records"] == 5
+    assert data["source_records"] == 6
     assert data["unlinked_records"] == 1
     # Paper A counts under general-nlp (its first record), not under the
     # overlapping specialty refetch; the legacy NULL reports as-is.
@@ -74,5 +95,6 @@ def test_stats_reports_composition_with_first_fetch_attribution(client: TestClie
     assert data["records_by_query"] == {
         "general-nlp": 2,
         "text-simplification": 2,
+        "arxiv-cl": 1,
         "unattributed": 1,
     }

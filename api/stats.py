@@ -26,6 +26,31 @@ SELECT
     (SELECT count(*) FROM source_records WHERE paper_id IS NULL) AS unlinked_records
 """
 
+# NULL embeddings became ROUTINE with DECISION-3a and dedup-before-embedding
+# (findings.md 2026-07-31), and the failure mode is silent: such a paper is
+# invisible to vector search and contributes nothing to fusion while still
+# appearing via bm25, so retrieval just gets quietly worse. Hence a number,
+# split by the cause where the cause is knowable.
+EMBEDDING_COVERAGE_SQL = """
+SELECT count(*)                                       AS total,
+       count(embedding)                               AS embedded,
+       count(*) - count(embedding)                    AS missing,
+       count(*) FILTER (
+           WHERE embedding IS NULL AND EXISTS (
+               SELECT 1 FROM source_records sr
+               WHERE sr.paper_id = papers.id AND sr.source <> 'openalex'
+           )
+       )                                              AS missing_awaiting_dedup,
+       count(*) FILTER (
+           WHERE embedding IS NULL AND created_at < now() - interval '1 hour'
+             AND NOT EXISTS (
+               SELECT 1 FROM source_records sr
+               WHERE sr.paper_id = papers.id AND sr.source <> 'openalex'
+           )
+       )                                              AS missing_invalidated_or_stalled
+FROM papers
+"""
+
 RECORDS_BY_QUERY_SQL = """
 SELECT COALESCE(query_name, 'unattributed') AS query_name, count(*) AS n
 FROM source_records
@@ -46,6 +71,21 @@ ORDER BY n DESC, query_name
 """
 
 
+class EmbeddingCoverage(BaseModel):
+    """Which papers can participate in vector and hybrid search at all."""
+
+    total: int
+    embedded: int
+    missing: int
+    # New-source papers held back deliberately: dedup runs before embedding,
+    # so these are correct-by-design, not a backlog.
+    missing_awaiting_dedup: int
+    # Older papers with no vector: a text change nulled it (DECISION-3a) and
+    # the backfill has not caught up, or the backfill is stalled. Non-zero
+    # here for long is the thing worth noticing.
+    missing_invalidated_or_stalled: int
+
+
 class StatsResponse(BaseModel):
     papers: int
     retracted_papers: int
@@ -53,12 +93,15 @@ class StatsResponse(BaseModel):
     unlinked_records: int
     papers_by_query: dict[str, int]
     records_by_query: dict[str, int]
+    embedding_coverage: EmbeddingCoverage
 
 
 def read_stats(conn: psycopg.Connection) -> StatsResponse:
     totals = conn.execute(TOTALS_SQL).fetchone()
     assert totals is not None
     papers, retracted, records, unlinked = totals
+    coverage_row = conn.execute(EMBEDDING_COVERAGE_SQL).fetchone()
+    assert coverage_row is not None
     records_by_query: dict[str, int] = dict(conn.execute(RECORDS_BY_QUERY_SQL).fetchall())
     papers_by_query: dict[str, int] = dict(conn.execute(PAPERS_BY_QUERY_SQL).fetchall())
     return StatsResponse(
@@ -68,6 +111,13 @@ def read_stats(conn: psycopg.Connection) -> StatsResponse:
         unlinked_records=unlinked,
         papers_by_query=papers_by_query,
         records_by_query=records_by_query,
+        embedding_coverage=EmbeddingCoverage(
+            total=coverage_row[0],
+            embedded=coverage_row[1],
+            missing=coverage_row[2],
+            missing_awaiting_dedup=coverage_row[3],
+            missing_invalidated_or_stalled=coverage_row[4],
+        ),
     )
 
 
