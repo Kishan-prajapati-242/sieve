@@ -194,6 +194,75 @@ used entity search, so no earlier run report was affected.
 
 ---
 
+## 2026-08-01: Shared parents, not bad strings — the sibling rule
+
+**The generalization (Kishan).** Four separate bugs turned out to be one
+structure. Records that are PARTS OF or VERSIONS OF a common parent
+inherit the parent's abstract:
+
+  * textbook chapters share the book description (23 chapters, one group);
+  * versioned data releases share the series description (Gene Ontology
+    x54, COVID Twitter chatter x141);
+  * supplementary files share the parent paper's abstract ("Additional
+    file 1/2/3 of X");
+  * proceedings volumes share a member paper's abstract (the Phase 1
+    ghost, found 2026-07-29).
+
+That is a permanent property of scholarly metadata, not an enumerable list
+of bad strings, so the boilerplate blocklist could only ever treat
+symptoms. The rule that replaces it: **same abstract + same title =
+duplicate; same abstract + DIFFERENT titles = siblings under a shared
+parent.**
+
+**Re-audit, with the right question.** The blocklist curation had asked "is
+this a real description?" The correct question is "would this merge
+distinct papers?" Of 45 shared abstracts I had kept OUT of the blocklist as
+legitimate, **12 (90 papers) have distinct titles** — every one a dedup
+landmine, including the cataract-LLM structured abstract and the textbook.
+The two roles are now separated: the blocklist governs EMBEDDING policy (a
+shared abstract makes siblings mutually indistinguishable in vector space),
+the sibling rule governs MERGING. The textbook was added to the blocklist
+for the embedding reason alone.
+
+**Second rule, same family:** titles differing only in digits are
+enumerated siblings ("Additional file 1" vs "Additional file 3", "Figure
+S4" vs "Figure S7"). Trigram scores them ~0.98 because one character
+differs — precisely the band a strict threshold trusts most.
+
+**Rejected: distinct DOI as a non-duplicate signal.** It would be a cheap
+guard against versioned releases, and it is wrong: the pediatric-asthma
+trio is ONE paper with THREE DOIs (BMC 10.1186/s12911-026-03371-x, Figshare
+c.8354879, Figshare c.8354879.v1). Pinned as a regression fixture in
+tests/test_dedup_rules.py so no future rule can adopt it silently.
+
+---
+
+## 2026-08-01: The Ascle family is a recall gap, not a trigram win
+
+**Symptom:** Phase 1 recorded the Ascle preprint/published pair as "trigram
+territory". Building it as a regression fixture showed it is not, at the
+shipped threshold. Measured title similarities:
+
+    arXiv 2023      <-> JMIR preprint 2024 : 0.914   (gate is 0.92)
+    JMIR preprint   <-> JMIR published     : 0.694
+    arXiv 2023      <-> JMIR published     : 0.725
+
+**How it was found:** writing the regression fixture and asserting the
+Phase 1 claim, which failed. The claim had never been measured — it was
+inferred from the pair "evading every exact key".
+
+**Root cause:** the published version appends ": Development and Evaluation
+Study", which adds enough trigrams to drop similarity to 0.694. No title
+threshold reaches that without merging unrelated papers.
+
+**Fix:** none yet, deliberately. Two candidate closures recorded with the
+fixture: drop the PREPRINT pass to 0.90 (its sweep curve is nearly flat, so
+the cost is ~79 pairs) which catches the 0.914 edge; and add the mechanical
+JMIR rule 10.2196/preprints.N -> 10.2196/N as an exact strategy, which is
+deterministic and closes the 0.694 edge that similarity cannot.
+
+---
+
 ## 2026-07-31: The dedup cascade was quadratic as first written
 
 **Symptom:** the cascade's first draft ran for **11 minutes without
