@@ -1,12 +1,19 @@
 """Hand-labeling CLI for dedup pairs. Kishan labels; this only presents.
 
-BLIND BY CONSTRUCTION. The cascade's verdict (merged / refused) is never
-shown before a label is recorded, and the sample is shuffled so verdict
-cannot be inferred from order. What IS shown is the rule that brought the
-pair into consideration and its title similarity, because "why am I
-looking at this?" is context, not an answer — a labeller who knows the
-cascade merged it is measuring their agreement with the cascade rather
-than the truth.
+BLIND BY CONSTRUCTION, and more strictly than the first version was.
+Nothing the cascade concluded reaches the screen: not the verdict, not the
+rule that surfaced the pair, not the similarity score, not the group size.
+Only the two records.
+
+The first version showed the rule name and similarity as "context, not an
+answer". Kishan rejected that, correctly: the rule name tells you what the
+system concluded and why, so after ~40 pairs a labeller has learned which
+rules are trustworthy and starts labeling the RULE instead of the
+evidence. The stratum is still recorded in the output, so
+dedup_precision.py can weight and stratify — it is simply not shown.
+
+If the rule name would change your answer, the pair is genuinely
+ambiguous and the answer is 'u'.
 
 Resumable: every label is written to disk immediately, so quitting and
 returning loses nothing. Labels already recorded are skipped.
@@ -36,18 +43,12 @@ def load(path: Path) -> Any:
 
 def show(pair: dict[str, Any], done: int, total: int) -> None:
     a, b = pair["a"], pair["b"]
-    sim = pair.get("similarity")
-    sim_text = f"{sim:.3f}" if isinstance(sim, float) else "n/a"
     width = int(os.environ.get("COLUMNS", "100"))
-    rule = pair["strategy"]
 
+    # Deliberately absent: rule, similarity, group size, verdict. See the
+    # module docstring — every one of them is a cascade conclusion.
     print("\n" + "=" * width)
-    print(
-        f"pair {pair['pair_id']}   ({done}/{total} labeled)   "
-        f"candidate via: {rule}   title similarity: {sim_text}"
-    )
-    if pair.get("group_size", 2) > 2:
-        print(f"   part of a {pair['group_size']}-member group")
+    print(f"pair {pair['pair_id']}   ({done}/{total} labeled)")
     print("=" * width)
     for tag, side in (("A", a), ("B", b)):
         print(f"\n[{tag}] {side.get('title') or '(no title)'}")
@@ -97,9 +98,13 @@ def main() -> None:
             continue
         labels[str(pair["pair_id"])] = {
             "same_paper": {"y": True, "n": False, "u": None}[answer],
+            # All recorded, none displayed: the estimator needs them, the
+            # labeller must not see them.
             "stratum": pair["stratum"],
-            # Recorded AFTER the label, never shown before it.
             "cascade_verdict": pair["_verdict"],
+            "rule": pair["strategy"],
+            "similarity": pair.get("similarity"),
+            "group_size": pair.get("group_size"),
         }
         LABELS.write_text(json.dumps({**store, "labels": labels}, indent=1))
 

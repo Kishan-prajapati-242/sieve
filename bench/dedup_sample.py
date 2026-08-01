@@ -39,6 +39,13 @@ from api.dedup.rules import (
 TARGET = 200
 SEED = 20260801
 
+# Explicit allocation overrides. acc_title_exact_group is the stratum whose
+# labels decide the MAX_GROUP_SIZE question, and the sqrt rule gave it 6 —
+# too few to tell 20% bad from 60% bad (Kishan, 2026-08-01). The weighting
+# in dedup_precision.py corrects for the oversample, so buying resolution
+# here costs nothing but labeling time.
+MIN_ALLOC = {"acc_title_exact_group": 20}
+
 ENUM = enum_siblings_sql("pa.title_norm", "pb.title_norm")
 PART = part_siblings_sql("pa.title_norm", "pb.title_norm")
 
@@ -157,7 +164,7 @@ def main() -> None:
     names = list(strata)
     weights = {n: max(1.0, strata[n]["population"]) ** 0.5 for n in names}
     total_w = sum(weights.values())
-    alloc = {n: max(5, round(TARGET * weights[n] / total_w)) for n in names}
+    alloc = {n: max(MIN_ALLOC.get(n, 5), round(TARGET * weights[n] / total_w)) for n in names}
     for n in names:
         alloc[n] = min(alloc[n], strata[n]["population"])
 
