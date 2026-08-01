@@ -1,6 +1,18 @@
 # Progress
 
-Phase: 3 IN PROGRESS (2026-07-31). Done: refresh propagation +
+Phase: 3 IN PROGRESS. **Dedup cascade EXECUTED 2026-08-01**: corpus
+196,988 -> 182,853 papers (14,135 removed, 7.2%), 13,567 merges rows of
+which 12,909 carry rollback snapshots. Per strategy: abstract_hash 6,662
+merges / 7,673 papers, title_exact 3,753 / 3,945, preprint_trgm 1,522 /
+1,523, jmir_doi 524 / 536, title_trgm 448 / 458 (+658 legacy ingest-time
+doi_exact). 57 groups / 889 papers FLAGGED not merged (dedup_review):
+versioned data releases. Cascade has converged — a re-plan finds 0
+mergeable groups. Phase 1 baseline query: 3/20 redundant -> 0/20. All
+182,853 papers embedded, HNSW rebuilt (203 MB), db 2,251 MB, 0 orphaned
+source_records. Merges are REVERSIBLE (api/dedup/merge.py rollback, round-
+trip tested). Next: queue conversion, then collections/screening/BibTeX.
+
+Earlier in Phase 3 (2026-07-31). Done: refresh propagation +
 DECISION-3a (embedding nulled at every text-write site, one shared
 implementation in api/ingest/store.py so no source client can forget it),
 boilerplate blocklist (932 hashes / 3,847 papers now embed title-only),

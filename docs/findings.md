@@ -142,8 +142,13 @@ across sources; and the preprint/published pair needs a version-preference
 rule, not just a merge, since the published version has the real citation
 count.
 
-**Fix:** deferred to Phase 3 by design. The "after" for this entry is this
-same query rerun post-cascade; the baseline to beat is 3/20 redundant.
+**Fix:** the Phase 3 cascade, executed 2026-08-01.
+
+**Verified before/after:** this exact query, rerun post-cascade:
+**3 of 20 redundant copies -> 0.** The asthma trio is one row; the Ascle
+family is one row (closed by jmir_doi, the mechanical DOI identity, not by
+similarity — see the Ascle recall-gap entry). Corpus 196,988 -> 182,853
+papers, 14,135 removed, source_records unchanged at 199,382 and 0 orphaned.
 
 ---
 

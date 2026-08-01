@@ -126,13 +126,22 @@ EXACT_PAIRS = {
 ORDER = ["doi_exact", "id_exact", "abstract_hash", "title_exact", "title_trgm", "preprint_trgm"]
 
 
+SCRATCH_TABLES = ("dd_scored", "dd_scored_pp", "dd_abs", "dd_sn_pp", "dd_sn", "dd_preprints")
+
+
 def build_scratch(conn: psycopg.Connection, rebuild: bool) -> None:
-    exists = conn.execute("SELECT to_regclass('dd_scored')").fetchone()
-    if exists and exists[0] and not rebuild:
+    # Check EVERY table, not just the last one: a killed build leaves some
+    # created and some not, and a partial set must be rebuilt, not reused.
+    present = [
+        t
+        for t in SCRATCH_TABLES
+        if (row := conn.execute("SELECT to_regclass(%s)", (t,)).fetchone()) and row[0]
+    ]
+    if len(present) == len(SCRATCH_TABLES) and not rebuild:
         print("reusing scratch tables (--rebuild to refresh)", flush=True)
         return
-    for t in ("dd_scored", "dd_scored_pp", "dd_abs", "dd_sn_pp", "dd_sn", "dd_preprints"):
-        conn.execute(f"DROP TABLE IF EXISTS {t}")
+    for t in SCRATCH_TABLES:
+        conn.execute(f"DROP TABLE IF EXISTS {t} CASCADE")
     print("building scratch tables (several minutes)...", flush=True)
     conn.execute(SCRATCH)
 

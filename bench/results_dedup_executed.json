@@ -1,45 +1,28 @@
 {
   "before": {
-    "papers": 191053,
-    "embedded": 190958,
-    "merges": 5854,
+    "papers": 182853,
+    "embedded": 182758,
+    "merges": 13567,
     "source_records": 199382
   },
   "after": {
-    "papers": 183413,
-    "embedded": 183318,
-    "merges": 13030,
+    "papers": 182853,
+    "embedded": 182758,
+    "merges": 13567,
     "source_records": 199382
   },
   "pairs_per_strategy": {
-    "jmir_doi": 1,
-    "abstract_hash": 2951,
-    "title_exact": 4766,
-    "title_trgm": 617,
-    "preprint_trgm": 1713
+    "abstract_hash": 596,
+    "title_exact": 705,
+    "title_trgm": 84,
+    "preprint_trgm": 90
   },
-  "groups_merged_per_strategy": {
-    "abstract_hash": 1738,
-    "title_exact": 3546,
-    "title_trgm": 411,
-    "preprint_trgm": 1481
-  },
-  "papers_deleted": 7640,
+  "groups_merged_per_strategy": {},
+  "papers_deleted": 0,
   "survivors_with_text_moved": 0,
   "groups_flagged": 57,
   "papers_in_flagged": 889,
   "orphaned_source_records": 0,
-  "errors": [
-    "group [24499, 24680]...: update or delete on table \"papers\" violates foreign key constraint \"merges_kept_paper_id_fkey\" on table \"merges\"\nDETAIL:  Key (id)=(24499) is still referenced from table \"merges\".",
-    "group [42838, 95274]...: duplicate key value violates unique constraint \"papers_doi_key\"\nDETAIL:  Key (doi)=(10.48550/arxiv.2007.15153) already exists.",
-    "group [141908, 142605]...: duplicate key value violates unique constraint \"papers_doi_key\"\nDETAIL:  Key (doi)=(10.48550/arxiv.1705.08422) already exists.",
-    "group [73717, 73784]...: duplicate key value violates unique constraint \"papers_doi_key\"\nDETAIL:  Key (doi)=(10.48550/arxiv.2602.19239) already exists.",
-    "group [163848, 163898]...: duplicate key value violates unique constraint \"papers_doi_key\"\nDETAIL:  Key (doi)=(10.48550/arxiv.2006.07890) already exists.",
-    "group [3669, 162790]...: update or delete on table \"papers\" violates foreign key constraint \"merges_kept_paper_id_fkey\" on table \"merges\"\nDETAIL:  Key (id)=(162790) is still referenced from table \"merges\".",
-    "group [73586, 73930]...: duplicate key value violates unique constraint \"papers_doi_key\"\nDETAIL:  Key (doi)=(10.31237/osf.io/xmdsr_v1) already exists.",
-    "group [605, 720]...: duplicate key value violates unique constraint \"papers_doi_key\"\nDETAIL:  Key (doi)=(10.48550/arxiv.1703.03130) already exists.",
-    "group [6127, 45301]...: duplicate key value violates unique constraint \"papers_doi_key\"\nDETAIL:  Key (doi)=(10.48550/arxiv.2009.03300) already exists.",
-    "group [73474, 74005, 174372]...: duplicate key value violates unique constraint \"papers_doi_key\"\nDETAIL:  Key (doi)=(10.17605/osf.io/qcxps) already exists."
-  ],
-  "error_count": 536
+  "errors": [],
+  "error_count": 0
 }
