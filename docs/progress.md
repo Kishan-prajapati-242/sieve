@@ -3,6 +3,44 @@
 Phase: 3 IN PROGRESS. Dedup work is COMPLETE and MEASURED; three build
 items remain.
 
+### 2026-08-12 — retrieval re-measured, speedup methodology changed
+
+Ground truth was stale: 8.2% of the ids it referenced had been deleted by
+dedup, 99% of queries had a dead id in their top-200. Rebuilt against
+183,167 papers, EXPLAIN-verified, and the file now records the corpus it
+describes.
+
+`VACUUM FULL` on papers: heap 44,059 → 35,348 pages, FTS GIN 118 → 83 MB,
+title trgm 70 → 39 MB. The corpus carried ~20% bloat, well beyond what
+dedup deleted. Every percentile steadied afterwards.
+
+Speedups are now paired (DECISION-3d): both sides timed back to back on
+the same query inside one run, ratio per query, bootstrap CI. The
+cross-run ratios in `results_speedups.json` are retired in place.
+
+**Current published numbers** (183,167 rows / 35,348 pages):
+
+| | p50 | p95 | p99 |
+|---|---|---|---|
+| bm25 sql | 1.0 | 25.2 | 47.2 |
+| vector sql (ef=40) | 2.0 | 3.0 | 3.7 |
+| vector e2e | 8.6 | 15.0 | 21.7 |
+| hybrid sql (200/600) | 18.2 | [53.4, 84.7] | [161.7, 249.3] |
+| hybrid e2e | 25.5 | [61.4, 100.0] | [172.4, 253.3] |
+| exact scan warm | 60.9 | 111.5 | [164.7, 251.2] |
+
+Paired speedup vs exact scan: **24.1x [23.3, 25.0]** retrieval-only and
+**7.1x [6.9, 7.3]** end-to-end at ef=40; **3.8x [3.6, 3.9]** and **2.9x
+[2.8, 3.0]** at the ef=600 hybrid default. Vector recall@200 at shipped
+defaults: 0.9861 (se 0.0010).
+
+**Open, not smoothed:** hybrid sql p50 has drifted 13.6 → 15.8 → 15.3 →
+18.2 across four sessions. The last step happened while bm25 and vector
+both improved and every percentile became stable, so it is probably not
+environmental. Not isolated. The paired treatment needs extending to
+`search_hybrid()` before any hybrid before/after claim is published.
+
+
 ## Phase 3 status (2026-08-01)
 
 DONE:

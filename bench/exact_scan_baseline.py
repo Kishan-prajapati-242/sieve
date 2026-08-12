@@ -55,9 +55,10 @@ from api.embed.texts import query_text
 from bench.harness import (
     across_runs,
     carry_superseded,
-    corpus_size,
+    db_state,
     interleaved,
     method_record,
+    state_key,
 )
 
 # Kishan's 20 eval queries (4 x 5 domains, 2026-07-31). Also the ground-truth
@@ -192,7 +193,7 @@ def main() -> None:
         ]
 
         explain = force_seq_scan(conn, vecs[0])
-        n_papers = corpus_size(conn)
+        state = db_state(conn)
         workers = re.search(r"Workers Launched: (\d+)", explain)
 
         if args.capture_labels:
@@ -231,7 +232,7 @@ def main() -> None:
     results_path = out_dir / "results_exact_scan.json"
     if results_path.exists():
         old = json.loads(results_path.read_text())
-        old_corpus = old.get("method", {}).get("corpus_size")
+        old_state = old.get("method", {}).get("db_state")
         if "method" not in old:  # v1 format
             old.pop("explain_analyze_example", None)
             prior = carry_superseded(
@@ -252,12 +253,12 @@ def main() -> None:
                 "runs or they report as a range (findings.md 2026-07-31)",
                 keep=("measured_at", "warm", "cold"),
             )
-        elif old_corpus != n_papers:
+        elif old_state != state:
             prior = carry_superseded(
                 old,
-                key=f"superseded_corpus_{old_corpus or 'unrecorded'}",
-                why=f"measured against a corpus of {old_corpus or 'unrecorded size'}; "
-                f"this run measured {n_papers}",
+                key=state_key(old_state) if old_state else "superseded_unrecorded_state",
+                why=f"measured against {old_state or 'an unrecorded database state'}; "
+                f"this run measured {state}",
                 keep=("measured_at", "warm", "cold"),
             )
         else:
@@ -284,7 +285,7 @@ def main() -> None:
             "findings.md 2026-07-31). Before/after latency claims should target "
             "p50/p95; any p99 claim needs the multi-run range, never a point.",
             parallel_seq_scan_workers=int(workers.group(1)) if workers else 0,
-            corpus_size=n_papers,
+            db_state=state,
         ),
         "warm": warm,
         "cold": cold,

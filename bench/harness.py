@@ -18,6 +18,7 @@ Convention (CLAUDE.md): p50/p95/p99, never a mean.
 """
 
 import math
+import random
 import statistics
 from typing import Any
 
@@ -95,14 +96,84 @@ def across_runs(runs: list[list[float]]) -> dict[str, Any]:
     return out
 
 
+PAIRED_RESAMPLES = 2000
+PAIRED_SEED = 20260812
+
+
+def paired_ratio(
+    pairs: list[tuple[float, float]],
+    *,
+    window: str,
+    resamples: int = PAIRED_RESAMPLES,
+    seed: int = PAIRED_SEED,
+) -> dict[str, Any]:
+    """Speedup from baseline and candidate measured back to back on the
+    SAME query, inside one run — never divided across two runs.
+
+    A cross-run ratio silently carries every difference between the two
+    sessions into the number. On 2026-08-12 that stopped being
+    hypothetical: the exact-scan denominator drifted ~15% slower for
+    reasons still unexplained, and the published end-to-end speedup rose
+    from 6.3x to 7.2x on the strength of it. The ratio improved because
+    the baseline got worse.
+
+    Pairing fixes it by construction. Thermal state, VM scheduling, and
+    page-cache contents are shared by two calls microseconds apart, so
+    they enter both sides of each ratio and divide out. What survives is
+    the difference between the two plans, which is the thing being
+    measured.
+
+    Point estimate is the MEDIAN of per-query ratios (not the ratio of
+    medians — that reintroduces an unpaired comparison), with a
+    percentile bootstrap CI resampled over queries, since repetitions of
+    one query are correlated and are collapsed by the caller first.
+    """
+    if not pairs:
+        raise ValueError("paired_ratio needs at least one pair")
+    if any(c <= 0 for _, c in pairs):
+        raise ValueError("candidate latency of 0 — timer resolution too coarse to pair")
+    ratios = sorted(b / c for b, c in pairs)
+    rng = random.Random(seed)
+    n = len(ratios)
+    boot = sorted(
+        statistics.median([ratios[rng.randrange(n)] for _ in range(n)]) for _ in range(resamples)
+    )
+    lo, hi = boot[int(0.025 * resamples)], boot[int(0.975 * resamples) - 1]
+    return {
+        "speedup": round(statistics.median(ratios), 1),
+        "ci95": [round(lo, 1), round(hi, 1)],
+        "window": window,
+        "paired": True,
+        "n_pairs": n,
+        "ratio_p10": round(ratios[int(0.10 * n)], 1),
+        "ratio_p90": round(ratios[int(0.90 * n)], 1),
+        "method": "median of per-query baseline/candidate ratios, both timed inside "
+        "one run with alternating order; percentile bootstrap over queries "
+        f"({resamples} resamples, seed {seed})",
+    }
+
+
 def speedup(
     baseline_ms: float, candidate_ms: float, *, baseline_window: str, candidate_window: str
 ) -> dict[str, Any]:
-    """A ratio of latencies is only a speedup when both sides measure the
+    """RETIRED 2026-08-12 in favour of paired_ratio(). Kept because the
+    window guard below is still the right check and the retired numbers
+    have to stay readable, but a cross-run ratio inherits every
+    difference between the two runs — see paired_ratio's docstring for
+    the instance that forced the change.
+
+    A ratio of latencies is only a speedup when both sides measure the
     same window (2026-07-31: 55ms scan-only was divided by 9.9ms
     end-to-end, understating the honest end-to-end ratio 6.3x as 5.5x —
     that one happened to run conservative; the rule exists for the times
-    it wouldn't). Refuses mismatched windows outright."""
+    it wouldn't). Refuses mismatched windows outright.
+
+    Note the guard's limit, exposed by the same 2026-08-12 review: it
+    compares window STRINGS. Passing one hand-written string for two
+    genuinely different windows (a 50-row (id, distance) scan against a
+    20-full-row search) satisfies it. paired_ratio runs one function on
+    both sides so the window is identical by construction, not by
+    assertion."""
     if baseline_window != candidate_window:
         raise ValueError(
             f"window mismatch: baseline={baseline_window!r} vs "
@@ -152,6 +223,38 @@ def corpus_size(conn: Any) -> int:
     doesn't say how big the table was isn't comparable to the next one."""
     row = conn.execute("SELECT count(*) FROM papers").fetchone()
     return int(row[0])
+
+
+def db_state(conn: Any) -> dict[str, Any]:
+    """What the measurement measured: rows AND physical layout.
+
+    Row count alone is not enough. On 2026-08-12 a VACUUM FULL took the
+    heap from 44,059 to 35,348 pages and rebuilt every index (the FTS GIN
+    dropped 118 MB -> 83 MB) at an unchanged row count — the same
+    query against a materially different table. Keying supersession on
+    this dict means a rebuild retires the old numbers automatically.
+    """
+    row = conn.execute(
+        "SELECT count(*) FROM papers",
+    ).fetchone()
+    pages = conn.execute(
+        "SELECT relpages, pg_relation_size(oid) FROM pg_class WHERE relname = 'papers'"
+    ).fetchone()
+    indexes = conn.execute(
+        "SELECT indexrelname, pg_relation_size(indexrelid) FROM pg_stat_user_indexes"
+        " WHERE relname = 'papers' ORDER BY indexrelname"
+    ).fetchall()
+    return {
+        "corpus_size": int(row[0]),
+        "heap_pages": int(pages[0]),
+        "heap_bytes": int(pages[1]),
+        "index_bytes": {name: int(size) for name, size in indexes},
+    }
+
+
+def state_key(state: dict[str, Any]) -> str:
+    """Stable supersede key for a db_state: rows and heap pages."""
+    return f"superseded_{state['corpus_size']}rows_{state['heap_pages']}pages"
 
 
 def method_record(*, timing_window: str, **fields: Any) -> dict[str, Any]:

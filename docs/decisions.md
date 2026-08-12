@@ -461,3 +461,36 @@ since it drove a rule change off n=19.
 
 **What would change my mind:** <the conditions under which this gets revisited>
 ```
+
+---
+
+## DECISION-3d: Speedups are measured paired, not divided across runs
+
+**Date:** 2026-08-12
+
+**Decision:** stop measuring baseline and candidate in separate runs and
+dividing across them. Interleave exact scan and HNSW for the same query
+within one run, alternating, and compute the speedup from paired samples
+with a CI on the ratio itself. Thermal state, page cache, and VM
+scheduling then affect both sides equally and cancel. Report the paired
+ratio for retrieval-only and end-to-end, and retire the cross-run ratios.
+
+**Alternatives considered:** keeping cross-run ratios and adding more
+runs to average out the drift; reporting a range instead of a point;
+pinning the machine down (no background work, fixed thermal state) and
+re-running the old way.
+
+**Why rejected:** "The unexplained regression inflates my headline claim.
+End-to-end speedup is 70.7/9.8 = 7.2x; against the old baseline it's
+(54.6+6.7)/9.8 = 6.3x. The number improved 14% because the denominator
+got worse for reasons nobody understands." More runs would narrow the
+spread without removing the mechanism — the two sides are still drawn
+from different conditions. Pairing removes it by construction.
+
+**What would change my mind:** nothing about the pairing itself, but the
+paired numbers now show a gap the old method hid — 24.1x retrieval-only
+at the vector-mode default of ef=40 against **3.8x at the hybrid default
+of ef=600**, which is the setting production actually runs. The honest
+headline is the ef=600 one, and it needs the same paired treatment
+applied to `search_hybrid()` rather than to `search_vector()` standing in
+for it.

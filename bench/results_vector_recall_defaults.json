@@ -1,5 +1,5 @@
 {
-  "measured_at": "2026-08-12T02:57:33.387858+00:00",
+  "measured_at": "2026-08-12T03:35:27.419018+00:00",
   "method": {
     "timing_window": "n/a \u2014 recall, not latency",
     "hardware": "MacBook Air M1 8GB (fanless), podman VM 4 vCPU / 4GB",
@@ -16,12 +16,12 @@
     "known_item_caveat": "500/520 queries are corpus titles"
   },
   "recall_at_200": {
-    "mean": 0.9848,
-    "se": 0.0014
+    "mean": 0.9861,
+    "se": 0.001
   },
   "recall_at_10": {
-    "mean": 0.9869,
-    "se": 0.0025
+    "mean": 0.9944,
+    "se": 0.0011
   },
   "n_queries": 520
 }

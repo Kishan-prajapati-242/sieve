@@ -1,4 +1,6 @@
 {
+  "retired": "2026-08-12. These are CROSS-RUN ratios: baseline and candidate measured in separate sessions and divided. The exact-scan baseline wanders 52-66 ms p50 across sessions on an unchanged database (findings.md), so a ratio built from two sessions inherits that spread \u2014 this end_to_end figure of 7.2x was 6.3x against the previous session's baseline, a 14% swing with nothing improved. The retrieval_only pair is worse than that: it divided a 50-row (id, distance) scan by a 20-full-row search, two different windows that passed the guard because both were handed the same window string. Superseded by results_paired_speedup.json.",
+  "superseded_by": "bench/results_paired_speedup.json",
   "retrieval_only": {
     "note": "vector sql p50 gated to a range by the stability rule; ratio computed at both ends of [2.0, 2.8]",
     "low": {

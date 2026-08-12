@@ -33,9 +33,10 @@ from api.search.vector import search_vector
 from bench.harness import (
     across_runs,
     carry_superseded,
-    corpus_size,
+    db_state,
     load_ground_truth,
     method_record,
+    state_key,
 )
 
 K = 20
@@ -54,7 +55,7 @@ def main() -> None:
     with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
         conn.execute("CREATE EXTENSION IF NOT EXISTS pg_prewarm")
         conn.execute("SELECT pg_prewarm('papers_embed_idx', 'read'), pg_prewarm('papers', 'read')")
-        n_papers = corpus_size(conn)
+        state = db_state(conn)
 
         for _ in range(3):
             encoder.encode([query_text("warmup")])
@@ -101,16 +102,16 @@ def main() -> None:
 
     results_path = out_dir / "results_mode_latency.json"
     old = json.loads(results_path.read_text()) if results_path.exists() else None
-    old_corpus = (old or {}).get("method", {}).get("corpus_size")
+    old_state = (old or {}).get("method", {}).get("db_state")
     prior = (
         carry_superseded(
             old,
-            key=f"superseded_corpus_{old_corpus or 'unrecorded'}",
-            why=f"measured against a corpus of {old_corpus or 'unrecorded size'}; "
-            f"this run measured {n_papers}",
+            key=state_key(old_state) if old_state else "superseded_unrecorded_state",
+            why=f"measured against {old_state or 'an unrecorded database state'}; "
+            f"this run measured {state}",
             keep=("measured_at", "bm25", "vector", "hybrid"),
         )
-        if old_corpus != n_papers
+        if old_state != state
         else carry_superseded(old)
     )
 
@@ -134,7 +135,7 @@ def main() -> None:
                 "note": "sampled once per query, this session",
             },
             known_item_caveat="500/520 queries are corpus titles (see recall sweep caveats)",
-            corpus_size=n_papers,
+            db_state=state,
         ),
         "bm25": {"sql": bm25["sql"]},
         "vector": {"sql": vector["sql"], "e2e_with_embed": with_embed(vector)},

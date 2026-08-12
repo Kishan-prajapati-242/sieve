@@ -926,47 +926,141 @@ number happened to be small.
 
 ---
 
-## 2026-08-12: The corpus shrank 7% and the exact scan got slower
+## 2026-08-12: The exact-scan "regression" was the noise floor (corrected)
 
-**Symptom:** dedup removed 13,726 net papers, so the exact-scan baseline
-was expected to improve slightly. Warm p50 went the other way: 54.6 ms →
-61.7 ms, and 64.0 ms on a second run. Cold median 1,126 → 1,281 ms.
+**Symptom as first reported:** dedup removed 13,726 net papers, so the
+exact-scan baseline was expected to improve. Warm p50 went the other way:
+54.6 ms → 61.7, then 64.0 on a re-run.
 
-**How it was found:** a standing instruction to report anything that got
-materially worse rather than smooth it into noise.
+**My first explanation was wrong in a specific way.** I wrote that "no
+improvement was structurally possible" because the heap was unchanged at
+44,059 pages, so a seq scan reads the same pages. Kishan corrected it:
+the cost of an exact vector scan is 183,167 distance computations over
+384-dim halfvecs, not page reads. Dead tuples fail the visibility check
+*before* expression evaluation, so ~13,800 distance computations stop
+happening — 7% less CPU at identical I/O. The page argument is right
+about I/O and does not license the conclusion. Corrected expectation:
+~7% faster, or flat. Observed: ~15% slower. Gap to explain: ~22%.
 
-**Root cause of the missing improvement — measured, not assumed:** the
-heap is **344 MB / 44,059 pages, identical to when the table held 196,893
-rows**. `VACUUM` reclaims space *within* pages for reuse; it does not
-return them to the OS. A sequential scan reads pages, not rows. Deleting
-7% of rows therefore buys exactly nothing here until the heap is
-rewritten (`VACUUM FULL` or a rebuild), which has not been done. So the
-expectation of a speedup was wrong, and no regression is needed to
-explain a flat result.
+**Disconfirming evidence for thermal, which I had in hand and did not
+flag.** In the same re-measurement, bm25 sql p50 went **2.2 → 1.1 ms**,
+per-run [2.3, 2.2, 1.9] → [1.3, 1.0, 1.1] — non-overlapping, a clean 2x
+*improvement*. Sustained thermal load cannot halve one query path while
+degrading another in the same session. The pattern instead tracks what
+each path is sensitive to:
 
-**The additional ~15% is not isolated.** What was ruled out:
+| path | sensitive to | 7% fewer rows should | observed |
+|---|---|---|---|
+| bm25 GIN | matched documents per query | help, and duplicates are exactly what matched twice | 2x faster |
+| HNSW | graph traversal, ~log in node count | ~nothing | flat |
+| exact scan | distance computations at fixed page count | ~7% | (see below) |
 
-- **Scratch tables.** 156 MB of `dd_*` dedup tables were found resident
-  in a 4 GB VM and dropped. Re-ran: p50 came back **64.0**, not lower.
-  Not the cause.
-- **Buffer profile** is consistent with page-cache pressure rather than
-  extra work: `shared hit=69,087 read=46,797` against a 128 MB
-  `shared_buffers`, so most of the scan comes from outside Postgres's
-  own cache and is sensitive to whatever else the VM is holding.
+**The decisive test (Kishan's): `VACUUM FULL` and re-measure.** If page
+count were binding, p50 should drop toward 54.
 
-Remaining candidate is sustained thermal load — this machine is a fanless
-M1 Air with a documented 2.4x factor under sustained load, and this
-session ran hours of merges, reindexes and embedding passes before the
-measurement. That is a hypothesis, not a finding; separating it cleanly
-would require restoring the pre-dedup corpus and A/B-ing.
+| | heap pages | heap | warm p50 | per-run |
+|---|---|---|---|---|
+| pre-dedup | 44,059 | 344 MB | 54.6 | 51.5 / 54.6 / 56.4 |
+| post-dedup, run 1 | 44,059 | 344 MB | 61.7 | 62.4 / 54.6 / 61.7 |
+| post-dedup, run 2 | 44,059 | 344 MB | 64.0 | 55.2 / 66.3 / 64.0 |
+| post-dedup, control | 44,059 | 344 MB | **56.0** | 58.6 / 56.0 / 52.1 |
+| after VACUUM FULL | **35,348** | **276 MB** | **60.9** | 60.3 / 60.9 / 62.4 |
 
-**Fix:** none applied. The honest statement is that the two sessions are
-not cleanly comparable, and the pre- and post-dedup exact-scan numbers
-should not be presented as a before/after of dedup. Both are preserved in
-`results_exact_scan.json` with the corpus each was measured against.
+**Root cause: there was no regression to explain.** Four measurements of
+the identical database returned p50 between 56.0 and 64.0; individual run
+p50s across the same state span 52.1–66.3. Removing 20% of the heap
+pages moved p50 by nothing detectable. The measurement's session-to-
+session spread (~15%) is larger than both the effect being attributed to
+dedup (~7%) and the effect of a fifth of the heap disappearing. The
+"~15% regression" was a draw from that spread, and my earlier framing —
+an unexplained regression with thermal as the leading suspect — treated
+noise as signal.
 
-**Verified:** heap size read from `pg_relation_size`/`relpages` before and
-after; scratch-table hypothesis tested by dropping and re-running. The
-p95/p99 stability gate fired on every post-dedup run (p95 range [87.7,
-172.0], p99 range [125.7, 414.5]), which is itself consistent with a
-noisier machine rather than a slower query.
+Two things do survive as real conclusions:
+
+1. **The exact scan is CPU-bound on distance computation, not I/O-bound.**
+   A 20% page reduction produced no measurable change. That confirms
+   Kishan's correction and retires the page argument in both directions.
+2. **This instrument cannot resolve anything smaller than ~15% across
+   sessions.** Any before/after claim below that threshold is unpublishable
+   as a cross-run difference — which is what forced the methodology change
+   below.
+
+**Fix:** `harness.paired_ratio()` and `bench/paired_speedup.py` — baseline
+and candidate timed back to back on the same query inside one run, order
+rotated, ratio computed per query. Shared conditions divide out. Also
+`harness.db_state()`: results now record heap pages and per-index bytes,
+not just row count, so a rewrite supersedes the old numbers automatically.
+
+**Verified:** `VACUUM FULL` took the heap 44,059 → 35,348 pages and every
+index with it (FTS GIN 118 → 83 MB, title trgm 70 → 39 MB, pkey 8.7 → 4.0
+MB), at an unchanged row count — i.e. the corpus had ~20% bloat, well
+beyond the 7% dedup deleted. Post-rewrite the whole instrument steadied:
+per-run p50s of [1.0, 1.0, 1.0] bm25, [2.0, 2.0, 1.9] vector, [18.2,
+18.3, 17.9] hybrid, where the same measurements had been gating to ranges
+an hour earlier. Recall at the shipped defaults, on the rebuilt HNSW:
+0.9848 → 0.9861 (se 0.0010).
+
+---
+
+## 2026-08-12: A number drifted flattering, 4th instance (pattern)
+
+**Symptom:** the published end-to-end speedup rose from **6.3x to 7.2x**
+between sessions. Nothing about the system improved. The denominator —
+the exact-scan baseline — got ~15% slower for reasons nobody had
+explained, and the ratio rose because of it.
+
+**How it was found:** Kishan, checking the new headline against the old
+one and asking what had actually changed.
+
+**The pattern, now four instances, all caught by Kishan:**
+1. p99 published from the favorable end of an observed 95.8–406.9 spread;
+2. a ratio computed across two different timing windows (5.5x vs 6.3x);
+3. the fusion convergence proxy measured against the deepest ranking
+   tested, which reaches 1.0 by construction;
+4. this ratio, inflated 14% by an unexplained drift in its own baseline.
+
+The shared shape is **not** dishonesty in any single step — each number
+was measured. It is that the *error is never randomly signed*. A drifting
+baseline could have made the ratio look worse; it happened to make it
+look better, and a number that looks better invites less scrutiny than
+one that looks worse. The habit that catches it: when a headline number
+improves, ask which side of the fraction moved, before celebrating.
+
+**Fix:** `harness.speedup()` is retired for new work in favour of
+`harness.paired_ratio()`, which cannot express this failure — both sides
+come from the same run, so a drift that hits both cancels exactly.
+`tests/test_harness.py::test_paired_ratio_is_immune_to_a_drifting_baseline`
+pins it: a 20% slowdown applied to both sides leaves the paired ratio
+bit-identical, while the cross-run form moves.
+
+The retirement also exposed a second hole in the old guard. It compares
+window *strings*, so the retired retrieval-only ratio passed one
+hand-written window for a 50-row `(id, distance)` scan on one side and a
+20-full-row search on the other — mismatched windows that satisfied the
+mismatched-window check. `paired_speedup.py` runs `search_vector()` on
+both sides, differing only by `enable_indexscan`, so the window is
+identical by construction rather than by assertion.
+
+---
+
+## 2026-08-12: Pair 67 — the conservative label is the honest one
+
+**Context:** during the dedup precision review Kishan corrected 10 of his
+120 labels and asked me to verify three before applying them. Pair 67
+(PGxCorpus: bioRxiv preprint vs Figshare item) was the one I refused to
+apply, and he has now confirmed the refusal and withdrawn the correction.
+
+**The evidence:** the Figshare item's abstract describes *contents* ("941
+sentences from 911 PubMed abstracts") while the bioRxiv and Scientific
+Data records describe a *study*. Scientific Data is a data-descriptor
+journal, which is precisely why all three share a title — the paper's
+subject is the dataset. Same relation as pair 35: a data artifact and its
+descriptor paper, not two copies of one record.
+
+**Why it is worth an entry:** leaving it scored as a false positive holds
+measured precision at **0.957** instead of raising it. The label that
+makes the system look worse is the one the evidence supports, and it
+stays. That is the counterexample to the drift pattern above — the same
+review that found a flattering ratio also found a chance to improve a
+number honestly declined.

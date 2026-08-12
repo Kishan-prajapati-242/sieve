@@ -5,8 +5,10 @@ import pytest
 
 from bench.harness import (
     across_runs,
+    carry_superseded,
     interleaved,
     method_record,
+    paired_ratio,
     percentile,
     speedup,
     summarize,
@@ -85,3 +87,56 @@ def test_method_record_demands_a_timing_window() -> None:
     assert rec["timing_window"] == "execute()+fetchall() round trip"
     assert rec["n"] == 3
     assert "hardware" in rec and "database" in rec
+
+
+def test_paired_ratio_is_immune_to_a_drifting_baseline() -> None:
+    """The 2026-08-12 lesson: a cross-run ratio improves when the baseline
+    degrades. Pairing cancels a shared multiplicative slowdown exactly."""
+    clean = [(60.0 + i, 2.0) for i in range(50)]
+    # every sample 20% slower — thermal, contention, whatever hits both sides
+    throttled = [(b * 1.2, c * 1.2) for b, c in clean]
+    window = "sql only"
+    assert (
+        paired_ratio(clean, window=window)["speedup"]
+        == (paired_ratio(throttled, window=window)["speedup"])
+    )
+    # the cross-run form does NOT cancel it: baseline throttled, candidate not
+    drifted = speedup(60.0 * 1.2, 2.0, baseline_window=window, candidate_window=window)
+    honest = speedup(60.0, 2.0, baseline_window=window, candidate_window=window)
+    assert drifted["speedup"] > honest["speedup"]
+
+
+def test_paired_ratio_ci_brackets_the_point_estimate() -> None:
+    pairs = [(50.0 + (i % 7), 2.0 + (i % 3) * 0.1) for i in range(200)]
+    out = paired_ratio(pairs, window="sql only")
+    lo, hi = out["ci95"]
+    assert lo <= out["speedup"] <= hi
+    assert out["n_pairs"] == 200
+    assert out["paired"] is True
+
+
+def test_paired_ratio_refuses_a_zero_candidate() -> None:
+    """A 0 ms candidate means the timer, not the query, is being measured."""
+    with pytest.raises(ValueError, match="timer resolution"):
+        paired_ratio([(50.0, 0.0)], window="sql only")
+
+
+def test_carry_superseded_preserves_every_prior_block() -> None:
+    """Deleting a published number is worse than correcting it."""
+    old = {
+        "measured_at": "t0",
+        "warm": {"p50_ms": 54.6},
+        "superseded_v1": {"why": "20-sample p99"},
+    }
+    out = carry_superseded(
+        old, key="superseded_corpus_196893", why="corpus changed", keep=("measured_at", "warm")
+    )
+    assert out["superseded_v1"] == {"why": "20-sample p99"}
+    assert out["superseded_corpus_196893"]["warm"] == {"p50_ms": 54.6}
+    assert out["superseded_corpus_196893"]["why"] == "corpus changed"
+
+
+def test_carry_superseded_never_overwrites_an_existing_block() -> None:
+    old = {"superseded_x": {"why": "first"}, "warm": {"p50_ms": 1.0}}
+    out = carry_superseded(old, key="superseded_x", why="second", keep=("warm",))
+    assert out["superseded_x"] == {"why": "first"}
