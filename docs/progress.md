@@ -1,37 +1,60 @@
 # Progress
 
-Phase: 3 IN PROGRESS. **Dedup cascade EXECUTED 2026-08-01**: corpus
-196,988 -> 182,853 papers (14,135 removed, 7.2%), 13,567 merges rows of
-which 12,909 carry rollback snapshots. Per strategy: abstract_hash 6,662
-merges / 7,673 papers, title_exact 3,753 / 3,945, preprint_trgm 1,522 /
-1,523, jmir_doi 524 / 536, title_trgm 448 / 458 (+658 legacy ingest-time
-doi_exact). 57 groups / 889 papers FLAGGED not merged (dedup_review):
-versioned data releases. Cascade has converged — a re-plan finds 0
-mergeable groups. Phase 1 baseline query: 3/20 redundant -> 0/20. All
-182,853 papers embedded, HNSW rebuilt (203 MB), db 2,251 MB, 0 orphaned
-source_records. Merges are REVERSIBLE (api/dedup/merge.py rollback, round-
-trip tested). Next: queue conversion, then collections/screening/BibTeX.
+Phase: 3 IN PROGRESS. Dedup work is COMPLETE and MEASURED; three build
+items remain.
 
-Earlier in Phase 3 (2026-07-31). Done: refresh propagation +
-DECISION-3a (embedding nulled at every text-write site, one shared
-implementation in api/ingest/store.py so no source client can forget it),
-boilerplate blocklist (932 hashes / 3,847 papers now embed title-only),
-HNSW rebuilt, and the **arXiv client** (1 req/3s, --limit, Atom parsing,
-idempotency verified live: 100 entries twice -> papers 196,988 both runs).
-Next: dedup cascade, then queue conversion, then
-collections/screening/BibTeX.
+## Phase 3 status (2026-08-01)
 
-95 arXiv papers are deliberately UN-EMBEDDED right now: dedup runs before
-embedding for this source (Kishan's ordering), so they wait for the
-cascade rather than being embedded and then merged away.
+DONE:
+- **arXiv client** (api/ingest/arxiv.py): 1 req/3s bucket, --limit, Atom
+  parsing, version-stripped ids, idempotency verified live (100 entries
+  twice -> identical counts). 8 tests.
+- **Refresh propagation + DECISION-3a**: refresh now moves title, abstract,
+  citation_count and is_retracted onto papers; the embedding is nulled at
+  every text-write site, in ONE shared store layer (api/ingest/store.py) so
+  no source client can forget it. The retraction case is the correctness
+  driver, not embedding freshness.
+- **Boilerplate blocklist** (migration 0007 + bench/seed_boilerplate.py):
+  933 hashes / 3,847 papers embed title-only. Governs EMBEDDING policy
+  only; merging is the sibling rule's job.
+- **Dedup cascade** (api/dedup/{rules,cascade,merge}.py, executed): corpus
+  196,988 -> 183,167 papers. 13,445 merges, all with rollback snapshots.
+  Phase 1 duplicate baseline 3/20 -> **0/20**, verified in bm25 and hybrid.
+- **Reversibility, exercised on production data**: DECISION-3c unwound 122
+  title_exact groups, restoring 314 papers, 0 errors, 0 orphaned records.
+- **Precision/recall measured** (DECISION-3c): precision 0.957
+  [0.904, 0.998], recall-among-candidates 0.973 [0.959, 0.988], F1 0.965,
+  from 120 blind hand-labeled pairs. Harness: bench/dedup_{sample,label,
+  precision,agreement,unwind}.py, `make label` / `make dedup-precision` /
+  `make dedup-agreement`. Inter-annotator kappa 0.905.
 
-New in the store layer, from a test failure: refresh + DOI-collision
-linking means two records point at one paper, and each would overwrite it
-with its own title on every crawl — text flip-flopping by refresh order,
-embedding nulled forever, reruns never converging. Fixed with an owner
-predicate (lowest-id linked record writes the text). **That predicate is
-exactly what the undecided preprint-vs-published survivorship rule
-replaces** when the cascade lands.
+CURRENT STATE: 183,167 papers, all embedded, HNSW 204 MB, db ~2.25 GB.
+199,382 source_records (openalex + arxiv), 0 orphaned. 179 groups in
+dedup_review awaiting human judgment (57 size-capped versioned releases +
+122 unwound title_exact groups).
+
+REMAINING IN PHASE 3, in order:
+1. **PubMed E-utilities client** — 3 req/s without a key, XML. Same
+   discipline as arXiv: --limit, per-source bucket, idempotency verified by
+   running twice. Will exercise id_exact (pubmed_id), which has proposed 0
+   pairs so far because no PubMed IDs repeat yet.
+2. **Queue conversion** — ingest_jobs with SELECT ... FOR UPDATE SKIP
+   LOCKED, backoff with full jitter, dead-lettering after max_attempts, N
+   concurrent workers. Tests: concurrent workers claim disjoint jobs, a job
+   failing 5 times lands in `dead`.
+3. **Collections, screening decisions, BibTeX export**, and the /api/stats
+   expansion the brief asks for (per-source counts, merges by strategy,
+   queue depth, dead jobs).
+
+KNOWN GAPS, measured and deliberately open:
+- **ref_below_threshold_preprint misses 83% of sampled pairs** — the Ascle
+  gap as a population fact. Fix is more mechanical publisher DOI rules
+  (jmir_doi is the first, 524 merges), NOT a threshold tuned to a fixture.
+- 179 dedup_review groups are unmerged, so the COVID Twitter dataset still
+  returns 141 times. Collapsing versioned releases in the UI without
+  merging records is the Phase 4 product answer.
+- Label drift caveat on the 0.957: 10 of 120 labels were corrected on
+  review (docs/findings.md).
 
 Phase 2 was **CLOSED** by Kishan 2026-07-31 (arXiv + PubMed
 clients, dedup cascade, SKIP LOCKED queue, collections/screening/BibTeX,

@@ -46,9 +46,21 @@ TRGM_THRESHOLD = 0.92
 
 # A merge group larger than this is not merged. Real duplicate sets are
 # small; a large component means a shared-parent artifact or a similarity
-# chain, and both need human eyes. Measured basis: 91.9% of groups have
-# exactly 2 members, and the tail above 10 was entirely bugs on first plan.
+# chain, and both need human eyes.
 MAX_GROUP_SIZE = 8
+
+# Per-strategy override, from the hand-labeled measurement (DECISION-3c,
+# 2026-08-01). title_exact groups of 3+ measured 0.684 precision at n=19 —
+# nearly a third of those merges were wrong — while its 2-member pairs
+# measured 0.857 and every other strategy measured 1.000. Identical titles
+# in the same year are a strong signal for a PAIR and a weak one for a
+# CROWD: a crowd means a generic title ("Preprint (Japanese) (AI-Ready)"),
+# a periodic release, or a Zenodo error string used as a title.
+MAX_GROUP_SIZE_BY_STRATEGY = {"title_exact": 2}
+
+
+def max_group_size(strategy: str) -> int:
+    return MAX_GROUP_SIZE_BY_STRATEGY.get(strategy, MAX_GROUP_SIZE)
 
 
 # The THIRD form of the shared-parent structure, found by reading 15

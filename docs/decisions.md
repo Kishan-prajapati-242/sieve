@@ -373,6 +373,79 @@ per-field structure here already allows.
 
 ---
 
+## DECISION-3c: The dedup measurement, and what it changed
+
+**Date:** 2026-08-01
+
+**Measured** (120 hand-labeled pairs, stratified across 12 strata, blind —
+the cascade's verdict, rule, similarity and group size were never shown
+during labeling; inverse-probability weighted; stratified-bootstrap CIs):
+
+    precision              0.957   95% CI [0.904, 0.998]
+    recall (candidates)    0.973   95% CI [0.959, 0.988]
+    F1                     0.965   95% CI [0.938, 0.990]
+
+**Per-stratum precision, merged strata:**
+
+    acc_abstract_hash        n=11  1.000
+    acc_title_trgm           n=3   1.000
+    acc_preprint_trgm        n=5   1.000
+    acc_jmir_doi             n=2   1.000
+    acc_title_exact_pair     n=7   0.857
+    acc_title_exact_group    n=19  0.684   <- the finding
+
+**Per-stratum miss rate, refused strata** (share of refusals that were
+real duplicates):
+
+    ref_enumerated_sibling   n=14  0.000
+    ref_part_sibling         n=5   0.000
+    ref_size_capped          n=16  0.000
+    ref_below_threshold_sameyear  n=11  0.182
+    ref_abstract_low_title   n=8   0.250
+    ref_below_threshold_preprint  n=6   0.833   <- the Ascle gap, as a population
+
+**Decision:** MAX_GROUP_SIZE drops to 2 for title_exact only, on the
+measured 0.684. Every other strategy keeps 8. The 122 already-executed
+title_exact groups above the new cap were UNWOUND via the rollback
+snapshots — 314 papers restored, routed to dedup_review, 0 errors, 0
+orphaned records — which is also the first exercise of reversibility on
+production data rather than in a unit test.
+
+**Two results worth keeping separate from the headline:**
+
+1. **The three rules built under scrutiny have a ZERO miss rate.** The
+   enumerator rule, the part-sibling rule and the size cap refused 1,617
+   pairs between them and not one sampled refusal was a real duplicate.
+   Rules added in response to hand-reading did not cost recall.
+
+2. **ref_below_threshold_preprint misses 5 of 6 sampled pairs (0.833).**
+   This is the Ascle gap as a population fact rather than one fixture, and
+   it is exactly why tuning the preprint threshold to 0.90 to catch Ascle
+   was REJECTED: the gap is real and systemic, so it deserves a real fix
+   (the mechanical publisher DOI rules, of which jmir_doi is the first),
+   not a threshold moved until one known case passes. Fitting a global
+   parameter to a fixture would have hidden a population-level problem
+   behind a green test.
+
+**The caveat that travels with the precision number:** Kishan corrected 10
+of his own 120 labels (8.3%) on review, clustered on sibling and
+parallel-variant patterns whose taxonomy only emerged partway through
+labeling — so early labels used a weaker rubric than late ones. 0.957
+rests on labels of which roughly 1 in 12 changed when re-examined once.
+Quote it with the caveat attached (docs/findings.md).
+
+**Alternatives considered:** dropping the global cap to 2 (would refuse
+correct merges in strategies measuring 1.000 precision); leaving the cap
+at 8 (accepts ~32% error on 122 groups); deleting the bad merges outright
+rather than unwinding (loses the audit trail and the ability to revisit).
+
+**What would change my mind:** a second labeling pass with the taxonomy
+fixed in advance. It would move precision, probably by less than the first
+review did, and title_exact's 0.684 is the number most worth re-measuring
+since it drove a rule change off n=19.
+
+---
+
 ## Template
 
 ```text

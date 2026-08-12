@@ -1,7 +1,7 @@
 """Execute the dedup plan. Reversible by construction (api/dedup/merge.py).
 
 Runs the same rules bench/dedup_plan.py measures, then merges every group
-of at most MAX_GROUP_SIZE members inside one transaction per group. Groups
+of at most its strategy's cap, inside one transaction per group. Groups
 above the cap are recorded in dedup_review and left alone.
 
 Strategy order gives attribution; grouping is union-find over all pairs.
@@ -21,7 +21,7 @@ import psycopg
 
 from api.dedup.cascade import UnionFind
 from api.dedup.merge import merge_group
-from api.dedup.rules import ABSTRACT_TITLE_SIM, MAX_GROUP_SIZE, TRGM_THRESHOLD
+from api.dedup.rules import ABSTRACT_TITLE_SIM, TRGM_THRESHOLD, max_group_size
 from bench.dedup_plan import EXACT_PAIRS, build_scratch
 
 # A mechanical publisher transform, verified in this corpus: 524 of 1,013
@@ -103,8 +103,13 @@ def main() -> None:
             if root not in best or rank < best[root][0]:
                 best[root] = (rank, name, sim)
 
-        mergeable = {r: m for r, m in groups.items() if len(m) <= MAX_GROUP_SIZE}
-        flagged = {r: m for r, m in groups.items() if len(m) > MAX_GROUP_SIZE}
+        # The cap is per strategy (DECISION-3c): title_exact caps at 2 on its
+        # measured 0.684 precision for 3+ groups, everything else at 8.
+        def cap_for(root: int) -> int:
+            return max_group_size(best.get(root, (0, "unknown", None))[1])
+
+        mergeable = {r: m for r, m in groups.items() if len(m) <= cap_for(r)}
+        flagged = {r: m for r, m in groups.items() if len(m) > cap_for(r)}
 
         print(
             f"plan: {len(pairs)} pairs, {len(groups)} groups, "
@@ -136,7 +141,9 @@ def main() -> None:
                     members,
                     len(members),
                     ",".join(sorted(strat_by_root.get(root, set()))),
-                    f"over MAX_GROUP_SIZE={MAX_GROUP_SIZE}; likely versioned/periodic releases",
+                    f"over cap {cap_for(root)} for strategy "
+                    f"{best.get(root, (0, 'unknown', None))[1]}; "
+                    "likely versioned/periodic releases or a generic title",
                 ),
             )
 

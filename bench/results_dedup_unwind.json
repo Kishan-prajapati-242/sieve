@@ -1,0 +1,21 @@
+{
+  "strategy": "title_exact",
+  "new_max_size": 2,
+  "merges_unwound": 122,
+  "papers_restored": 314,
+  "before": {
+    "papers": 182853,
+    "embedded": 182853,
+    "merges": 13567,
+    "review_rows": 57
+  },
+  "after": {
+    "papers": 183167,
+    "embedded": 182731,
+    "merges": 13445,
+    "review_rows": 179
+  },
+  "orphaned_source_records": 0,
+  "errors": [],
+  "error_count": 0
+}
