@@ -247,7 +247,7 @@
     }
   },
   "superseded_corpus_196893": {
-    "why": "measured against a corpus of 196,893 papers, before the dedup cascade removed 13,726 net rows; the ground truth changed with it, so these numbers describe a different database (findings.md 2026-08-12)",
+    "why": "measured against a corpus of 196,893 papers, before the dedup cascade removed 13,821 net rows (196,988 peak - 183,167); the ground truth changed with it, so these numbers describe a different database (findings.md 2026-08-12)",
     "measured_at": "2026-07-31T21:38:42.611150+00:00",
     "embed_component_p50_ms": 7.6,
     "bm25": {

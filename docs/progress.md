@@ -143,7 +143,7 @@ Phase 2 was **CLOSED** by Kishan 2026-07-31 (arXiv + PubMed
 clients, dedup cascade, SKIP LOCKED queue, collections/screening/BibTeX,
 stats expansion). Phase 3 inputs already recorded: dedup BEFORE fusion
 (RRF double-pays twins), exact-abstract-hash cascade step before trigram
-(560 groups / 1,273 papers), no-DOI stratum (15,258 papers, 7.7%) needs
+(560 groups / 1,273 papers), no-DOI stratum (12,036 papers, 6.6% — re-counted 2026-08-12) needs
 its own precision measurement, dedup baseline = 3/20 redundant on the
 "clinical text simplification" query.
 
@@ -335,7 +335,7 @@ topics field, and provenance is never inferred — the old crawl was ~75%
 general concept, so that bucket skews general, making 62.2% conservative.
 Coverage: 4,056 null venue (2.1%), 655 null authors (0.3%), 28 null
 abstract, 173 retracted (flagged, visible), 181,635 distinct DOIs.
-Era split 90.3% recent (2017+) / 9.7% classics — the specialty topics are
+Era split 89.7% recent (2017+) / 10.3% classics (re-counted 2026-08-12 at 183,167; was 90.3/9.7 at 196,893) — the specialty topics are
 recency-skewed, so classics slices underfilled and the run reported it.
 Junk types skipped: 1,499 (peer-review 398, editorial 377, paratext 368,
 erratum 172, supplementary-materials 166, retraction 18).

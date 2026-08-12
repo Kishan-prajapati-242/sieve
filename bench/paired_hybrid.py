@@ -1,31 +1,48 @@
-"""What the HNSW index buys the HYBRID mode, paired — and where hybrid's
-18 ms actually goes.
+"""Per-ARM paired speedups for the hybrid path — and why the fused ratio
+is not measurable with this instrument.
 
-Two questions in one run, because both need the same session:
+The obvious experiment is to run search_hybrid() twice, once with the HNSW
+index available and once without, and divide. It does not work, and the
+reason is worth more than the number would have been:
 
-  1. The flagship speedup. Every published speedup so far measured
-     search_vector(), which ships at ef=40. The mode a user actually gets
-     is search_hybrid() at depth=200/ef=600, and its speedup is a
-     different number. Baseline and candidate are the SAME call — only
-     enable_indexscan differs — so the window is identical by
-     construction (paired_speedup.py's rule, applied one level up).
+  **Planner GUCs are not selective to one index.** The only lever for
+  "take papers_embed_idx away" is enable_indexscan / enable_bitmapscan,
+  and those are global to the statement. enable_bitmapscan=off also
+  removes papers_fts_idx — a GIN index is ONLY reachable through a bitmap
+  scan — and enable_indexscan=off also removes papers_pkey from the final
+  join. Measured 2026-08-12: the bm25 arm alone goes 7.39 ms (Bitmap Index
+  Scan on papers_fts_idx) to 227.80 ms (Parallel Seq Scan), a 30.8x
+  handicap on an arm that has nothing to do with the vector index. The
+  "baseline" runs three seq scans of a 276 MB heap where the intended one
+  runs one.
 
-  2. Where the time goes. hybrid sql p50 has read 13.6, 15.8, 15.3 and
-     18.2 ms across four sessions. Cross-session comparison is exactly
-     what the noise-floor finding says is unpublishable, so instead of
-     comparing sessions this decomposes the current number: the fused
-     statement against each CTE's workload run alone, all paired inside
-     one query slot. bm25 at depth and vector at depth are what the CTEs
-     do; whatever hybrid costs beyond their sum is fusion — the RRF join,
-     the second sort, and the final k-row fetch.
+  So the fused baseline is inflated, biasing the ratio HIGH. A second and
+  opposite contamination biases it LOW (see results_paired_hybrid.json's
+  defect block). Neither is sized, so the fused ratio is bracketed rather
+  than bounded, and re-running with a better variant order would repair
+  only the second one while looking like a full repair.
 
-The decomposition is an attribution, not an identity: Postgres may
-overlap the two CTEs, so `fusion_overhead` is an upper bound on genuine
-fusion cost and a lower bound on how much the CTEs share.
+What IS measurable, and what this script reports:
+
+  vector arm — search_vector(k=depth). VECTOR_SQL has exactly one index
+    option, so here the GUC IS selective and the paired ratio is honest.
+
+  bm25 arm — search_bm25(k=depth) under both plans. Not a "speedup over
+    an exact scan" in the same sense; it is what papers_fts_idx is worth,
+    stated on its own rather than smuggled into a hybrid number.
+
+  fusion cost — hybrid minus its two arms, under the SAME plan on both
+    sides, which is a decomposition rather than a ratio and does not
+    depend on the broken lever.
+
+Order is a seeded RANDOM permutation per query, not a rotation: a cyclic
+rotation preserves every adjacency, which is how one variant ended up
+running immediately after a cache-destroying scan in 3 of 4 slots.
 """
 
 import json
 import os
+import random
 import statistics
 import time
 from datetime import UTC, datetime
@@ -41,11 +58,13 @@ from api.search.fusion import HYBRID_DEFAULT_EF_SEARCH, search_hybrid
 from api.search.vector import search_vector
 from bench.harness import (
     across_runs,
+    contention_report,
     db_state,
     load_ground_truth,
     method_record,
     paired_ratio,
     pinned_connection,
+    server_activity,
 )
 
 K = 20
@@ -54,7 +73,8 @@ EF = HYBRID_DEFAULT_EF_SEARCH
 N_RUNS = 3
 WARMUP_RUNS = 1
 
-VARIANTS = ("hybrid_exact", "hybrid_hnsw", "vector_depth", "bm25_depth")
+VARIANTS = ("hybrid_exact", "hybrid_hnsw", "vector_depth", "bm25_depth", "bm25_depth_exact")
+ORDER_SEED = 20260812
 
 
 EXACT_GUCS = {"enable_indexscan": "off", "enable_bitmapscan": "off"}
@@ -112,7 +132,7 @@ def time_variant(conn: psycopg.Connection, variant: str, entry: dict[str, Any]) 
         )
     elif variant == "vector_depth":
         search_vector(conn, query_vec=entry["embedding"], k=DEPTH, ef_search=EF)
-    else:
+    else:  # bm25_depth and bm25_depth_exact differ only by which conn they get
         search_bm25(conn, query=entry["query"], k=DEPTH)
     return (time.perf_counter() - t0) * 1000
 
@@ -130,6 +150,7 @@ def main() -> None:
         conn.execute("CREATE EXTENSION IF NOT EXISTS pg_prewarm")
         conn.execute("SELECT pg_prewarm('papers_embed_idx', 'read'), pg_prewarm('papers', 'read')")
         state = db_state(conn)
+        activity_before = server_activity(conn)
         plans = verify_plans(conn, exact_conn, labels[0])
 
         for _ in range(3):
@@ -143,15 +164,21 @@ def main() -> None:
         per_run: dict[str, list[list[float]]] = {v: [] for v in VARIANTS}
         for run_index in range(WARMUP_RUNS + N_RUNS):
             run: dict[str, list[float]] = {v: [] for v in VARIANTS}
-            for i, entry in enumerate(labels):
-                rot = i % len(VARIANTS)  # no fixed second-mover advantage
-                for variant in VARIANTS[rot:] + VARIANTS[:rot]:
-                    target = exact_conn if variant == "hybrid_exact" else conn
+            rng = random.Random(ORDER_SEED + run_index)
+            for entry in labels:
+                # Shuffled, not rotated: a cyclic rotation preserves every
+                # adjacency, so one variant systematically follows the
+                # cache-destroying one (findings.md 2026-08-12).
+                order = list(VARIANTS)
+                rng.shuffle(order)
+                for variant in order:
+                    target = exact_conn if variant in ("hybrid_exact", "bm25_depth_exact") else conn
                     run[variant].append(time_variant(target, variant, entry))
             if run_index >= WARMUP_RUNS:
                 for variant in VARIANTS:
                     per_run[variant].append(run[variant])
         verify_plans(conn, exact_conn, labels[0])  # nothing drifted mid-run
+        contention = contention_report(activity_before, server_activity(conn), own=conn.info.dbname)
 
     def per_query(variant: str) -> list[float]:
         runs = per_run[variant]
@@ -159,7 +186,8 @@ def main() -> None:
 
     med = {v: per_query(v) for v in VARIANTS}
     retrieval = list(zip(med["hybrid_exact"], med["hybrid_hnsw"], strict=True))
-    e2e = [(b + e, c + e) for (b, c), e in zip(retrieval, embed_ms, strict=True)]
+    # No e2e pairing here: adding an identical embed cost to both sides of a
+    # ratio that is already not reportable would only make it look finished.
 
     # Attribution of the shipped hybrid latency, per query then aggregated.
     overhead = [
@@ -197,13 +225,27 @@ def main() -> None:
             embed_component={"p50_ms": round(statistics.median(embed_ms), 1)},
             known_item_caveat="500/520 queries are corpus titles",
             plans=plans,
+            contention=contention,
         ),
         "levels": {v: across_runs(per_run[v]) for v in VARIANTS},
-        "retrieval_only": paired_ratio(
-            retrieval, window="sql only: search_hybrid(k=20, depth=200, ef=600)"
+        "fused_ratio": {
+            "not_reportable": "The lever that removes papers_embed_idx also removes "
+            "papers_fts_idx and papers_pkey, so the fused baseline is not 'hybrid "
+            "without the vector index'. See this file's defect block and the module "
+            "docstring. Reported per-arm instead.",
+            "raw_for_reference_only": paired_ratio(
+                retrieval, window="sql only: search_hybrid(k=20, depth=200, ef=600)"
+            ),
+        },
+        "vector_arm": paired_ratio(
+            list(zip(med["hybrid_exact"], med["vector_depth"], strict=True)),
+            window="sql only: search_vector(k=200, ef=600) — NOTE this pairs against "
+            "the contaminated hybrid baseline; the clean vector-arm number is in "
+            "results_paired_speedup.json",
         ),
-        "end_to_end": paired_ratio(
-            e2e, window="end-to-end: query embed + search_hybrid(k=20, depth=200, ef=600)"
+        "bm25_arm_index_value": paired_ratio(
+            list(zip(med["bm25_depth_exact"], med["bm25_depth"], strict=True)),
+            window="sql only: search_bm25(k=200), papers_fts_idx available vs not",
         ),
         "decomposition": parts,
     }

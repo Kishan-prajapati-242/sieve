@@ -51,11 +51,13 @@ from api.embed.texts import query_text
 from api.search.vector import search_vector
 from bench.harness import (
     across_runs,
+    contention_report,
     db_state,
     load_ground_truth,
     method_record,
     paired_ratio,
     pinned_connection,
+    server_activity,
 )
 
 K = 20
@@ -112,6 +114,7 @@ def main() -> None:
         conn.execute("CREATE EXTENSION IF NOT EXISTS pg_prewarm")
         conn.execute("SELECT pg_prewarm('papers_embed_idx', 'read'), pg_prewarm('papers', 'read')")
         state = db_state(conn)
+        activity_before = server_activity(conn)
         plans = verify_plans(conn, exact_conn, labels[0]["embedding"])
 
         for _ in range(3):
@@ -135,6 +138,7 @@ def main() -> None:
                 for variant in VARIANTS:
                     per_run[variant].append(run[variant])
         verify_plans(conn, exact_conn, labels[0]["embedding"])  # nothing drifted
+        contention = contention_report(activity_before, server_activity(conn), own=conn.info.dbname)
 
     # Collapse repetitions per query first: repeats of one query are
     # correlated, so the bootstrap resamples queries, not measurements.
@@ -160,6 +164,7 @@ def main() -> None:
             embed_component={"p50_ms": round(statistics.median(embed_ms), 1)},
             known_item_caveat="500/520 queries are corpus titles (see recall sweep caveats)",
             plans=plans,
+            contention=contention,
         ),
         "levels": {v: across_runs(per_run[v]) for v in VARIANTS},
     }

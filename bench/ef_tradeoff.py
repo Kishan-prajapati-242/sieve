@@ -17,6 +17,13 @@ recall@200 at ef=40 is the number that did not exist before this script.
 The published 0.943 belongs to ef=200, and ef=40 with LIMIT 200 leans on
 iterative_scan to refill a candidate list five times too small — there
 was no reason to assume it lands anywhere near 0.943.
+
+The full ef ladder (40/200/400/600/800) is here rather than in
+ef_at_fixed_depth.py because DECISION-2e's basis was measured 2026-07-31,
+BEFORE the cascade ran, and only its ef=600 point was ever re-measured
+against the rebuilt ground truth. A table with two corpora in adjacent
+rows cannot support a "+4.3 points" claim, so the whole ladder is
+re-measured here in one session against one corpus.
 """
 
 import json
@@ -41,7 +48,11 @@ DEPTH = 200
 K = 20
 N_RUNS = 3
 WARMUP_RUNS = 1
-EF_SETTINGS = (DEFAULT_EF_SEARCH, HYBRID_DEFAULT_EF_SEARCH)  # 40, 600
+# Recall is measured at every rung of the dial; latency only at the two
+# SHIPPED settings, because the decomposition question is "what does the
+# configuration we run cost", not "what would every configuration cost".
+RECALL_EF = (DEFAULT_EF_SEARCH, 200, 400, HYBRID_DEFAULT_EF_SEARCH, 800)  # 40..800
+LATENCY_EF = (DEFAULT_EF_SEARCH, HYBRID_DEFAULT_EF_SEARCH)  # 40, 600
 
 
 def stat(vals: list[float]) -> dict[str, float]:
@@ -53,7 +64,15 @@ def stat(vals: list[float]) -> dict[str, float]:
 
 def main() -> None:
     out_dir = Path(__file__).parent
-    labels, gt_method = load_ground_truth(out_dir / "labels" / "exact_top200_wide.json")
+    all_labels, gt_method = load_ground_truth(out_dir / "labels" / "exact_top200_wide.json")
+    # Distinct query strings only. The set holds "Occurrence Download" 28
+    # times — a GBIF export title whose tied embeddings score ~0 at low ef —
+    # and weighting it 28x moved the ef=200 mean five points and nearly
+    # doubled a decision's apparent margin (findings.md 2026-08-12).
+    by_query: dict[str, Any] = {}
+    for entry in all_labels:
+        by_query.setdefault(entry["query"], entry)
+    labels = list(by_query.values())
     encoder = OnnxEncoder(os.environ["EMBED_MODEL_DIR"])
 
     with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
@@ -61,6 +80,16 @@ def main() -> None:
         conn.execute("CREATE EXTENSION IF NOT EXISTS pg_prewarm")
         conn.execute("SELECT pg_prewarm('papers_embed_idx', 'read'), pg_prewarm('papers', 'read')")
         state = db_state(conn)
+        # The ground-truth builder writes corpus_papers; db_state writes
+        # corpus_size. Reading only one name is how this check printed
+        # "None" instead of failing (2026-08-12). Accept both, then ASSERT:
+        # a recall number measured against a different corpus than the one
+        # it scores is the exact staleness that started this work.
+        gt_corpus = gt_method.get("corpus_papers", gt_method.get("corpus_size"))
+        assert gt_corpus == state["corpus_size"], (
+            f"ground truth describes {gt_corpus} papers, live corpus has "
+            f"{state['corpus_size']} — rebuild it before measuring recall"
+        )
 
         for _ in range(3):
             encoder.encode([query_text("warmup")])
@@ -71,9 +100,9 @@ def main() -> None:
             embed_ms.append((time.perf_counter() - t0) * 1000)
 
         per_ef: dict[int, dict[str, Any]] = {}
-        for ef in EF_SETTINGS:
+        for ef in RECALL_EF:
             # Recall at depth 200: the retrieval quality this ef delivers.
-            r200, r10 = [], []
+            r200, r20, r10 = [], [], []
             with conn.transaction():
                 conn.execute("SELECT set_config('hnsw.ef_search', %s, true)", (str(ef),))
                 conn.execute("SELECT set_config('hnsw.iterative_scan', 'strict_order', true)")
@@ -90,7 +119,18 @@ def main() -> None:
                         EXACT_SQL, {"q": vector_literal(entry["embedding"]), "k": DEPTH}
                     ).fetchall()
                     r200.append(tie_aware_recall(entry["top200"], got, DEPTH))
+                    r20.append(tie_aware_recall(entry["top200"], got, 20))
                     r10.append(tie_aware_recall(entry["top200"], got, 10))
+
+            # recall@20 is the figure that belongs beside the VECTOR mode's
+            # speedup: that mode serves k=20 and never requests depth 200.
+            per_ef[ef] = {
+                "recall_at_200": stat(r200),
+                "recall_at_20": stat(r20),
+                "recall_at_10": stat(r10),
+            }
+            if ef not in LATENCY_EF:
+                continue
 
             # Latency at k=20: the shape the API actually serves.
             runs: list[list[float]] = []
@@ -105,15 +145,17 @@ def main() -> None:
 
             sql = across_runs(runs)
             e2e = across_runs([[a + b for a, b in zip(embed_ms, r, strict=True)] for r in runs])
-            per_ef[ef] = {
-                "recall_at_200": stat(r200),
-                "recall_at_10": stat(r10),
-                "sql": sql,
-                "e2e_with_embed": e2e,
-                "embed_share_of_e2e_p50": (
-                    round(statistics.median(embed_ms) / e2e["p50_ms"], 3) if e2e["p50_ms"] else None
-                ),
-            }
+            per_ef[ef].update(
+                {
+                    "sql": sql,
+                    "e2e_with_embed": e2e,
+                    "embed_share_of_e2e_p50": (
+                        round(statistics.median(embed_ms) / e2e["p50_ms"], 3)
+                        if e2e["p50_ms"]
+                        else None
+                    ),
+                }
+            )
 
     report = {
         "measured_at": datetime.now(UTC).isoformat(),
@@ -124,27 +166,38 @@ def main() -> None:
             protocol=f"pg_prewarm; {len(labels)} distinct queries; per ef {WARMUP_RUNS} "
             f"warmup + {N_RUNS} measured runs, across_runs gate; both ef settings in "
             "one session so the comparison between them is paired",
-            settings={"k": K, "recall_depth": DEPTH, "ef_settings": list(EF_SETTINGS)},
+            settings={
+                "k": K,
+                "queries": f"{len(labels)} distinct of {len(all_labels)} entries",
+                "recall_depth": DEPTH,
+                "recall_ef": list(RECALL_EF),
+                "latency_ef": list(LATENCY_EF),
+            },
             db_state=state,
             ground_truth_corpus=gt_method.get("corpus_size"),
             embed_component={"p50_ms": round(statistics.median(embed_ms), 1)},
             tie_handling="hit if id in exact top-k OR distance <= boundary + 1e-9",
             known_item_caveat="500/520 queries are corpus titles",
         ),
-        "by_ef": {str(ef): per_ef[ef] for ef in EF_SETTINGS},
+        "by_ef": {str(ef): per_ef[ef] for ef in RECALL_EF},
     }
     (out_dir / "results_ef_tradeoff.json").write_text(json.dumps(report, indent=2))
+    print(
+        f"ground truth: {gt_method.get('corpus_size')} papers, live corpus: {state['corpus_size']}"
+    )
+    print(f"ground truth method block present: {bool(gt_method) and 'note' not in gt_method}")
     print(
         json.dumps(
             {
                 str(ef): {
                     "recall@200": per_ef[ef]["recall_at_200"],
+                    "recall@20": per_ef[ef]["recall_at_20"],
                     "recall@10": per_ef[ef]["recall_at_10"],
-                    "sql_p50": per_ef[ef]["sql"]["p50_ms"],
-                    "e2e_p50": per_ef[ef]["e2e_with_embed"]["p50_ms"],
-                    "embed_share": per_ef[ef]["embed_share_of_e2e_p50"],
+                    "sql_p50": per_ef[ef].get("sql", {}).get("p50_ms"),
+                    "e2e_p50": per_ef[ef].get("e2e_with_embed", {}).get("p50_ms"),
+                    "embed_share": per_ef[ef].get("embed_share_of_e2e_p50"),
                 }
-                for ef in EF_SETTINGS
+                for ef in RECALL_EF
             },
             indent=2,
         )

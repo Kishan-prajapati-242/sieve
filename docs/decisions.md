@@ -266,6 +266,39 @@ are indistinguishable. That is the correct framing, not "free" and not
 "inside noise": we cannot see the cost, which is different from there
 being none.
 
+**Re-measured 2026-08-12, and the margin is STABLE — read the caveat
+before quoting either column.** The basis above was measured 2026-07-31,
+BEFORE the dedup cascade, against a ground truth since rebuilt (8.2% of the
+ids it referenced were later deleted). The ladder was re-run against the
+183,167-paper corpus. Both columns are recorded; neither supports a claim
+that the decision got stronger or weaker.
+
+| ef | recall@200, 07-31 (196,893) | recall@200, 08-12 (183,167), 493 distinct queries |
+|---|---|---|
+| 40  | not measured | 0.8804 |
+| 200 | 0.9431 ± .0028 | 0.9401 |
+| 400 | 0.9766 ± .0015 | 0.9760 ± .0016 |
+| 600 | 0.9857 ± .0011 | 0.9856 |
+| 800 | 0.9898 ± .0008 | 0.9900 ± .0008 |
+
+**ef=600 over ef=200: +4.3 points before, +4.5 points after.** The decision
+holds on an essentially unchanged margin.
+
+**Caveat that produced these numbers, not a footnote.** A first pass
+reported the gap as +9.4 points, from means taken over all 520 ground-truth
+ENTRIES. The query set contains the string "Occurrence Download" 28 times —
+a GBIF export title whose near-identical embeddings make the exact scan's
+tie order arbitrary — and it scores 0.0003 recall@200 at ef=40 and 0.0099
+at ef=200 while scoring 0.9952 at ef=600. Weighted 28x it moves the low-ef
+means about five points and none of the high-ef ones. The columns above are
+over 493 DISTINCT query strings; the 520-entry figures are in
+bench/results_ef_tradeoff.json and should not be compared with the
+pre-cascade column (findings.md 2026-08-12).
+
+**Also first measured here:** recall@20 at ef=40 = 0.9238, which is the
+figure that belongs beside the vector mode's speedup — vector mode serves
+k=20, so recall@200 describes a depth it never requests.
+
 **Alternatives considered:** ef=200 (leaves 4.3 recall points
 unclaimed); ef=800 (+0.4 points for +4 ms — past the elbow); N=500
 (18.4 ms SQL p50, and the known-item caveat means the value of deeper N

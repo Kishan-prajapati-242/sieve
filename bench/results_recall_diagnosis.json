@@ -1,0 +1,232 @@
+{
+  "measured_at": "2026-08-12T23:27:47.187953+00:00",
+  "method": {
+    "timing_window": "n/a \u2014 recall, not latency",
+    "hardware": "MacBook Air M1 8GB (fanless), podman VM 4 vCPU / 4GB",
+    "database": "PostgreSQL 16.14, pgvector 0.8.5, shared_buffers 128MB, in compose",
+    "db_state": {
+      "corpus_size": 183167,
+      "heap_pages": 35348,
+      "heap_bytes": 289570816,
+      "index_bytes": {
+        "papers_abstract_md5_idx": 10657792,
+        "papers_arxiv_id_idx": 16384,
+        "papers_doi_key": 8036352,
+        "papers_embed_idx": 213401600,
+        "papers_fts_idx": 87007232,
+        "papers_pkey": 4136960,
+        "papers_pubmed_id_idx": 1409024,
+        "papers_title_trgm_idx": 40992768,
+        "papers_title_year_idx": 20242432,
+        "papers_year_idx": 1294336
+      }
+    },
+    "ground_truth_corpus": 183167,
+    "old_ground_truth": "exact_top200_wide.superseded_196893.json",
+    "old_ground_truth_method": {
+      "note": "v1 file: no method block, corpus unknown"
+    },
+    "grouping": "a query is 'deleted' when the paper that was rank 1 of its OLD ground-truth list no longer exists in papers; 'survived' otherwise",
+    "depth": 200,
+    "tie_handling": "hit if id in exact top-k OR distance <= boundary + 1e-9"
+  },
+  "group_sizes": {
+    "survived": 462,
+    "deleted": 31,
+    "unknown": 0
+  },
+  "by_ef": {
+    "40": {
+      "survived": {
+        "recall_at_10": {
+          "n": 462,
+          "mean": 0.931,
+          "se": 0.0079
+        },
+        "recall_at_20": {
+          "n": 462,
+          "mean": 0.9238,
+          "se": 0.0073
+        },
+        "recall_at_200": {
+          "n": 462,
+          "mean": 0.8822,
+          "se": 0.0065
+        }
+      },
+      "deleted": {
+        "recall_at_10": {
+          "n": 31,
+          "mean": 0.929,
+          "se": 0.0275
+        },
+        "recall_at_20": {
+          "n": 31,
+          "mean": 0.9242,
+          "se": 0.026
+        },
+        "recall_at_200": {
+          "n": 31,
+          "mean": 0.8539,
+          "se": 0.025
+        }
+      },
+      "unknown": {
+        "recall_at_10": {
+          "n": 0
+        },
+        "recall_at_20": {
+          "n": 0
+        },
+        "recall_at_200": {
+          "n": 0
+        }
+      },
+      "all": {
+        "recall_at_10": {
+          "n": 493,
+          "mean": 0.9308,
+          "se": 0.0076
+        },
+        "recall_at_20": {
+          "n": 493,
+          "mean": 0.9238,
+          "se": 0.007
+        },
+        "recall_at_200": {
+          "n": 493,
+          "mean": 0.8804,
+          "se": 0.0063
+        }
+      }
+    },
+    "200": {
+      "survived": {
+        "recall_at_10": {
+          "n": 462,
+          "mean": 0.9829,
+          "se": 0.0033
+        },
+        "recall_at_20": {
+          "n": 462,
+          "mean": 0.982,
+          "se": 0.0032
+        },
+        "recall_at_200": {
+          "n": 462,
+          "mean": 0.9414,
+          "se": 0.0035
+        }
+      },
+      "deleted": {
+        "recall_at_10": {
+          "n": 31,
+          "mean": 0.9742,
+          "se": 0.0092
+        },
+        "recall_at_20": {
+          "n": 31,
+          "mean": 0.9806,
+          "se": 0.0064
+        },
+        "recall_at_200": {
+          "n": 31,
+          "mean": 0.9219,
+          "se": 0.0124
+        }
+      },
+      "unknown": {
+        "recall_at_10": {
+          "n": 0
+        },
+        "recall_at_20": {
+          "n": 0
+        },
+        "recall_at_200": {
+          "n": 0
+        }
+      },
+      "all": {
+        "recall_at_10": {
+          "n": 493,
+          "mean": 0.9824,
+          "se": 0.0031
+        },
+        "recall_at_20": {
+          "n": 493,
+          "mean": 0.9819,
+          "se": 0.0031
+        },
+        "recall_at_200": {
+          "n": 493,
+          "mean": 0.9401,
+          "se": 0.0034
+        }
+      }
+    },
+    "600": {
+      "survived": {
+        "recall_at_10": {
+          "n": 462,
+          "mean": 0.9944,
+          "se": 0.0012
+        },
+        "recall_at_20": {
+          "n": 462,
+          "mean": 0.9945,
+          "se": 0.001
+        },
+        "recall_at_200": {
+          "n": 462,
+          "mean": 0.9861,
+          "se": 0.0011
+        }
+      },
+      "deleted": {
+        "recall_at_10": {
+          "n": 31,
+          "mean": 0.9903,
+          "se": 0.0054
+        },
+        "recall_at_20": {
+          "n": 31,
+          "mean": 0.9919,
+          "se": 0.0034
+        },
+        "recall_at_200": {
+          "n": 31,
+          "mean": 0.9782,
+          "se": 0.0049
+        }
+      },
+      "unknown": {
+        "recall_at_10": {
+          "n": 0
+        },
+        "recall_at_20": {
+          "n": 0
+        },
+        "recall_at_200": {
+          "n": 0
+        }
+      },
+      "all": {
+        "recall_at_10": {
+          "n": 493,
+          "mean": 0.9941,
+          "se": 0.0012
+        },
+        "recall_at_20": {
+          "n": 493,
+          "mean": 0.9943,
+          "se": 0.0009
+        },
+        "recall_at_200": {
+          "n": 493,
+          "mean": 0.9856,
+          "se": 0.0011
+        }
+      }
+    }
+  }
+}

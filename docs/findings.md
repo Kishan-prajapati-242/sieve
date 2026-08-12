@@ -154,6 +154,12 @@ papers, 14,135 removed, source_records unchanged at 199,382 and 0 orphaned.
 
 ## 2026-07-29: 7.7% of papers have no DOI — a Phase 3 input, not a bug
 
+> **Superseded 2026-08-12 (counts only; the reasoning stands).** Post-dedup
+> the corpus holds **12,036 no-DOI papers, 6.6% of 183,167**. The rate fell
+> because merging a no-DOI record into a DOI-carrying survivor removes a
+> no-DOI paper — the numerator dropped 3,222, not just the denominator. The
+> figures below are left as measured on 2026-07-29 at 196,893 papers.
+
 **The number:** 196,893 papers vs 181,635 distinct DOIs (doi is UNIQUE, so
 that equals papers-with-DOI): **15,258 papers (7.7%) have no DOI** —
 verified directly with `WHERE doi IS NULL`, same count.
@@ -928,7 +934,7 @@ number happened to be small.
 
 ## 2026-08-12: The exact-scan "regression" was the noise floor (corrected)
 
-**Symptom as first reported:** dedup removed 13,726 net papers, so the
+**Symptom as first reported:** dedup removed 13,821 net papers, so the
 exact-scan baseline was expected to improve. Warm p50 went the other way:
 54.6 ms → 61.7, then 64.0 on a re-run.
 
@@ -1222,3 +1228,252 @@ than assumed safe — its exact side had measured 70.4 ms p50, consistent
 with a real scan, which is why the bug surfaced in the hybrid script
 first: hybrid's higher execution count per query reached the generic-plan
 threshold sooner.
+
+---
+
+## 2026-08-12: The measurement was not alone on the machine
+
+**Symptom:** the corrected paired hybrid run reported `hybrid_p50_ms`
+57.78 with a `fusion_overhead_p50_ms` of 35.88 — implying the RRF join and
+final sort cost twice the vector CTE. An uncontended run of the same
+statement, an hour earlier, read **18.2 ms** total. Most of the run's
+percentiles also gated to ranges by the stability rule, where the same
+measurements had been reproducing to a tenth of a millisecond.
+
+**How it was found:** the decomposition disagreed with a number measured
+the same day, and the stability gate fired on everything at once. Both are
+signatures of the environment, not of the query.
+
+**Root cause: I ran the test suite twice while the measurement was in
+flight.** 192 tests, each creating and dropping its own scratch database,
+on the same Postgres and the same 4-vCPU VM. The measurement had no way to
+know and no way to say so.
+
+**Why pairing did not save it.** Pairing cancels noise that hits both
+sides *in proportion* — that is what the immunity test pins, and it is why
+the ratios from the contaminated run (10.7x retrieval-only) are closer to
+believable than its levels. But CPU contention does not hit a 450 ms
+sequential scan and a 20 ms index probe proportionally, so even the ratio
+is suspect. The clean re-run is the only way to know by how much.
+
+**The deeper mistake** is not the concurrency, it is that nothing recorded
+it. Every other property of a measurement in this project is written into
+its method block — corpus size, heap pages, plan, timing window, warmup
+count — and "was anything else using the machine" was the one condition
+left to memory. It joins the same family as the ground truth that did not
+record its corpus and the baseline that did not record its plan: a number
+that cannot say what it measured.
+
+**Fix:** `harness.server_activity()` snapshots per-database transaction
+counters, and `harness.contention_report()` diffs them across the run.
+Foreign databases with a non-zero delta name the intruder exactly — which
+works precisely because the test suite creates a scratch database per
+test, so its traffic cannot hide inside our own datname. Every paired
+result now carries `method.contention` with a `clean` boolean.
+
+**Verified:** the contaminated run is preserved for comparison against the
+clean one; the guard is what decides which of the two gets published, and
+`clean=false` means the levels do not get quoted at all.
+
+---
+
+## 2026-08-12: The reconciled corpus chain, closed against the tables
+
+**Why it is here:** the paper and record counts were being re-derived by
+hand from scattered docs, and three separate attempts produced three
+different decompositions. Every link below is a query against the live
+tables, so it does not have to be re-derived again.
+
+**Papers — 196,988 peak to 183,167:**
+
+| step | n | source |
+|---|---|---|
+| OpenAlex 200K pull | 196,893 | commit 54ea19c |
+| arXiv new papers | +95 | 97 arXiv records, 97 distinct paper_ids, of which **2** are shared with an OpenAlex record — so 95 are new |
+| **peak** | **196,988** | |
+| deleted by cascade merges, net of the unwind | -13,821 | `sum(jsonb_array_length(merged_from->'deleted_papers'))` over the 13,445 surviving merges |
+| **live** | **183,167** | `count(*) FROM papers` |
+
+The gross figure was 14,135 removed (to 182,853); DECISION-3c's unwind of
+122 title_exact groups restored 314, and the merges table now records
+exactly 14,135 - 314 = **13,821**. Both routes land on 183,167.
+
+**Records — the 16,215 surplus over papers:**
+
+| component | n | what it is |
+|---|---|---|
+| records that never became a paper | 1,736 | `paper_id IS NULL`; **all 1,736 have an empty title** |
+| ingest-time DOI links | 658 | `merges` rows with no `deleted_papers` — a second record joining an existing paper |
+| papers removed by the cascade | 13,821 | their records were repointed to survivors |
+| **total** | **16,215** | = 199,382 - 183,167 |
+
+658 + 13,821 = 14,479, which matches
+`sum(n-1)` over papers holding more than one record exactly. The
+decomposition closes with no residual.
+
+**Correction to the working model:** the surplus does NOT split as "2,394
+ingest-time + 13,821 merged". Ingest-time skips are **1,736**, not 2,394,
+and the ingest-time DOI links (658) belong with the merged group because
+those records DID become part of a paper. The 2,394 figure has no
+referent in the tables.
+
+**On the skip categories:** they are not disjoint buckets. Every unlinked
+record is a no-title record; the work types are the reason the title is
+missing. Types: peer-review 396, paratext 380, editorial 369, erratum
+171, supplementary-materials 165, absent 86, conference-paper 85, dataset
+22, retraction 17, preprint 15, other 13, article 11, book-chapter 3,
+review 2, conference-abstract 1. So "junk-type skips vs no-title skips"
+is a distinction the data does not support: there is one skip rule (no
+title) and a type distribution that explains it.
+
+---
+
+## 2026-08-12: The planner GUC is not a scalpel, so the hybrid speedup has no instrument
+
+**Symptom:** the paired hybrid baseline measured 567.6 ms where an additive
+model of what it was supposed to measure — an exact vector arm at ~61-73 ms
+plus a shared remainder of ~8-16 ms — predicts about 90 ms. A candidate
+being slowed cannot explain a slow baseline, so something was inflating the
+numerator.
+
+**How it was found:** Kishan, working backwards from the additive model,
+then asking the decisive question: does the bm25 arm cost the same on both
+sides?
+
+**Root cause: `enable_bitmapscan = off` removes `papers_fts_idx` entirely.**
+A GIN index is reachable ONLY through a bitmap scan, so disabling bitmap
+scans disables full-text search along with the vector index. And
+`enable_indexscan = off` removes `papers_pkey` from the fused statement's
+final join. Measured on 120 queries at k=200:
+
+| bm25 arm | plan | p50 |
+|---|---|---|
+| index allowed | `Bitmap Index Scan on papers_fts_idx` | **7.39 ms** |
+| "forced exact" | `Parallel Seq Scan on papers` | **227.80 ms** |
+
+So "hybrid without the HNSW index" was really "hybrid without the HNSW
+index, without the FTS index, and without the primary key" — three
+sequential scans of a 276 MB heap in one statement where the intended
+baseline runs one. **The baseline was inflated, biasing the ratio HIGH.**
+
+**Why this matters more than the number:** a second contamination pushes
+the same ratio LOW. The variant order was a cyclic rotation, and a rotation
+preserves every adjacency, so the HNSW candidate ran immediately after the
+cache-destroying baseline in 3 of 4 slots (51.7 ms measured against 18.2 ms
+standalone). One bias is BETWEEN executions and a seeded permutation fixes
+it; the other is WITHIN one execution and no ordering scheme touches it.
+**Re-running with a better order would have returned a still-contaminated
+number wearing a repair** — which is the trap worth remembering.
+
+**Fix:** the fused ratio is retired as not-measurable with this lever and
+reported per ARM instead. The vector arm is clean, because `VECTOR_SQL` has
+exactly one index option and the GUC *is* selective there: 3.8x at ef=600,
+24.1x at ef=40. What `papers_fts_idx` is worth (30.8x) is stated on its own
+rather than smuggled into a hybrid figure. `bench/paired_hybrid.py` now
+shuffles variant order with a seeded RNG and emits `fused_ratio.
+not_reportable`; both bias directions are written into
+`results_paired_hybrid.json` rather than the file being deleted.
+
+**Open:** isolating one index without a global GUC would need something
+like a hypothetical-index extension or a physical drop-and-rebuild. Not
+attempted; the per-arm decomposition answers the design question ("which
+index earns its place") without it.
+
+---
+
+## 2026-08-12: One query string, 28 times, moved a decision's margin by 5 points
+
+**Symptom:** the re-measured ef ladder appeared to show recall@200 at ef=200
+collapsing 0.9431 to 0.8918, doubling DECISION-2e's margin from +4.3 to
++9.4 points. Two plausible mechanisms were on the table — a rebuilt HNSW
+graph, or known-item queries whose target had been merged away.
+
+**How it was found:** Kishan rejected the first explanation offered ("a
+candidate list exactly equal to the depth") because it cannot reach the
+recall@10 column, where ef is 4x the depth and the same drop shape appears.
+The split he asked for — group the queries by whether their own source
+paper survived dedup — falsified the second explanation too:
+
+| ef | survived (n=462) | deleted (n=31) |
+|---|---|---|
+| 40 | r@200 0.8822 | 0.8539 |
+| 200 | r@200 0.9414 | 0.9219 |
+| 600 | r@200 0.9861 | 0.9782 |
+
+The deleted group is slightly worse, as expected, but it is 6% of the query
+set and nowhere near enough to move the mean 5 points.
+
+**Root cause: the query set contains the string "Occurrence Download" 28
+times.** It is a GBIF export title, shared by dozens of corpus papers with
+near-identical embeddings. All 28 entries carry identical query vectors and
+DIFFERENT ground-truth lists, because the exact scan breaks their distance
+ties arbitrarily. Solving for its own recall from the two runs' means:
+
+| ef | its recall@200 | mean over 520 entries | mean over 493 distinct |
+|---|---|---|---|
+| 40 | **0.0003** | 0.8347 | 0.8804 |
+| 200 | **0.0099** | 0.8918 | 0.9401 |
+| 600 | 0.9952 | 0.9861 | 0.9856 |
+
+At low ef the index returns a different subset of the tied cluster than the
+ground truth's arbitrary ordering, and scores zero. Weighted 28 times, that
+drags the ef=40 and ef=200 means by roughly five points while leaving
+ef=600 untouched — which is exactly the "drop shape" both hypotheses were
+invented to explain.
+
+**Corrected conclusion:** on 493 distinct queries the ef=600-over-ef=200
+gap is **+4.5 points**, against +4.3 published pre-cascade. DECISION-2e's
+basis is **stable, not strengthened**. The "+9.4" was an artifact and never
+reached the decision record as a conclusion.
+
+**Why the artifact survived the ground-truth rebuild:** the rebuild
+deliberately reused the stored query vectors verbatim, "so the new numbers
+are comparable rather than merely newer". That was right for comparability
+and it also preserved 28 copies of a degenerate query whose target cluster
+dedup had just changed underneath it. Reusing an input is not the same as
+validating it.
+
+**Fix:** recall is reported over DISTINCT query strings. A query set that
+weights one string 28x is measuring that string, not the system.
+
+---
+
+## 2026-08-12: 238 papers with abstracts were dropped for having no title
+
+**Symptom:** every one of the 1,736 source_records that never became a
+paper has an empty title, which made the skip look like a single rule. It
+is two rules, and the second one is losing real content.
+
+**How it was found:** Kishan, checking the type breakdown against
+DECISION-1c's junk list and noticing the residual did not consist of junk
+types.
+
+**The split, confirmed against the tables:**
+
+| bucket | n |
+|---|---|
+| DECISION-1c junk types (peer-review, paratext, editorial, erratum, supplementary-materials, retraction) | **1,498** |
+| legitimate types with an empty title | **238** |
+
+The 238: conference-paper 85, absent type 86, dataset 22, preprint 15,
+other 13, article 11, book-chapter 3, review 2, conference-abstract 1.
+
+**Why it is a defect and not a policy:** of those 238, **216 carry a DOI
+and all 238 carry an abstract.** An OpenAlex work with a null title can
+still be a real paper with retrievable text — the title is missing from the
+metadata, not from the world. Under the current rule they are stored as
+audit rows and never indexed, so they are invisible to bm25 (no title, no
+FTS) and to vector search (never embedded). That is a silent coverage loss:
+nothing errors, nothing is counted, and the corpus is 238 papers smaller
+than the crawl paid for.
+
+**Also corrected:** the recorded junk-type count of 1,499 is off by one
+against the measured 1,498.
+
+**Not fixed here** — changing the ingest rule changes the corpus and every
+number measured against it, and it should ride with the PubMed pull rather
+than land on its own. Options when it does: derive a title from the
+abstract's first sentence (cheap, lossy); store with a NULL title and let
+bm25 index the abstract alone (needs the FTS generated column to tolerate a
+null title, which it already does via coalesce); or keep the skip and
+report the 238 as a known, counted coverage gap. **Kishan's call.**

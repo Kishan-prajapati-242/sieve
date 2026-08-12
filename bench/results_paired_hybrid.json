@@ -1,5 +1,5 @@
 {
-  "measured_at": "2026-08-12T16:42:08.463145+00:00",
+  "measured_at": "2026-08-12T17:54:13.859484+00:00",
   "method": {
     "timing_window": "search_hybrid(k=20, depth=200, ef=600) round trip, identical on both sides of the speedup: same call, same rows. The baseline differs only by enable_indexscan/bitmapscan = off, which forces the vector CTE to an exact scan. Component variants time search_vector(k=200) and search_bm25(k=200) \u2014 the CTEs' workloads.",
     "hardware": "MacBook Air M1 8GB (fanless), podman VM 4 vCPU / 4GB",
@@ -29,9 +29,13 @@
     },
     "ground_truth_corpus": null,
     "embed_component": {
-      "p50_ms": 8.3
+      "p50_ms": 7.9
     },
-    "known_item_caveat": "500/520 queries are corpus titles"
+    "known_item_caveat": "500/520 queries are corpus titles",
+    "plans": {
+      "hnsw": "Limit  (cost=5683.44..5683.49 rows=20 width=513)\n  ->  Sort  (cost=5683.44..5683.94 rows=200 width=513)\n        Sort Key: (((COALESCE((1.0 / (('60'::smallint + b.rank))::numeric), '0'::numeric) + COALESCE((1.0 / (('60'::smallint + (row_number() OVER (?))))::numeric), '0'::numeric)))::double precision) DESC, p.id\n        ->  Nested Loop  (cost=3712.45..5678.11 rows=200 width=513)\n              ->  ",
+      "exact": "Limit  (cost=123046.19..123046.24 rows=20 width=513)\n  ->  Sort  (cost=123046.19..123046.69 rows=200 width=513)\n        Sort Key: (((COALESCE((1.0 / (('60'::smallint + b.rank))::numeric), '0'::numeric) + COALESCE((1.0 / (('60'::smallint + (row_number() OVER (?))))::numeric), '0'::numeric)))::double precision) DESC, p.id\n        ->  Hash Join  (cost=80821.45..123040.87 rows=200 width=513)\n         "
+    }
   },
   "levels": {
     "hybrid_exact": {
@@ -45,39 +49,39 @@
       "per_run": [
         {
           "n_samples": 520,
-          "p50_ms": 14.3,
-          "p95_ms": 63.2,
-          "p99_ms": 134.6,
-          "min_ms": 4.6,
-          "max_ms": 1559.9
+          "p50_ms": 549.4,
+          "p95_ms": 1842.4,
+          "p99_ms": 4195.8,
+          "min_ms": 398.3,
+          "max_ms": 7234.1
         },
         {
           "n_samples": 520,
-          "p50_ms": 14.2,
-          "p95_ms": 88.1,
-          "p99_ms": 305.7,
-          "min_ms": 3.9,
-          "max_ms": 802.7
+          "p50_ms": 647.1,
+          "p95_ms": 1406.9,
+          "p99_ms": 3190.1,
+          "min_ms": 404.6,
+          "max_ms": 8579.3
         },
         {
           "n_samples": 520,
-          "p50_ms": 13.6,
-          "p95_ms": 47.0,
-          "p99_ms": 113.9,
-          "min_ms": 3.8,
-          "max_ms": 546.7
+          "p50_ms": 567.6,
+          "p95_ms": 937.9,
+          "p99_ms": 1169.3,
+          "min_ms": 404.6,
+          "max_ms": 1300.1
         }
       ],
-      "p50_ms": 14.2,
+      "p50_ms": 567.6,
       "p95_ms": null,
       "p95_unstable_range_ms": [
-        47.0,
-        88.1
+        937.9,
+        1842.4
       ],
       "p99_ms": null,
       "p99_unstable_range_ms": [
-        113.9,
-        305.7
+        1169.3,
+        4195.8
       ]
     },
     "hybrid_hnsw": {
@@ -91,39 +95,39 @@
       "per_run": [
         {
           "n_samples": 520,
-          "p50_ms": 9.8,
-          "p95_ms": 46.8,
-          "p99_ms": 131.1,
-          "min_ms": 3.6,
-          "max_ms": 1476.0
+          "p50_ms": 51.7,
+          "p95_ms": 215.9,
+          "p99_ms": 827.4,
+          "min_ms": 13.8,
+          "max_ms": 1663.3
         },
         {
           "n_samples": 520,
-          "p50_ms": 10.3,
-          "p95_ms": 68.0,
-          "p99_ms": 187.0,
-          "min_ms": 3.9,
-          "max_ms": 1343.9
+          "p50_ms": 57.8,
+          "p95_ms": 179.6,
+          "p99_ms": 466.5,
+          "min_ms": 14.6,
+          "max_ms": 1242.1
         },
         {
           "n_samples": 520,
-          "p50_ms": 9.7,
-          "p95_ms": 40.1,
-          "p99_ms": 148.1,
-          "min_ms": 3.5,
-          "max_ms": 751.7
+          "p50_ms": 46.9,
+          "p95_ms": 124.3,
+          "p99_ms": 200.3,
+          "min_ms": 12.0,
+          "max_ms": 481.4
         }
       ],
-      "p50_ms": 9.8,
+      "p50_ms": 51.7,
       "p95_ms": null,
       "p95_unstable_range_ms": [
-        40.1,
-        68.0
+        124.3,
+        215.9
       ],
       "p99_ms": null,
       "p99_unstable_range_ms": [
-        131.1,
-        187.0
+        200.3,
+        827.4
       ]
     },
     "vector_depth": {
@@ -137,39 +141,39 @@
       "per_run": [
         {
           "n_samples": 520,
-          "p50_ms": 12.1,
-          "p95_ms": 40.8,
-          "p99_ms": 70.2,
-          "min_ms": 4.6,
-          "max_ms": 408.9
+          "p50_ms": 12.7,
+          "p95_ms": 91.2,
+          "p99_ms": 215.1,
+          "min_ms": 6.0,
+          "max_ms": 1043.6
         },
         {
           "n_samples": 520,
-          "p50_ms": 12.3,
-          "p95_ms": 51.1,
-          "p99_ms": 111.3,
-          "min_ms": 4.5,
-          "max_ms": 235.4
+          "p50_ms": 13.7,
+          "p95_ms": 108.9,
+          "p99_ms": 216.0,
+          "min_ms": 5.9,
+          "max_ms": 1001.7
         },
         {
           "n_samples": 520,
-          "p50_ms": 11.2,
-          "p95_ms": 32.7,
-          "p99_ms": 50.9,
-          "min_ms": 5.0,
-          "max_ms": 153.0
+          "p50_ms": 11.7,
+          "p95_ms": 83.7,
+          "p99_ms": 133.9,
+          "min_ms": 5.9,
+          "max_ms": 328.0
         }
       ],
-      "p50_ms": 12.1,
+      "p50_ms": 12.7,
       "p95_ms": null,
       "p95_unstable_range_ms": [
-        32.7,
-        51.1
+        83.7,
+        108.9
       ],
       "p99_ms": null,
       "p99_unstable_range_ms": [
-        50.9,
-        111.3
+        133.9,
+        216.0
       ]
     },
     "bm25_depth": {
@@ -183,66 +187,101 @@
       "per_run": [
         {
           "n_samples": 520,
-          "p50_ms": 1.5,
-          "p95_ms": 27.5,
-          "p99_ms": 107.1,
+          "p50_ms": 2.3,
+          "p95_ms": 38.2,
+          "p99_ms": 60.9,
           "min_ms": 0.3,
-          "max_ms": 598.7
+          "max_ms": 760.6
         },
         {
           "n_samples": 520,
-          "p50_ms": 1.5,
-          "p95_ms": 29.9,
-          "p99_ms": 137.8,
-          "min_ms": 0.2,
-          "max_ms": 1014.1
+          "p50_ms": 2.5,
+          "p95_ms": 34.7,
+          "p99_ms": 77.0,
+          "min_ms": 0.3,
+          "max_ms": 429.6
         },
         {
           "n_samples": 520,
-          "p50_ms": 1.3,
-          "p95_ms": 26.0,
-          "p99_ms": 122.0,
-          "min_ms": 0.3,
-          "max_ms": 400.8
+          "p50_ms": 1.7,
+          "p95_ms": 35.3,
+          "p99_ms": 90.6,
+          "min_ms": 0.4,
+          "max_ms": 310.1
         }
       ],
-      "p50_ms": 1.5,
-      "p95_ms": 27.5,
-      "p99_ms": 122.0
+      "p50_ms": null,
+      "p50_unstable_range_ms": [
+        1.7,
+        2.5
+      ],
+      "p95_ms": 35.3,
+      "p99_ms": null,
+      "p99_unstable_range_ms": [
+        60.9,
+        90.6
+      ]
     }
   },
   "retrieval_only": {
-    "speedup": 1.4,
+    "speedup": 11.6,
     "ci95": [
-      1.3,
-      1.6
+      11.2,
+      12.3
     ],
     "window": "sql only: search_hybrid(k=20, depth=200, ef=600)",
     "paired": true,
     "n_pairs": 520,
-    "ratio_p10": 0.4,
-    "ratio_p90": 3.3,
+    "ratio_p10": 6.5,
+    "ratio_p90": 20.9,
     "method": "median of per-query baseline/candidate ratios, both timed inside one run with alternating order; percentile bootstrap over queries (2000 resamples, seed 20260812)"
   },
   "end_to_end": {
-    "speedup": 1.2,
+    "speedup": 10.1,
     "ci95": [
-      1.1,
-      1.2
+      9.7,
+      10.5
     ],
     "window": "end-to-end: query embed + search_hybrid(k=20, depth=200, ef=600)",
     "paired": true,
     "n_pairs": 520,
-    "ratio_p10": 0.5,
-    "ratio_p90": 2.1,
+    "ratio_p10": 6.2,
+    "ratio_p90": 16.5,
     "method": "median of per-query baseline/candidate ratios, both timed inside one run with alternating order; percentile bootstrap over queries (2000 resamples, seed 20260812)"
   },
   "decomposition": {
-    "hybrid_p50_ms": 9.4,
-    "vector_at_depth_p50_ms": 11.39,
-    "bm25_at_depth_p50_ms": 1.39,
-    "fusion_overhead_p50_ms": -3.35,
-    "vector_share_of_hybrid": 1.212,
+    "hybrid_p50_ms": 51.66,
+    "vector_at_depth_p50_ms": 12.28,
+    "bm25_at_depth_p50_ms": 2.02,
+    "fusion_overhead_p50_ms": 32.64,
+    "vector_share_of_hybrid": 0.238,
     "reads_as": "components are what each CTE's workload costs run alone; fusion_overhead is hybrid minus their sum, an UPPER bound on genuine fusion cost (Postgres may overlap the CTEs, and any sharing shows up here as a negative contribution)"
+  },
+  "defect": {
+    "status": "NOT REPORTABLE \u2014 the fused ratio is bracketed by two contaminations of opposite sign, neither sized. Kept rather than deleted, on the same rule as results_speedups.json's provenance_defect: a wrong published number gets corrected in place, not disappeared.",
+    "bias_high__baseline_inflated": {
+      "mechanism": "The baseline's only available lever is planner GUCs, and they are not selective to papers_embed_idx. enable_bitmapscan=off removes papers_fts_idx ENTIRELY (a GIN index is reachable only via a bitmap scan), and enable_indexscan=off removes papers_pkey from the final join. So 'hybrid without the HNSW index' is actually 'hybrid without the HNSW index, without the FTS index, and without the primary key' \u2014 three seq scans of a 276 MB heap in one statement, not one.",
+      "measured": {
+        "bm25_arm_k200_index_allowed_p50_ms": 7.39,
+        "bm25_arm_k200_forced_plan_p50_ms": 227.8,
+        "ratio": 30.8,
+        "plans": {
+          "index_allowed": "Bitmap Index Scan on papers_fts_idx",
+          "forced": "Parallel Seq Scan on papers"
+        },
+        "n": 120
+      },
+      "consequence": "hybrid_exact measured 567.6 ms where an additive model of the intended baseline (exact vector arm ~61-73 ms + shared remainder ~8-16 ms) predicts ~90 ms."
+    },
+    "bias_low__candidate_handicapped": {
+      "mechanism": "The variant order is a cyclic rotation, VARIANTS[rot:] + VARIANTS[:rot], which PRESERVES every adjacency \u2014 rotation is not randomization. hybrid_hnsw therefore runs immediately after the 567 ms baseline in 3 of 4 query slots, on a buffer pool the baseline's scans just evicted (276 MB pulled through a 128 MB shared_buffers).",
+      "measured": {
+        "hybrid_hnsw_p50_ms_in_this_run": 51.7,
+        "hybrid_hnsw_p50_ms_standalone": 18.2,
+        "standalone_source": "bench/results_mode_latency.json, same corpus"
+      }
+    },
+    "why_a_reordering_fix_would_not_repair_it": "The eviction bias acts BETWEEN executions and a seeded permutation removes it. The GUC bias acts WITHIN a single execution and no ordering scheme touches it. Re-running with a fixed permutation would return a still-contaminated number wearing a repair.",
+    "what_is_reportable_instead": "Per-arm paired ratios. The vector arm is clean because VECTOR_SQL has exactly one index option, so the GUC IS selective there: 3.8x [3.6, 3.9] at ef=600, 24.1x [23.3, 25.0] at ef=40 (results_paired_speedup.json). The bm25 arm's index is worth 30.8x on its own, stated separately. The FUSED end-to-end ratio has no instrument."
   }
 }

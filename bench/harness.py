@@ -250,6 +250,55 @@ def pinned_connection(dsn: str, *, gucs: dict[str, str] | None = None) -> Any:
     return conn
 
 
+def server_activity(conn: Any) -> dict[str, int]:
+    """Per-database transaction counters, for detecting a co-tenant.
+
+    Snapshot this before and after a timing run and diff it: any OTHER
+    database with a non-zero delta means something else was using the
+    server while the measurement ran.
+    """
+    rows = conn.execute(
+        "SELECT datname, xact_commit + xact_rollback FROM pg_stat_database"
+        " WHERE datname IS NOT NULL"
+    ).fetchall()
+    return {str(name): int(n or 0) for name, n in rows}
+
+
+def contention_report(before: dict[str, int], after: dict[str, int], *, own: str) -> dict[str, Any]:
+    """What else touched this server during the run.
+
+    Exists because a paired hybrid measurement was invalidated by the test
+    suite running against scratch databases on the same Postgres, on the
+    same 4-vCPU VM, in the middle of the timing loop (findings.md
+    2026-08-12). Nothing in the results file recorded that, so the numbers
+    looked publishable: hybrid p50 read 57.8 ms where an uncontended run
+    reads 18.2.
+
+    Pairing survives noise that hits both sides in proportion. It does not
+    survive noise that hits a 450 ms sequential scan differently from a
+    20 ms index probe, which is what CPU contention does. So the run has
+    to say whether it was alone.
+
+    Scratch databases are the giveaway: the suite creates one per test, so
+    foreign datnames with non-zero deltas name the intruder exactly.
+    """
+    foreign = {
+        name: after.get(name, 0) - count
+        for name, count in before.items()
+        if name != own and after.get(name, 0) - count > 0
+    }
+    new_dbs = sorted(set(after) - set(before) - {own})
+    return {
+        "own_transactions": after.get(own, 0) - before.get(own, 0),
+        "foreign_transactions": sum(foreign.values()) if foreign else 0,
+        "foreign_databases": sorted(foreign) + new_dbs,
+        "clean": not foreign and not new_dbs,
+        "reads_as": "clean=false means something else used this server during "
+        "the run; treat absolute levels as contaminated and re-run before "
+        "publishing them",
+    }
+
+
 def db_state(conn: Any) -> dict[str, Any]:
     """What the measurement measured: rows AND physical layout.
 

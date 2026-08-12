@@ -22,5 +22,6 @@
     "baseline_ms": 70.7,
     "candidate_ms": 9.8
   },
-  "guard": "raises as designed: window mismatch: baseline='sql only: search function round t..."
+  "guard": "raises as designed: window mismatch: baseline='sql only: search function round t...",
+  "provenance_defect": "This file was never produced by a script in bench/. It was computed by an ad-hoc inline snippet on 2026-08-12, which violates CLAUDE.md rule 2 (every published figure comes from a script in bench/) \u2014 a number with no re-runnable producer cannot be checked or re-measured. Its replacement, results_paired_speedup.json, is written by bench/paired_speedup.py. Recorded rather than quietly deleted."
 }
