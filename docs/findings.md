@@ -199,6 +199,42 @@ used entity search, so no earlier run report was affected.
 
 ---
 
+## 2026-08-01: Single-pass hand labeling has its own accuracy ceiling
+
+**What happened.** Kishan labeled 120 pairs, then reviewed the 14 pairs
+where the model disagreed and **corrected 10 of his own labels** — 8.3% of
+the sample. Nine were applied; one (pair 67) was withheld because
+verification contradicted the stated reason.
+
+**Why the errors clustered where they did, in his words:** the
+disagreements fell on sibling and parallel-variant patterns whose taxonomy
+he only worked out partway through labeling. So the EARLY labels were made
+with a weaker rubric than the LATE ones. This is not carelessness; it is
+what single-pass labeling of an unfamiliar domain does. You learn the
+taxonomy by labeling, and the labels you made before you learned it are
+worse.
+
+The corrected pairs are exactly that shape — supplementary file vs figure
+(7, 18), PheKnowLator build variants (46, 53, 102), WikiPathways monthly
+releases (115), a missing-DOI twin (50), preprint/proceedings (65), and a
+Zenodo concept/version DOI (83). Every one belongs to a category the
+project only named during this phase: parts of a shared parent, parallel
+variants of one artifact, and versioned deposits.
+
+**The caveat that must sit next to the precision number:** an 8.3%
+self-correction rate on review is the measured floor on single-pass
+labeling accuracy here. The reported precision of 0.957 rests on labels
+of which roughly 1 in 12 changed when re-examined once. A second full pass
+would likely move it again, by less. Quote the number with this attached,
+or it reads as more certain than the evidence supports.
+
+**What would raise the ceiling** (not done, and not free): label in two
+passes with the taxonomy fixed in advance between them; or adjudicate every
+disagreement between two annotators rather than only the ones one
+annotator chose to revisit.
+
+---
+
 ## 2026-08-01: Why the model's dedup labels cannot be ground truth
 
 The labeling harness has two annotators: Kishan and the model. Only one

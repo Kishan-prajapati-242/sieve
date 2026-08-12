@@ -1,0 +1,117 @@
+{
+  "labels_used": 107,
+  "labels_unsure_excluded": 13,
+  "labels_outstanding": 0,
+  "weighted_counts": {
+    "tp": 12351.8,
+    "fp": 557.2,
+    "fn": 345.6,
+    "tn": 2521.4
+  },
+  "point_estimates": {
+    "precision": 0.9568,
+    "recall": 0.9728,
+    "f1": 0.9647
+  },
+  "per_stratum": {
+    "acc_abstract_hash": {
+      "labeled": 11,
+      "population": 6662,
+      "verdict": "merged",
+      "fraction_same_paper": 1.0,
+      "reads_as": "precision"
+    },
+    "acc_title_exact_pair": {
+      "labeled": 7,
+      "population": 3631,
+      "verdict": "merged",
+      "fraction_same_paper": 0.857,
+      "reads_as": "precision"
+    },
+    "acc_title_exact_group": {
+      "labeled": 19,
+      "population": 122,
+      "verdict": "merged",
+      "fraction_same_paper": 0.684,
+      "reads_as": "precision"
+    },
+    "acc_title_trgm": {
+      "labeled": 3,
+      "population": 448,
+      "verdict": "merged",
+      "fraction_same_paper": 1.0,
+      "reads_as": "precision"
+    },
+    "acc_preprint_trgm": {
+      "labeled": 5,
+      "population": 1522,
+      "verdict": "merged",
+      "fraction_same_paper": 1.0,
+      "reads_as": "precision"
+    },
+    "acc_jmir_doi": {
+      "labeled": 2,
+      "population": 524,
+      "verdict": "merged",
+      "fraction_same_paper": 1.0,
+      "reads_as": "precision"
+    },
+    "ref_below_threshold_sameyear": {
+      "labeled": 11,
+      "population": 447,
+      "verdict": "refused",
+      "fraction_same_paper": 0.182,
+      "reads_as": "miss rate"
+    },
+    "ref_below_threshold_preprint": {
+      "labeled": 6,
+      "population": 109,
+      "verdict": "refused",
+      "fraction_same_paper": 0.833,
+      "reads_as": "miss rate"
+    },
+    "ref_enumerated_sibling": {
+      "labeled": 14,
+      "population": 736,
+      "verdict": "refused",
+      "fraction_same_paper": 0.0,
+      "reads_as": "miss rate"
+    },
+    "ref_part_sibling": {
+      "labeled": 5,
+      "population": 49,
+      "verdict": "refused",
+      "fraction_same_paper": 0.0,
+      "reads_as": "miss rate"
+    },
+    "ref_abstract_low_title": {
+      "labeled": 8,
+      "population": 694,
+      "verdict": "refused",
+      "fraction_same_paper": 0.25,
+      "reads_as": "miss rate"
+    },
+    "ref_size_capped": {
+      "labeled": 16,
+      "population": 832,
+      "verdict": "refused",
+      "fraction_same_paper": 0.0,
+      "reads_as": "miss rate"
+    }
+  },
+  "recall_caveat": "Recall is measured against pairs the cascade CONSIDERED and refused. Duplicates no blocking key ever paired are invisible to it, so this is recall among candidates \u2014 an upper bound on true corpus recall.",
+  "ci95": {
+    "precision": [
+      0.9035,
+      0.9983
+    ],
+    "recall": [
+      0.9589,
+      0.988
+    ],
+    "f1": [
+      0.938,
+      0.9903
+    ]
+  }
+}

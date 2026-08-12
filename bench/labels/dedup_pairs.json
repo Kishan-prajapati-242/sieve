@@ -1,0 +1,966 @@
+{
+ "labels": {
+  "0": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_pair",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "1": {
+   "same_paper": null,
+   "stratum": "ref_enumerated_sibling",
+   "cascade_verdict": "refused",
+   "rule": "enumerated_sibling",
+   "similarity": 0.9661017,
+   "group_size": 2
+  },
+  "2": {
+   "same_paper": false,
+   "stratum": "ref_below_threshold_preprint",
+   "cascade_verdict": "refused",
+   "rule": "below_threshold_preprint",
+   "similarity": 0.8965517,
+   "group_size": 2
+  },
+  "3": {
+   "same_paper": true,
+   "stratum": "acc_title_trgm",
+   "cascade_verdict": "merged",
+   "rule": "title_trgm",
+   "similarity": 0.9726027,
+   "group_size": 2
+  },
+  "4": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_pair",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "5": {
+   "same_paper": false,
+   "stratum": "ref_size_capped",
+   "cascade_verdict": "refused",
+   "rule": "size_capped",
+   "similarity": null,
+   "group_size": 2
+  },
+  "6": {
+   "same_paper": true,
+   "stratum": "acc_abstract_hash",
+   "cascade_verdict": "merged",
+   "rule": "abstract_hash",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "7": {
+   "same_paper": false,
+   "stratum": "ref_abstract_low_title",
+   "cascade_verdict": "refused",
+   "rule": "abstract_low_title",
+   "similarity": 0.29508197,
+   "group_size": 2
+  },
+  "8": {
+   "same_paper": false,
+   "stratum": "ref_size_capped",
+   "cascade_verdict": "refused",
+   "rule": "size_capped",
+   "similarity": null,
+   "group_size": 2
+  },
+  "9": {
+   "same_paper": false,
+   "stratum": "ref_enumerated_sibling",
+   "cascade_verdict": "refused",
+   "rule": "enumerated_sibling",
+   "similarity": 0.95348835,
+   "group_size": 2
+  },
+  "10": {
+   "same_paper": true,
+   "stratum": "acc_abstract_hash",
+   "cascade_verdict": "merged",
+   "rule": "abstract_hash",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "11": {
+   "same_paper": false,
+   "stratum": "ref_size_capped",
+   "cascade_verdict": "refused",
+   "rule": "size_capped",
+   "similarity": null,
+   "group_size": 2
+  },
+  "12": {
+   "same_paper": false,
+   "stratum": "ref_size_capped",
+   "cascade_verdict": "refused",
+   "rule": "size_capped",
+   "similarity": null,
+   "group_size": 2
+  },
+  "13": {
+   "same_paper": true,
+   "stratum": "acc_title_trgm",
+   "cascade_verdict": "merged",
+   "rule": "title_trgm",
+   "similarity": 0.9864865,
+   "group_size": 2
+  },
+  "14": {
+   "same_paper": true,
+   "stratum": "ref_below_threshold_preprint",
+   "cascade_verdict": "refused",
+   "rule": "below_threshold_preprint",
+   "similarity": 0.86764705,
+   "group_size": 2
+  },
+  "15": {
+   "same_paper": true,
+   "stratum": "acc_preprint_trgm",
+   "cascade_verdict": "merged",
+   "rule": "preprint_trgm",
+   "similarity": 0.92156863,
+   "group_size": 2
+  },
+  "16": {
+   "same_paper": true,
+   "stratum": "acc_abstract_hash",
+   "cascade_verdict": "merged",
+   "rule": "abstract_hash",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "17": {
+   "same_paper": true,
+   "stratum": "acc_abstract_hash",
+   "cascade_verdict": "merged",
+   "rule": "abstract_hash",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "18": {
+   "same_paper": false,
+   "stratum": "ref_part_sibling",
+   "cascade_verdict": "refused",
+   "rule": "part_sibling",
+   "similarity": 0.94949496,
+   "group_size": 2
+  },
+  "19": {
+   "same_paper": true,
+   "stratum": "ref_below_threshold_preprint",
+   "cascade_verdict": "refused",
+   "rule": "below_threshold_preprint",
+   "similarity": 0.9,
+   "group_size": 2
+  },
+  "20": {
+   "same_paper": false,
+   "stratum": "ref_abstract_low_title",
+   "cascade_verdict": "refused",
+   "rule": "abstract_low_title",
+   "similarity": 0.12698413,
+   "group_size": 2
+  },
+  "21": {
+   "same_paper": false,
+   "stratum": "ref_size_capped",
+   "cascade_verdict": "refused",
+   "rule": "size_capped",
+   "similarity": null,
+   "group_size": 2
+  },
+  "22": {
+   "same_paper": false,
+   "stratum": "ref_part_sibling",
+   "cascade_verdict": "refused",
+   "rule": "part_sibling",
+   "similarity": 0.94949496,
+   "group_size": 2
+  },
+  "23": {
+   "same_paper": false,
+   "stratum": "ref_size_capped",
+   "cascade_verdict": "refused",
+   "rule": "size_capped",
+   "similarity": null,
+   "group_size": 2
+  },
+  "24": {
+   "same_paper": true,
+   "stratum": "acc_abstract_hash",
+   "cascade_verdict": "merged",
+   "rule": "abstract_hash",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "25": {
+   "same_paper": false,
+   "stratum": "ref_abstract_low_title",
+   "cascade_verdict": "refused",
+   "rule": "abstract_low_title",
+   "similarity": 0.03125,
+   "group_size": 2
+  },
+  "26": {
+   "same_paper": false,
+   "stratum": "ref_abstract_low_title",
+   "cascade_verdict": "refused",
+   "rule": "abstract_low_title",
+   "similarity": 0.035714287,
+   "group_size": 2
+  },
+  "27": {
+   "same_paper": false,
+   "stratum": "ref_size_capped",
+   "cascade_verdict": "refused",
+   "rule": "size_capped",
+   "similarity": null,
+   "group_size": 2
+  },
+  "28": {
+   "same_paper": true,
+   "stratum": "ref_below_threshold_sameyear",
+   "cascade_verdict": "refused",
+   "rule": "below_threshold_sameyear",
+   "similarity": 0.9044118,
+   "group_size": 2
+  },
+  "29": {
+   "same_paper": true,
+   "stratum": "acc_abstract_hash",
+   "cascade_verdict": "merged",
+   "rule": "abstract_hash",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "30": {
+   "same_paper": false,
+   "stratum": "ref_size_capped",
+   "cascade_verdict": "refused",
+   "rule": "size_capped",
+   "similarity": null,
+   "group_size": 2
+  },
+  "31": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_pair",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "32": {
+   "same_paper": false,
+   "stratum": "ref_enumerated_sibling",
+   "cascade_verdict": "refused",
+   "rule": "enumerated_sibling",
+   "similarity": 0.969697,
+   "group_size": 2
+  },
+  "33": {
+   "same_paper": false,
+   "stratum": "ref_part_sibling",
+   "cascade_verdict": "refused",
+   "rule": "part_sibling",
+   "similarity": 0.94949496,
+   "group_size": 2
+  },
+  "34": {
+   "same_paper": true,
+   "stratum": "acc_preprint_trgm",
+   "cascade_verdict": "merged",
+   "rule": "preprint_trgm",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "35": {
+   "same_paper": false,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 3
+  },
+  "36": {
+   "same_paper": true,
+   "stratum": "ref_below_threshold_preprint",
+   "cascade_verdict": "refused",
+   "rule": "below_threshold_preprint",
+   "similarity": 0.8769231,
+   "group_size": 2
+  },
+  "37": {
+   "same_paper": null,
+   "stratum": "ref_abstract_low_title",
+   "cascade_verdict": "refused",
+   "rule": "abstract_low_title",
+   "similarity": 0.51086956,
+   "group_size": 2
+  },
+  "38": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 3
+  },
+  "39": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 3
+  },
+  "40": {
+   "same_paper": false,
+   "stratum": "ref_enumerated_sibling",
+   "cascade_verdict": "refused",
+   "rule": "enumerated_sibling",
+   "similarity": 0.95789474,
+   "group_size": 2
+  },
+  "41": {
+   "same_paper": false,
+   "stratum": "ref_abstract_low_title",
+   "cascade_verdict": "refused",
+   "rule": "abstract_low_title",
+   "similarity": 0.12878788,
+   "group_size": 2
+  },
+  "42": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_pair",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "43": {
+   "same_paper": true,
+   "stratum": "acc_abstract_hash",
+   "cascade_verdict": "merged",
+   "rule": "abstract_hash",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "44": {
+   "same_paper": false,
+   "stratum": "ref_enumerated_sibling",
+   "cascade_verdict": "refused",
+   "rule": "enumerated_sibling",
+   "similarity": 0.9528302,
+   "group_size": 2
+  },
+  "45": {
+   "same_paper": true,
+   "stratum": "acc_jmir_doi",
+   "cascade_verdict": "merged",
+   "rule": "jmir_doi",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "46": {
+   "same_paper": false,
+   "stratum": "ref_below_threshold_sameyear",
+   "cascade_verdict": "refused",
+   "rule": "below_threshold_sameyear",
+   "similarity": 0.85555553,
+   "group_size": 2
+  },
+  "47": {
+   "same_paper": false,
+   "stratum": "ref_enumerated_sibling",
+   "cascade_verdict": "refused",
+   "rule": "enumerated_sibling",
+   "similarity": 0.94736844,
+   "group_size": 2
+  },
+  "48": {
+   "same_paper": false,
+   "stratum": "ref_enumerated_sibling",
+   "cascade_verdict": "refused",
+   "rule": "enumerated_sibling",
+   "similarity": 0.959596,
+   "group_size": 2
+  },
+  "49": {
+   "same_paper": false,
+   "stratum": "ref_abstract_low_title",
+   "cascade_verdict": "refused",
+   "rule": "abstract_low_title",
+   "similarity": 0.0,
+   "group_size": 2
+  },
+  "50": {
+   "same_paper": true,
+   "stratum": "acc_abstract_hash",
+   "cascade_verdict": "merged",
+   "rule": "abstract_hash",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "51": {
+   "same_paper": false,
+   "stratum": "ref_enumerated_sibling",
+   "cascade_verdict": "refused",
+   "rule": "enumerated_sibling",
+   "similarity": 0.95454544,
+   "group_size": 2
+  },
+  "52": {
+   "same_paper": null,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 7
+  },
+  "53": {
+   "same_paper": false,
+   "stratum": "ref_below_threshold_sameyear",
+   "cascade_verdict": "refused",
+   "rule": "below_threshold_sameyear",
+   "similarity": 0.8681319,
+   "group_size": 2
+  },
+  "54": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 3
+  },
+  "55": {
+   "same_paper": true,
+   "stratum": "acc_jmir_doi",
+   "cascade_verdict": "merged",
+   "rule": "jmir_doi",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "56": {
+   "same_paper": true,
+   "stratum": "ref_abstract_low_title",
+   "cascade_verdict": "refused",
+   "rule": "abstract_low_title",
+   "similarity": 0.15625,
+   "group_size": 2
+  },
+  "57": {
+   "same_paper": true,
+   "stratum": "acc_abstract_hash",
+   "cascade_verdict": "merged",
+   "rule": "abstract_hash",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "58": {
+   "same_paper": false,
+   "stratum": "ref_size_capped",
+   "cascade_verdict": "refused",
+   "rule": "size_capped",
+   "similarity": null,
+   "group_size": 2
+  },
+  "59": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 3
+  },
+  "60": {
+   "same_paper": false,
+   "stratum": "ref_below_threshold_sameyear",
+   "cascade_verdict": "refused",
+   "rule": "below_threshold_sameyear",
+   "similarity": 0.85555553,
+   "group_size": 2
+  },
+  "61": {
+   "same_paper": null,
+   "stratum": "acc_title_exact_pair",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "62": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 3
+  },
+  "63": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 3
+  },
+  "64": {
+   "same_paper": null,
+   "stratum": "ref_abstract_low_title",
+   "cascade_verdict": "refused",
+   "rule": "abstract_low_title",
+   "similarity": 0.64615387,
+   "group_size": 2
+  },
+  "65": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 3
+  },
+  "66": {
+   "same_paper": false,
+   "stratum": "ref_below_threshold_sameyear",
+   "cascade_verdict": "refused",
+   "rule": "below_threshold_sameyear",
+   "similarity": 0.90804595,
+   "group_size": 2
+  },
+  "67": {
+   "same_paper": false,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 3
+  },
+  "68": {
+   "same_paper": false,
+   "stratum": "ref_enumerated_sibling",
+   "cascade_verdict": "refused",
+   "rule": "enumerated_sibling",
+   "similarity": 0.9714286,
+   "group_size": 2
+  },
+  "69": {
+   "same_paper": null,
+   "stratum": "ref_below_threshold_sameyear",
+   "cascade_verdict": "refused",
+   "rule": "below_threshold_sameyear",
+   "similarity": 0.85365856,
+   "group_size": 2
+  },
+  "70": {
+   "same_paper": true,
+   "stratum": "acc_preprint_trgm",
+   "cascade_verdict": "merged",
+   "rule": "preprint_trgm",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "71": {
+   "same_paper": true,
+   "stratum": "acc_abstract_hash",
+   "cascade_verdict": "merged",
+   "rule": "abstract_hash",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "72": {
+   "same_paper": false,
+   "stratum": "ref_size_capped",
+   "cascade_verdict": "refused",
+   "rule": "size_capped",
+   "similarity": null,
+   "group_size": 2
+  },
+  "73": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 3
+  },
+  "74": {
+   "same_paper": false,
+   "stratum": "ref_enumerated_sibling",
+   "cascade_verdict": "refused",
+   "rule": "enumerated_sibling",
+   "similarity": 0.9528302,
+   "group_size": 2
+  },
+  "75": {
+   "same_paper": null,
+   "stratum": "ref_abstract_low_title",
+   "cascade_verdict": "refused",
+   "rule": "abstract_low_title",
+   "similarity": 0.79816514,
+   "group_size": 2
+  },
+  "76": {
+   "same_paper": false,
+   "stratum": "ref_size_capped",
+   "cascade_verdict": "refused",
+   "rule": "size_capped",
+   "similarity": null,
+   "group_size": 2
+  },
+  "77": {
+   "same_paper": null,
+   "stratum": "ref_abstract_low_title",
+   "cascade_verdict": "refused",
+   "rule": "abstract_low_title",
+   "similarity": 0.7692308,
+   "group_size": 2
+  },
+  "78": {
+   "same_paper": false,
+   "stratum": "ref_size_capped",
+   "cascade_verdict": "refused",
+   "rule": "size_capped",
+   "similarity": null,
+   "group_size": 2
+  },
+  "79": {
+   "same_paper": true,
+   "stratum": "ref_abstract_low_title",
+   "cascade_verdict": "refused",
+   "rule": "abstract_low_title",
+   "similarity": 0.36764705,
+   "group_size": 2
+  },
+  "80": {
+   "same_paper": false,
+   "stratum": "ref_enumerated_sibling",
+   "cascade_verdict": "refused",
+   "rule": "enumerated_sibling",
+   "similarity": 0.95454544,
+   "group_size": 2
+  },
+  "81": {
+   "same_paper": false,
+   "stratum": "ref_size_capped",
+   "cascade_verdict": "refused",
+   "rule": "size_capped",
+   "similarity": null,
+   "group_size": 2
+  },
+  "82": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 6
+  },
+  "83": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 3
+  },
+  "84": {
+   "same_paper": true,
+   "stratum": "acc_abstract_hash",
+   "cascade_verdict": "merged",
+   "rule": "abstract_hash",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "85": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 3
+  },
+  "86": {
+   "same_paper": false,
+   "stratum": "ref_part_sibling",
+   "cascade_verdict": "refused",
+   "rule": "part_sibling",
+   "similarity": 0.94949496,
+   "group_size": 2
+  },
+  "87": {
+   "same_paper": false,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 3
+  },
+  "88": {
+   "same_paper": null,
+   "stratum": "acc_abstract_hash",
+   "cascade_verdict": "merged",
+   "rule": "abstract_hash",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "89": {
+   "same_paper": false,
+   "stratum": "ref_enumerated_sibling",
+   "cascade_verdict": "refused",
+   "rule": "enumerated_sibling",
+   "similarity": 0.9591837,
+   "group_size": 2
+  },
+  "90": {
+   "same_paper": false,
+   "stratum": "ref_size_capped",
+   "cascade_verdict": "refused",
+   "rule": "size_capped",
+   "similarity": null,
+   "group_size": 2
+  },
+  "91": {
+   "same_paper": false,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 3
+  },
+  "92": {
+   "same_paper": true,
+   "stratum": "ref_below_threshold_preprint",
+   "cascade_verdict": "refused",
+   "rule": "below_threshold_preprint",
+   "similarity": 0.8636364,
+   "group_size": 2
+  },
+  "93": {
+   "same_paper": null,
+   "stratum": "ref_abstract_low_title",
+   "cascade_verdict": "refused",
+   "rule": "abstract_low_title",
+   "similarity": 0.12,
+   "group_size": 2
+  },
+  "94": {
+   "same_paper": null,
+   "stratum": "ref_abstract_low_title",
+   "cascade_verdict": "refused",
+   "rule": "abstract_low_title",
+   "similarity": 0.013157895,
+   "group_size": 2
+  },
+  "95": {
+   "same_paper": false,
+   "stratum": "ref_part_sibling",
+   "cascade_verdict": "refused",
+   "rule": "part_sibling",
+   "similarity": 0.94949496,
+   "group_size": 2
+  },
+  "96": {
+   "same_paper": true,
+   "stratum": "ref_below_threshold_sameyear",
+   "cascade_verdict": "refused",
+   "rule": "below_threshold_sameyear",
+   "similarity": 0.8596491,
+   "group_size": 2
+  },
+  "97": {
+   "same_paper": true,
+   "stratum": "acc_preprint_trgm",
+   "cascade_verdict": "merged",
+   "rule": "preprint_trgm",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "98": {
+   "same_paper": false,
+   "stratum": "ref_below_threshold_sameyear",
+   "cascade_verdict": "refused",
+   "rule": "below_threshold_sameyear",
+   "similarity": 0.87096775,
+   "group_size": 2
+  },
+  "99": {
+   "same_paper": false,
+   "stratum": "ref_enumerated_sibling",
+   "cascade_verdict": "refused",
+   "rule": "enumerated_sibling",
+   "similarity": 0.96190476,
+   "group_size": 2
+  },
+  "100": {
+   "same_paper": false,
+   "stratum": "ref_enumerated_sibling",
+   "cascade_verdict": "refused",
+   "rule": "enumerated_sibling",
+   "similarity": 0.96190476,
+   "group_size": 2
+  },
+  "101": {
+   "same_paper": null,
+   "stratum": "acc_jmir_doi",
+   "cascade_verdict": "merged",
+   "rule": "jmir_doi",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "102": {
+   "same_paper": false,
+   "stratum": "ref_below_threshold_sameyear",
+   "cascade_verdict": "refused",
+   "rule": "below_threshold_sameyear",
+   "similarity": 0.8681319,
+   "group_size": 2
+  },
+  "103": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_pair",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "104": {
+   "same_paper": false,
+   "stratum": "acc_title_exact_pair",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "105": {
+   "same_paper": false,
+   "stratum": "ref_below_threshold_sameyear",
+   "cascade_verdict": "refused",
+   "rule": "below_threshold_sameyear",
+   "similarity": 0.9010989,
+   "group_size": 2
+  },
+  "106": {
+   "same_paper": true,
+   "stratum": "ref_below_threshold_preprint",
+   "cascade_verdict": "refused",
+   "rule": "below_threshold_preprint",
+   "similarity": 0.86290324,
+   "group_size": 2
+  },
+  "107": {
+   "same_paper": true,
+   "stratum": "acc_title_trgm",
+   "cascade_verdict": "merged",
+   "rule": "title_trgm",
+   "similarity": 0.92105263,
+   "group_size": 2
+  },
+  "108": {
+   "same_paper": false,
+   "stratum": "ref_below_threshold_sameyear",
+   "cascade_verdict": "refused",
+   "rule": "below_threshold_sameyear",
+   "similarity": 0.8831169,
+   "group_size": 2
+  },
+  "109": {
+   "same_paper": false,
+   "stratum": "ref_below_threshold_sameyear",
+   "cascade_verdict": "refused",
+   "rule": "below_threshold_sameyear",
+   "similarity": 0.8681319,
+   "group_size": 2
+  },
+  "110": {
+   "same_paper": false,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 3
+  },
+  "111": {
+   "same_paper": false,
+   "stratum": "ref_enumerated_sibling",
+   "cascade_verdict": "refused",
+   "rule": "enumerated_sibling",
+   "similarity": 0.95789474,
+   "group_size": 2
+  },
+  "112": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 3
+  },
+  "113": {
+   "same_paper": null,
+   "stratum": "ref_abstract_low_title",
+   "cascade_verdict": "refused",
+   "rule": "abstract_low_title",
+   "similarity": 0.32673267,
+   "group_size": 2
+  },
+  "114": {
+   "same_paper": false,
+   "stratum": "ref_size_capped",
+   "cascade_verdict": "refused",
+   "rule": "size_capped",
+   "similarity": null,
+   "group_size": 2
+  },
+  "115": {
+   "same_paper": false,
+   "stratum": "ref_size_capped",
+   "cascade_verdict": "refused",
+   "rule": "size_capped",
+   "similarity": null,
+   "group_size": 2
+  },
+  "116": {
+   "same_paper": false,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 3
+  },
+  "117": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_group",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 3
+  },
+  "118": {
+   "same_paper": true,
+   "stratum": "acc_preprint_trgm",
+   "cascade_verdict": "merged",
+   "rule": "preprint_trgm",
+   "similarity": 1.0,
+   "group_size": 2
+  },
+  "119": {
+   "same_paper": true,
+   "stratum": "acc_title_exact_pair",
+   "cascade_verdict": "merged",
+   "rule": "title_exact",
+   "similarity": 1.0,
+   "group_size": 2
+  }
+ },
+ "sample_seed": 20260801,
+ "revision_note": "10 labels reviewed against the model's disagreements on 2026-08-01; 9 corrected. Pair 67 was proposed for correction to 'same' but withheld: verification showed the Figshare item is the corpus DATA (abstract describes 941 sentences from 911 PubMed abstracts) while the bioRxiv item is the PAPER, so the pair is paper-vs-data-deposit."
+}
