@@ -1,0 +1,27 @@
+{
+  "measured_at": "2026-08-12T02:57:33.387858+00:00",
+  "method": {
+    "timing_window": "n/a \u2014 recall, not latency",
+    "hardware": "MacBook Air M1 8GB (fanless), podman VM 4 vCPU / 4GB",
+    "database": "PostgreSQL 16.14, pgvector 0.8.5, shared_buffers 128MB, in compose",
+    "corpus_papers": 183167,
+    "settings": {
+      "depth": 200,
+      "ef_search": 600,
+      "iterative_scan": "strict_order"
+    },
+    "ground_truth_corpus": 183167,
+    "plan": "Index Scan using papers_embed_idx (natural planner choice, not forced)",
+    "tie_handling": "hit if id in exact top-k OR distance <= boundary + 1e-9",
+    "known_item_caveat": "500/520 queries are corpus titles"
+  },
+  "recall_at_200": {
+    "mean": 0.9848,
+    "se": 0.0014
+  },
+  "recall_at_10": {
+    "mean": 0.9869,
+    "se": 0.0025
+  },
+  "n_queries": 520
+}

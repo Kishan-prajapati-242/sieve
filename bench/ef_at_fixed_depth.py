@@ -31,7 +31,7 @@ import psycopg
 from api.embed.onnx_encoder import OnnxEncoder
 from api.embed.texts import query_text
 from api.search.fusion import search_hybrid
-from bench.harness import across_runs, method_record
+from bench.harness import across_runs, load_ground_truth, method_record
 from bench.hnsw_recall_sweep import EXACT_SQL, tie_aware_recall, vector_literal
 
 DEPTH = 200
@@ -67,7 +67,7 @@ def spearman(xs: list[float], ys: list[float]) -> float:
 
 def main() -> None:
     out_dir = Path(__file__).parent
-    labels = json.loads((out_dir / "labels" / "exact_top200_wide.json").read_text())
+    labels, _gt_method = load_ground_truth(out_dir / "labels" / "exact_top200_wide.json")
     encoder = OnnxEncoder(os.environ["EMBED_MODEL_DIR"])
 
     with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:

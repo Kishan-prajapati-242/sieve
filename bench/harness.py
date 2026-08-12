@@ -117,6 +117,43 @@ def speedup(
     }
 
 
+def carry_superseded(
+    old: dict[str, Any] | None,
+    *,
+    key: str | None = None,
+    why: str = "",
+    keep: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """Prior published numbers stay visible, marked superseded — deleting a
+    published number is worse than correcting it.
+
+    Returns the `superseded_*` blocks for the new results file: every one
+    already present in `old`, plus (when `key` is given) `key` holding the
+    old file's `keep` blocks and the reason they no longer apply.
+
+    Generalized from a hand-written v1/v2 chain in exact_scan_baseline.py
+    that could only recognize the two format changes it was written for.
+    When the corpus shrank 7% under dedup on 2026-08-02 it produced no
+    block at all, and the pre-dedup numbers were only recoverable from
+    git — which is the same failure as the ground truth going stale: a
+    measurement that does not record what it measured.
+    """
+    out: dict[str, Any] = {}
+    if not old:
+        return out
+    out.update({k: v for k, v in old.items() if k.startswith("superseded_")})
+    if key and key not in out:
+        out[key] = {"why": why, **{k: old[k] for k in keep if k in old}}
+    return out
+
+
+def corpus_size(conn: Any) -> int:
+    """Row count of papers, for the method block. A latency number that
+    doesn't say how big the table was isn't comparable to the next one."""
+    row = conn.execute("SELECT count(*) FROM papers").fetchone()
+    return int(row[0])
+
+
 def method_record(*, timing_window: str, **fields: Any) -> dict[str, Any]:
     """The measurement's passport. Hardware context is constant for this
     project and stated once here rather than re-typed per script.
@@ -131,3 +168,20 @@ def method_record(*, timing_window: str, **fields: Any) -> dict[str, Any]:
         "database": "PostgreSQL 16.14, pgvector 0.8.5, shared_buffers 128MB, in compose",
         **fields,
     }
+
+
+def load_ground_truth(path: Any) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Read a ground-truth file, tolerating both shapes.
+
+    v1 files are a bare list of query entries. From 2026-08-02 the file is a
+    dict carrying a `method` block (corpus size, EXPLAIN proof, timestamp)
+    alongside `queries`, because a ground truth that does not state which
+    corpus it describes is how the last one went stale unnoticed.
+    """
+    import json
+    from pathlib import Path
+
+    data = json.loads(Path(path).read_text())
+    if isinstance(data, list):
+        return data, {"note": "v1 file: no method block, corpus unknown"}
+    return data["queries"], data.get("method", {})

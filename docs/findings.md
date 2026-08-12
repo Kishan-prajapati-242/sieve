@@ -879,3 +879,94 @@ id, stable across repeated queries.
 
 **Verified:** the tie test passes and fails if the id tiebreaker is
 removed from the ORDER BY.
+
+---
+
+## 2026-08-12: Ground truth referenced 5,528 papers that no longer existed
+
+**Symptom:** every recall number in `bench/` described a 196,893-paper
+corpus while the live corpus held 183,167. Nothing failed. The recall
+scripts happily compared HNSW results against an exact top-200 whose
+entries dedup had deleted.
+
+**How it was found:** not by a test — by asking the question. The dedup
+cascade and the DECISION-3c unwind changed the corpus; the ground-truth
+file had no field saying which corpus it was built from, so nothing could
+notice. Quantified before rebuilding:
+
+| | |
+|---|---|
+| distinct ids referenced by the 520 queries | 67,769 |
+| of those, deleted | **5,528 (8.2%)** |
+| queries with ≥1 dead id in top-200 | **515 / 520 (99.0%)** |
+| top-200 slots pointing at a dead id | 8,399 / 104,000 (8.1%) |
+| queries with a dead id in the **top-10** | **247 (47.5%)** |
+
+**Root cause:** a measurement that does not record what it measured. The
+file was a bare JSON list of query entries — no corpus size, no
+timestamp, no plan proof. Staleness was undetectable by construction.
+
+**Fix:** ground truth is now `{"method": {...}, "queries": [...]}` with
+corpus size, EXPLAIN proof of the forced seq scan, and a timestamp;
+`harness.load_ground_truth()` reads both shapes and labels the old one
+`"v1 file: no method block, corpus unknown"`. `method_record()` calls in
+the latency scripts now carry `corpus_size`, and `harness.carry_superseded()`
+supersedes a results file whenever that number changes — the old
+hand-written v1/v2 chain in `exact_scan_baseline.py` could only recognize
+the two format changes it was written for, and produced no block at all
+when the corpus shrank.
+
+**Verified:** rebuilt 520 queries against 183,167 papers in 38s with
+`assert "Seq Scan on papers" in plan` and `assert "papers_embed_idx" not
+in plan`. Vector recall@200 at the shipped defaults moved 0.9857 →
+0.9848 (se 0.0014) — a 0.6-SE move, so the stale ground truth had **not**
+been materially inflating the published recall figure. The staleness was
+a real correctness hole in the instrument; its effect on this particular
+number happened to be small.
+
+---
+
+## 2026-08-12: The corpus shrank 7% and the exact scan got slower
+
+**Symptom:** dedup removed 13,726 net papers, so the exact-scan baseline
+was expected to improve slightly. Warm p50 went the other way: 54.6 ms →
+61.7 ms, and 64.0 ms on a second run. Cold median 1,126 → 1,281 ms.
+
+**How it was found:** a standing instruction to report anything that got
+materially worse rather than smooth it into noise.
+
+**Root cause of the missing improvement — measured, not assumed:** the
+heap is **344 MB / 44,059 pages, identical to when the table held 196,893
+rows**. `VACUUM` reclaims space *within* pages for reuse; it does not
+return them to the OS. A sequential scan reads pages, not rows. Deleting
+7% of rows therefore buys exactly nothing here until the heap is
+rewritten (`VACUUM FULL` or a rebuild), which has not been done. So the
+expectation of a speedup was wrong, and no regression is needed to
+explain a flat result.
+
+**The additional ~15% is not isolated.** What was ruled out:
+
+- **Scratch tables.** 156 MB of `dd_*` dedup tables were found resident
+  in a 4 GB VM and dropped. Re-ran: p50 came back **64.0**, not lower.
+  Not the cause.
+- **Buffer profile** is consistent with page-cache pressure rather than
+  extra work: `shared hit=69,087 read=46,797` against a 128 MB
+  `shared_buffers`, so most of the scan comes from outside Postgres's
+  own cache and is sensitive to whatever else the VM is holding.
+
+Remaining candidate is sustained thermal load — this machine is a fanless
+M1 Air with a documented 2.4x factor under sustained load, and this
+session ran hours of merges, reindexes and embedding passes before the
+measurement. That is a hypothesis, not a finding; separating it cleanly
+would require restoring the pre-dedup corpus and A/B-ing.
+
+**Fix:** none applied. The honest statement is that the two sessions are
+not cleanly comparable, and the pre- and post-dedup exact-scan numbers
+should not be presented as a before/after of dedup. Both are preserved in
+`results_exact_scan.json` with the corpus each was measured against.
+
+**Verified:** heap size read from `pg_relation_size`/`relpages` before and
+after; scratch-table hypothesis tested by dropping and re-running. The
+p95/p99 stability gate fired on every post-dedup run (p95 range [87.7,
+172.0], p99 range [125.7, 414.5]), which is itself consistent with a
+noisier machine rather than a slower query.

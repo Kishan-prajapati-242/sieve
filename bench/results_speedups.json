@@ -1,0 +1,24 @@
+{
+  "retrieval_only": {
+    "note": "vector sql p50 gated to a range by the stability rule; ratio computed at both ends of [2.0, 2.8]",
+    "low": {
+      "speedup": 22.9,
+      "window": "sql only: search function round trip, k=20 full rows",
+      "baseline_ms": 64.0,
+      "candidate_ms": 2.8
+    },
+    "high": {
+      "speedup": 32.0,
+      "window": "sql only: search function round trip, k=20 full rows",
+      "baseline_ms": 64.0,
+      "candidate_ms": 2.0
+    }
+  },
+  "end_to_end": {
+    "speedup": 7.2,
+    "window": "end-to-end: query embed + sql, k=20 full rows",
+    "baseline_ms": 70.7,
+    "candidate_ms": 9.8
+  },
+  "guard": "raises as designed: window mismatch: baseline='sql only: search function round t..."
+}

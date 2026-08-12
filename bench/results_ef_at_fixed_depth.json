@@ -238,5 +238,6 @@
     },
     "match_count_p50": 1,
     "match_count_max": 81489
-  }
+  },
+  "ground_truth_note_2026_08_12": "recall values here were computed against exact_top200_wide.json as it stood for the 196,893-paper corpus; 8.2% of the ids that ground truth referenced were later deleted by dedup. The ef=600 / depth=200 point was re-measured against the rebuilt ground truth (183,167 papers) in results_vector_recall_defaults.json: 0.9848 vs 0.9857 here, a 0.6-SE move. The rest of the sweep has NOT been re-run; treat its recall column as shape-valid and level-approximate."
 }

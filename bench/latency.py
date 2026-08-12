@@ -30,7 +30,13 @@ from api.embed.texts import query_text
 from api.search.bm25 import search_bm25
 from api.search.fusion import search_hybrid
 from api.search.vector import search_vector
-from bench.harness import across_runs, method_record
+from bench.harness import (
+    across_runs,
+    carry_superseded,
+    corpus_size,
+    load_ground_truth,
+    method_record,
+)
 
 K = 20
 VECTOR_EF = 40
@@ -42,12 +48,13 @@ WARMUP_RUNS = 1
 
 def main() -> None:
     out_dir = Path(__file__).parent
-    labels = json.loads((out_dir / "labels" / "exact_top200_wide.json").read_text())
+    labels, _gt_method = load_ground_truth(out_dir / "labels" / "exact_top200_wide.json")
     encoder = OnnxEncoder(os.environ["EMBED_MODEL_DIR"])
 
     with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
         conn.execute("CREATE EXTENSION IF NOT EXISTS pg_prewarm")
         conn.execute("SELECT pg_prewarm('papers_embed_idx', 'read'), pg_prewarm('papers', 'read')")
+        n_papers = corpus_size(conn)
 
         for _ in range(3):
             encoder.encode([query_text("warmup")])
@@ -92,6 +99,21 @@ def main() -> None:
             [[a + b for a, b in zip(embed_ms, run, strict=True)] for run in mode["runs"]]
         )
 
+    results_path = out_dir / "results_mode_latency.json"
+    old = json.loads(results_path.read_text()) if results_path.exists() else None
+    old_corpus = (old or {}).get("method", {}).get("corpus_size")
+    prior = (
+        carry_superseded(
+            old,
+            key=f"superseded_corpus_{old_corpus or 'unrecorded'}",
+            why=f"measured against a corpus of {old_corpus or 'unrecorded size'}; "
+            f"this run measured {n_papers}",
+            keep=("measured_at", "bm25", "vector", "hybrid"),
+        )
+        if old_corpus != n_papers
+        else carry_superseded(old)
+    )
+
     results = {
         "measured_at": datetime.now(UTC).isoformat(),
         "method": method_record(
@@ -112,16 +134,18 @@ def main() -> None:
                 "note": "sampled once per query, this session",
             },
             known_item_caveat="500/520 queries are corpus titles (see recall sweep caveats)",
+            corpus_size=n_papers,
         ),
         "bm25": {"sql": bm25["sql"]},
         "vector": {"sql": vector["sql"], "e2e_with_embed": with_embed(vector)},
         "hybrid": {"sql": hybrid["sql"], "e2e_with_embed": with_embed(hybrid)},
+        **prior,
     }
-    (out_dir / "results_mode_latency.json").write_text(json.dumps(results, indent=2))
+    results_path.write_text(json.dumps(results, indent=2))
     summary = {
         mode: {
-            "sql_p50": results[mode]["sql"]["p50_ms"],  # type: ignore[index]
-            "sql_p95": results[mode]["sql"]["p95_ms"],  # type: ignore[index]
+            "sql_p50": results[mode]["sql"]["p50_ms"],
+            "sql_p95": results[mode]["sql"]["p95_ms"],
         }
         for mode in ("bm25", "vector", "hybrid")
     }

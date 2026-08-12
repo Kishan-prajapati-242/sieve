@@ -52,7 +52,13 @@ import psycopg
 
 from api.embed.onnx_encoder import OnnxEncoder
 from api.embed.texts import query_text
-from bench.harness import across_runs, interleaved, method_record
+from bench.harness import (
+    across_runs,
+    carry_superseded,
+    corpus_size,
+    interleaved,
+    method_record,
+)
 
 # Kishan's 20 eval queries (4 x 5 domains, 2026-07-31). Also the ground-truth
 # query set; these double as the seed of the Phase 4 eval set.
@@ -186,6 +192,7 @@ def main() -> None:
         ]
 
         explain = force_seq_scan(conn, vecs[0])
+        n_papers = corpus_size(conn)
         workers = re.search(r"Workers Launched: (\d+)", explain)
 
         if args.capture_labels:
@@ -216,33 +223,45 @@ def main() -> None:
             ),
         }
 
-    # Prior published numbers stay visible, marked superseded — deleting a
-    # published number is worse than correcting it.
+    # Prior published numbers stay visible, marked superseded. The v1 and v2
+    # blocks were format corrections; from 2026-08-02 a corpus change also
+    # supersedes, since latency measured against a different number of rows
+    # is a different measurement (dedup removed 13,821 papers).
     prior: dict[str, object] = {}
     results_path = out_dir / "results_exact_scan.json"
     if results_path.exists():
         old = json.loads(results_path.read_text())
-        for key in ("superseded_v1", "superseded_v2"):
-            if key in old:
-                prior[key] = old[key]
+        old_corpus = old.get("method", {}).get("corpus_size")
         if "method" not in old:  # v1 format
             old.pop("explain_analyze_example", None)
-            prior["superseded_v1"] = {
-                "why": "p95/p99 computed from 20 samples are the max wearing a "
+            prior = carry_superseded(
+                old,
+                key="superseded_v1",
+                why="p95/p99 computed from 20 samples are the max wearing a "
                 "percentile's name, and cold- and warm-cache samples were blended "
                 "(1.6x spread on identical work) — findings.md 2026-07-31",
-                **old,
-            }
+                keep=tuple(k for k in old if not k.startswith("superseded_")),
+            )
         elif "n_runs" not in old.get("warm", {}):  # v2: single-run percentiles
-            prior["superseded_v2"] = {
-                "why": "single-run p99 (95.8) published from the favorable end of "
+            prior = carry_superseded(
+                old,
+                key="superseded_v2",
+                why="single-run p99 (95.8) published from the favorable end of "
                 "an observed 95.8-406.9 spread across same-day runs — same species "
                 "as the 20-sample p99. Percentiles now need to reproduce across "
                 "runs or they report as a range (findings.md 2026-07-31)",
-                "measured_at": old.get("measured_at"),
-                "warm": old.get("warm"),
-                "cold": old.get("cold"),
-            }
+                keep=("measured_at", "warm", "cold"),
+            )
+        elif old_corpus != n_papers:
+            prior = carry_superseded(
+                old,
+                key=f"superseded_corpus_{old_corpus or 'unrecorded'}",
+                why=f"measured against a corpus of {old_corpus or 'unrecorded size'}; "
+                f"this run measured {n_papers}",
+                keep=("measured_at", "warm", "cold"),
+            )
+        else:
+            prior = carry_superseded(old)
 
     results = {
         "measured_at": datetime.now(UTC).isoformat(),
@@ -265,6 +284,7 @@ def main() -> None:
             "findings.md 2026-07-31). Before/after latency claims should target "
             "p50/p95; any p99 claim needs the multi-run range, never a point.",
             parallel_seq_scan_workers=int(workers.group(1)) if workers else 0,
+            corpus_size=n_papers,
         ),
         "warm": warm,
         "cold": cold,
