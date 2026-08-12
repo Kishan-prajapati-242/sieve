@@ -140,3 +140,54 @@ def test_carry_superseded_never_overwrites_an_existing_block() -> None:
     old = {"superseded_x": {"why": "first"}, "warm": {"p50_ms": 1.0}}
     out = carry_superseded(old, key="superseded_x", why="second", keep=("warm",))
     assert out["superseded_x"] == {"why": "first"}
+
+
+def test_a_toggled_planner_guc_stops_taking_effect_once_the_plan_is_cached(
+    scratch_db: str,
+) -> None:
+    """The 2026-08-12 measurement bug, pinned.
+
+    A forced-exact baseline was built by toggling enable_indexscan on one
+    connection. It worked for about ten executions, then PostgreSQL served
+    the generic plan it had cached while the index was still allowed — so
+    the baseline silently became the candidate and the speedup collapsed
+    toward 1.0. EXPLAIN could not reveal it: EXPLAIN of the same SQL plans
+    fresh, while the PREPAREd statement executes the cached plan. Only
+    EXPLAIN EXECUTE sees what actually runs.
+    """
+    import psycopg
+
+    with psycopg.connect(scratch_db, autocommit=True) as conn:
+        conn.execute("CREATE TABLE t (id int primary key, v int)")
+        conn.execute("INSERT INTO t SELECT g, g FROM generate_series(1, 20000) g")
+        conn.execute("CREATE INDEX t_v_idx ON t (v)")
+        conn.execute("ANALYZE t")
+        conn.execute("PREPARE p (int) AS SELECT id FROM t WHERE v = $1")
+
+        def plan() -> str:
+            return "\n".join(r[0] for r in conn.execute("EXPLAIN EXECUTE p(42)"))
+
+        # Custom plans for the first five executions, then a generic plan.
+        for _ in range(6):
+            conn.execute("EXECUTE p(42)")
+        assert "t_v_idx" in plan()
+
+        conn.execute("SET enable_indexscan = off")
+        conn.execute("SET enable_bitmapscan = off")
+        # The GUC reads off, and a freshly planned statement obeys it...
+        assert conn.execute("SHOW enable_indexscan").fetchone() == ("off",)
+        fresh = "\n".join(r[0] for r in conn.execute("EXPLAIN SELECT id FROM t WHERE v = 42"))
+        assert "Seq Scan" in fresh
+        # ...but the prepared statement keeps executing the cached index plan.
+        assert "t_v_idx" in plan(), "if this ever fails, pinned_connection can be simplified"
+
+        # The fix: a connection whose GUC was set before anything was prepared.
+    with psycopg.connect(scratch_db, autocommit=True) as pinned:
+        pinned.execute("SET enable_indexscan = off")
+        pinned.execute("SET enable_bitmapscan = off")
+        pinned.execute("PREPARE p (int) AS SELECT id FROM t WHERE v = $1")
+        for _ in range(6):
+            pinned.execute("EXECUTE p(42)")
+        pinned_plan = "\n".join(r[0] for r in pinned.execute("EXPLAIN EXECUTE p(42)"))
+    assert "t_v_idx" not in pinned_plan
+    assert "Seq Scan" in pinned_plan

@@ -39,7 +39,14 @@ from api.embed.texts import query_text
 from api.search.bm25 import search_bm25
 from api.search.fusion import HYBRID_DEFAULT_EF_SEARCH, search_hybrid
 from api.search.vector import search_vector
-from bench.harness import across_runs, db_state, load_ground_truth, method_record, paired_ratio
+from bench.harness import (
+    across_runs,
+    db_state,
+    load_ground_truth,
+    method_record,
+    paired_ratio,
+    pinned_connection,
+)
 
 K = 20
 DEPTH = 200
@@ -50,22 +57,49 @@ WARMUP_RUNS = 1
 VARIANTS = ("hybrid_exact", "hybrid_hnsw", "vector_depth", "bm25_depth")
 
 
-def force_exact(conn: psycopg.Connection) -> None:
-    conn.execute("SET enable_indexscan = off")
-    conn.execute("SET enable_bitmapscan = off")
+EXACT_GUCS = {"enable_indexscan": "off", "enable_bitmapscan": "off"}
 
 
-def allow_index(conn: psycopg.Connection) -> None:
-    conn.execute("RESET enable_indexscan")
-    conn.execute("RESET enable_bitmapscan")
+def verify_plans(
+    conn: psycopg.Connection, exact_conn: psycopg.Connection, entry: dict[str, Any]
+) -> dict[str, str]:
+    """Prove each connection plans what it claims — at the start AND again at
+    the end of the run.
+
+    Checking once at the start is what let the toggled-GUC bug through: the
+    plan was right when it was checked and wrong by execution ten. Verifying
+    at both ends cannot catch a mid-run flip on its own, so it is the pinned
+    connection that makes the guarantee; this is the cheap corroboration.
+    """
+    from api.search.fusion import HYBRID_SQL
+    from api.search.vector import vector_literal
+
+    params = {
+        "query": entry["query"],
+        "qv": vector_literal(entry["embedding"]),
+        "k": K,
+        "depth": DEPTH,
+        "rrf_k": 60,
+        "year_from": None,
+        "year_to": None,
+    }
+    plans = {}
+    for name, target in (("hnsw", conn), ("exact", exact_conn)):
+        with target.transaction():
+            target.execute("SELECT set_config('hnsw.ef_search', %s, true)", (str(EF),))
+            plans[name] = "\n".join(
+                r[0]
+                for r in target.execute(f"EXPLAIN {HYBRID_SQL}", params)  # noqa: S608
+            )
+    assert "papers_embed_idx" in plans["hnsw"], plans["hnsw"]
+    assert "papers_embed_idx" not in plans["exact"], plans["exact"]
+    assert "Seq Scan on papers" in plans["exact"], plans["exact"]
+    return {k: v[:400] for k, v in plans.items()}
 
 
 def time_variant(conn: psycopg.Connection, variant: str, entry: dict[str, Any]) -> float:
-    """One timed call. Planner GUCs are set before the clock starts."""
-    if variant == "hybrid_exact":
-        force_exact(conn)
-    else:
-        allow_index(conn)
+    """One timed call on a connection whose plan is already pinned. Nothing
+    is toggled here — see harness.pinned_connection for why."""
     t0 = time.perf_counter()
     if variant in ("hybrid_exact", "hybrid_hnsw"):
         search_hybrid(
@@ -80,9 +114,7 @@ def time_variant(conn: psycopg.Connection, variant: str, entry: dict[str, Any]) 
         search_vector(conn, query_vec=entry["embedding"], k=DEPTH, ef_search=EF)
     else:
         search_bm25(conn, query=entry["query"], k=DEPTH)
-    elapsed = (time.perf_counter() - t0) * 1000
-    allow_index(conn)
-    return elapsed
+    return (time.perf_counter() - t0) * 1000
 
 
 def main() -> None:
@@ -90,10 +122,15 @@ def main() -> None:
     labels, gt_method = load_ground_truth(out_dir / "labels" / "exact_top200_wide.json")
     encoder = OnnxEncoder(os.environ["EMBED_MODEL_DIR"])
 
-    with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
+    dsn = os.environ["DATABASE_URL"]
+    with (
+        pinned_connection(dsn) as conn,
+        pinned_connection(dsn, gucs=EXACT_GUCS) as exact_conn,
+    ):
         conn.execute("CREATE EXTENSION IF NOT EXISTS pg_prewarm")
         conn.execute("SELECT pg_prewarm('papers_embed_idx', 'read'), pg_prewarm('papers', 'read')")
         state = db_state(conn)
+        plans = verify_plans(conn, exact_conn, labels[0])
 
         for _ in range(3):
             encoder.encode([query_text("warmup")])
@@ -109,10 +146,12 @@ def main() -> None:
             for i, entry in enumerate(labels):
                 rot = i % len(VARIANTS)  # no fixed second-mover advantage
                 for variant in VARIANTS[rot:] + VARIANTS[:rot]:
-                    run[variant].append(time_variant(conn, variant, entry))
+                    target = exact_conn if variant == "hybrid_exact" else conn
+                    run[variant].append(time_variant(target, variant, entry))
             if run_index >= WARMUP_RUNS:
                 for variant in VARIANTS:
                     per_run[variant].append(run[variant])
+        verify_plans(conn, exact_conn, labels[0])  # nothing drifted mid-run
 
     def per_query(variant: str) -> list[float]:
         runs = per_run[variant]
@@ -157,6 +196,7 @@ def main() -> None:
             ground_truth_corpus=gt_method.get("corpus_size"),
             embed_component={"p50_ms": round(statistics.median(embed_ms), 1)},
             known_item_caveat="500/520 queries are corpus titles",
+            plans=plans,
         ),
         "levels": {v: across_runs(per_run[v]) for v in VARIANTS},
         "retrieval_only": paired_ratio(

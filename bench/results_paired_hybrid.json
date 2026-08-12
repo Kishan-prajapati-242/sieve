@@ -1,0 +1,248 @@
+{
+  "measured_at": "2026-08-12T16:42:08.463145+00:00",
+  "method": {
+    "timing_window": "search_hybrid(k=20, depth=200, ef=600) round trip, identical on both sides of the speedup: same call, same rows. The baseline differs only by enable_indexscan/bitmapscan = off, which forces the vector CTE to an exact scan. Component variants time search_vector(k=200) and search_bm25(k=200) \u2014 the CTEs' workloads.",
+    "hardware": "MacBook Air M1 8GB (fanless), podman VM 4 vCPU / 4GB",
+    "database": "PostgreSQL 16.14, pgvector 0.8.5, shared_buffers 128MB, in compose",
+    "protocol": "pg_prewarm; 520 queries; 1 warmup + 3 measured runs; four variants back to back inside each query's slot, order rotated; repetitions collapsed per query first",
+    "settings": {
+      "k": 20,
+      "depth": 200,
+      "ef_search": 600
+    },
+    "db_state": {
+      "corpus_size": 183167,
+      "heap_pages": 35348,
+      "heap_bytes": 289570816,
+      "index_bytes": {
+        "papers_abstract_md5_idx": 10657792,
+        "papers_arxiv_id_idx": 16384,
+        "papers_doi_key": 8036352,
+        "papers_embed_idx": 213401600,
+        "papers_fts_idx": 87007232,
+        "papers_pkey": 4136960,
+        "papers_pubmed_id_idx": 1409024,
+        "papers_title_trgm_idx": 40992768,
+        "papers_title_year_idx": 20242432,
+        "papers_year_idx": 1294336
+      }
+    },
+    "ground_truth_corpus": null,
+    "embed_component": {
+      "p50_ms": 8.3
+    },
+    "known_item_caveat": "500/520 queries are corpus titles"
+  },
+  "levels": {
+    "hybrid_exact": {
+      "n_runs": 3,
+      "samples_per_run": [
+        520,
+        520,
+        520
+      ],
+      "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
+      "per_run": [
+        {
+          "n_samples": 520,
+          "p50_ms": 14.3,
+          "p95_ms": 63.2,
+          "p99_ms": 134.6,
+          "min_ms": 4.6,
+          "max_ms": 1559.9
+        },
+        {
+          "n_samples": 520,
+          "p50_ms": 14.2,
+          "p95_ms": 88.1,
+          "p99_ms": 305.7,
+          "min_ms": 3.9,
+          "max_ms": 802.7
+        },
+        {
+          "n_samples": 520,
+          "p50_ms": 13.6,
+          "p95_ms": 47.0,
+          "p99_ms": 113.9,
+          "min_ms": 3.8,
+          "max_ms": 546.7
+        }
+      ],
+      "p50_ms": 14.2,
+      "p95_ms": null,
+      "p95_unstable_range_ms": [
+        47.0,
+        88.1
+      ],
+      "p99_ms": null,
+      "p99_unstable_range_ms": [
+        113.9,
+        305.7
+      ]
+    },
+    "hybrid_hnsw": {
+      "n_runs": 3,
+      "samples_per_run": [
+        520,
+        520,
+        520
+      ],
+      "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
+      "per_run": [
+        {
+          "n_samples": 520,
+          "p50_ms": 9.8,
+          "p95_ms": 46.8,
+          "p99_ms": 131.1,
+          "min_ms": 3.6,
+          "max_ms": 1476.0
+        },
+        {
+          "n_samples": 520,
+          "p50_ms": 10.3,
+          "p95_ms": 68.0,
+          "p99_ms": 187.0,
+          "min_ms": 3.9,
+          "max_ms": 1343.9
+        },
+        {
+          "n_samples": 520,
+          "p50_ms": 9.7,
+          "p95_ms": 40.1,
+          "p99_ms": 148.1,
+          "min_ms": 3.5,
+          "max_ms": 751.7
+        }
+      ],
+      "p50_ms": 9.8,
+      "p95_ms": null,
+      "p95_unstable_range_ms": [
+        40.1,
+        68.0
+      ],
+      "p99_ms": null,
+      "p99_unstable_range_ms": [
+        131.1,
+        187.0
+      ]
+    },
+    "vector_depth": {
+      "n_runs": 3,
+      "samples_per_run": [
+        520,
+        520,
+        520
+      ],
+      "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
+      "per_run": [
+        {
+          "n_samples": 520,
+          "p50_ms": 12.1,
+          "p95_ms": 40.8,
+          "p99_ms": 70.2,
+          "min_ms": 4.6,
+          "max_ms": 408.9
+        },
+        {
+          "n_samples": 520,
+          "p50_ms": 12.3,
+          "p95_ms": 51.1,
+          "p99_ms": 111.3,
+          "min_ms": 4.5,
+          "max_ms": 235.4
+        },
+        {
+          "n_samples": 520,
+          "p50_ms": 11.2,
+          "p95_ms": 32.7,
+          "p99_ms": 50.9,
+          "min_ms": 5.0,
+          "max_ms": 153.0
+        }
+      ],
+      "p50_ms": 12.1,
+      "p95_ms": null,
+      "p95_unstable_range_ms": [
+        32.7,
+        51.1
+      ],
+      "p99_ms": null,
+      "p99_unstable_range_ms": [
+        50.9,
+        111.3
+      ]
+    },
+    "bm25_depth": {
+      "n_runs": 3,
+      "samples_per_run": [
+        520,
+        520,
+        520
+      ],
+      "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
+      "per_run": [
+        {
+          "n_samples": 520,
+          "p50_ms": 1.5,
+          "p95_ms": 27.5,
+          "p99_ms": 107.1,
+          "min_ms": 0.3,
+          "max_ms": 598.7
+        },
+        {
+          "n_samples": 520,
+          "p50_ms": 1.5,
+          "p95_ms": 29.9,
+          "p99_ms": 137.8,
+          "min_ms": 0.2,
+          "max_ms": 1014.1
+        },
+        {
+          "n_samples": 520,
+          "p50_ms": 1.3,
+          "p95_ms": 26.0,
+          "p99_ms": 122.0,
+          "min_ms": 0.3,
+          "max_ms": 400.8
+        }
+      ],
+      "p50_ms": 1.5,
+      "p95_ms": 27.5,
+      "p99_ms": 122.0
+    }
+  },
+  "retrieval_only": {
+    "speedup": 1.4,
+    "ci95": [
+      1.3,
+      1.6
+    ],
+    "window": "sql only: search_hybrid(k=20, depth=200, ef=600)",
+    "paired": true,
+    "n_pairs": 520,
+    "ratio_p10": 0.4,
+    "ratio_p90": 3.3,
+    "method": "median of per-query baseline/candidate ratios, both timed inside one run with alternating order; percentile bootstrap over queries (2000 resamples, seed 20260812)"
+  },
+  "end_to_end": {
+    "speedup": 1.2,
+    "ci95": [
+      1.1,
+      1.2
+    ],
+    "window": "end-to-end: query embed + search_hybrid(k=20, depth=200, ef=600)",
+    "paired": true,
+    "n_pairs": 520,
+    "ratio_p10": 0.5,
+    "ratio_p90": 2.1,
+    "method": "median of per-query baseline/candidate ratios, both timed inside one run with alternating order; percentile bootstrap over queries (2000 resamples, seed 20260812)"
+  },
+  "decomposition": {
+    "hybrid_p50_ms": 9.4,
+    "vector_at_depth_p50_ms": 11.39,
+    "bm25_at_depth_p50_ms": 1.39,
+    "fusion_overhead_p50_ms": -3.35,
+    "vector_share_of_hybrid": 1.212,
+    "reads_as": "components are what each CTE's workload costs run alone; fusion_overhead is hybrid minus their sum, an UPPER bound on genuine fusion cost (Postgres may overlap the CTEs, and any sharing shows up here as a negative contribution)"
+  }
+}

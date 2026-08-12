@@ -225,6 +225,31 @@ def corpus_size(conn: Any) -> int:
     return int(row[0])
 
 
+def pinned_connection(dsn: str, *, gucs: dict[str, str] | None = None) -> Any:
+    """A connection whose planner settings are fixed BEFORE its first query,
+    and never changed again.
+
+    This exists because of a measurement that quietly stopped measuring
+    anything (findings.md 2026-08-12). Toggling `enable_indexscan` between
+    calls on one connection works for about ten executions; then psycopg's
+    automatic PREPARE (prepare_threshold=5) plus PostgreSQL's switch to a
+    generic plan means the server reuses the plan it cached while the index
+    was still allowed. The GUC still reads `off`, EXPLAIN of the same SQL
+    still shows a Seq Scan — but the prepared statement executes the index
+    plan, and a forced-exact baseline silently becomes the candidate.
+
+    So: one connection per plan, GUC applied at open, alternate between
+    connections instead of toggling one. Both sides keep prepared
+    statements, which is also what the API does in production.
+    """
+    import psycopg
+
+    conn = psycopg.connect(dsn, autocommit=True)
+    for name, value in (gucs or {}).items():
+        conn.execute(f"SET {name} = {value}")  # noqa: S608 — names are literals in bench code
+    return conn
+
+
 def db_state(conn: Any) -> dict[str, Any]:
     """What the measurement measured: rows AND physical layout.
 

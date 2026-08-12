@@ -86,6 +86,69 @@ class EmbeddingCoverage(BaseModel):
     missing_invalidated_or_stalled: int
 
 
+BY_SOURCE_SQL = """
+SELECT source, count(*) AS records, count(DISTINCT paper_id) AS papers
+FROM source_records
+GROUP BY source
+ORDER BY source
+"""
+
+MERGES_BY_STRATEGY_SQL = """
+SELECT strategy, count(*) AS n
+FROM merges
+GROUP BY strategy
+ORDER BY n DESC, strategy
+"""
+
+# Two facts an operator needs about the queue and cannot get from a count
+# alone: how much work is waiting, and whether anything has given up.
+# oldest_pending_age_s is the one that actually catches a stalled worker —
+# a depth of 500 is fine if it is draining and alarming if it is not.
+QUEUE_SQL = """
+SELECT
+    (SELECT count(*) FROM ingest_jobs WHERE status = 'pending')  AS pending,
+    (SELECT count(*) FROM ingest_jobs WHERE status = 'running')  AS running,
+    (SELECT count(*) FROM ingest_jobs WHERE status = 'done')     AS done,
+    (SELECT count(*) FROM ingest_jobs WHERE status = 'dead')     AS dead,
+    (SELECT EXTRACT(EPOCH FROM now() - min(created_at))
+     FROM ingest_jobs WHERE status = 'pending' AND run_after <= now()) AS oldest_pending_age_s,
+    (SELECT count(*) FROM ingest_jobs
+     WHERE status = 'running' AND locked_at < now() - interval '15 minutes') AS stale_running
+"""
+
+SCREENING_SQL = """
+SELECT
+    (SELECT count(*) FROM collections)                              AS collections,
+    (SELECT count(*) FROM screenings)                               AS screened,
+    (SELECT count(*) FROM screenings WHERE decision = 'include')    AS included
+"""
+
+
+class SourceCounts(BaseModel):
+    records: int
+    papers: int
+
+
+class QueueStats(BaseModel):
+    """Queue depth by status, plus the two liveness signals."""
+
+    pending: int
+    running: int
+    done: int
+    dead: int
+    # None when nothing is due; seconds since the oldest DUE job was created.
+    oldest_pending_age_s: float | None
+    # 'running' with no heartbeat: a worker died holding these. reap_stale()
+    # is what returns them; a non-zero value that persists means nobody runs it.
+    stale_running: int
+
+
+class ScreeningStats(BaseModel):
+    collections: int
+    screened: int
+    included: int
+
+
 class StatsResponse(BaseModel):
     papers: int
     retracted_papers: int
@@ -94,6 +157,10 @@ class StatsResponse(BaseModel):
     papers_by_query: dict[str, int]
     records_by_query: dict[str, int]
     embedding_coverage: EmbeddingCoverage
+    by_source: dict[str, SourceCounts]
+    merges_by_strategy: dict[str, int]
+    queue: QueueStats
+    screening: ScreeningStats
 
 
 def read_stats(conn: psycopg.Connection) -> StatsResponse:
@@ -104,6 +171,14 @@ def read_stats(conn: psycopg.Connection) -> StatsResponse:
     assert coverage_row is not None
     records_by_query: dict[str, int] = dict(conn.execute(RECORDS_BY_QUERY_SQL).fetchall())
     papers_by_query: dict[str, int] = dict(conn.execute(PAPERS_BY_QUERY_SQL).fetchall())
+    by_source = {
+        str(src): SourceCounts(records=rec, papers=pap)
+        for src, rec, pap in conn.execute(BY_SOURCE_SQL).fetchall()
+    }
+    merges_by_strategy: dict[str, int] = dict(conn.execute(MERGES_BY_STRATEGY_SQL).fetchall())
+    queue_row = conn.execute(QUEUE_SQL).fetchone()
+    screening_row = conn.execute(SCREENING_SQL).fetchone()
+    assert queue_row is not None and screening_row is not None
     return StatsResponse(
         papers=papers,
         retracted_papers=retracted,
@@ -117,6 +192,21 @@ def read_stats(conn: psycopg.Connection) -> StatsResponse:
             missing=coverage_row[2],
             missing_awaiting_dedup=coverage_row[3],
             missing_invalidated_or_stalled=coverage_row[4],
+        ),
+        by_source=by_source,
+        merges_by_strategy=merges_by_strategy,
+        queue=QueueStats(
+            pending=queue_row[0],
+            running=queue_row[1],
+            done=queue_row[2],
+            dead=queue_row[3],
+            oldest_pending_age_s=queue_row[4],
+            stale_running=queue_row[5],
+        ),
+        screening=ScreeningStats(
+            collections=screening_row[0],
+            screened=screening_row[1],
+            included=screening_row[2],
         ),
     )
 

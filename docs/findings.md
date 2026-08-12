@@ -1148,3 +1148,77 @@ equality cannot verify that two code paths did the same work.
 both sides call `search_vector()`, differing only in whether
 `enable_indexscan` lets the planner reach the HNSW index, so there is one
 code path and the window is identical by construction.
+
+---
+
+## 2026-08-12: The forced-exact baseline stopped being exact, and EXPLAIN could not tell
+
+**Symptom:** the paired hybrid measurement returned a speedup of **1.4x**
+[1.3, 1.6] for the HNSW index over an exact scan, with 10% of queries
+showing the *exact scan winning* (ratio p10 = 0.4). The decomposition in
+the same run put hybrid at 9.4 ms and its own vector CTE at 11.4 ms — a
+whole greater than its part, which is not a thing that happens.
+
+**How it was found:** the number was too good in the wrong direction. A
+forced sequential scan over 183,167 halfvecs cannot cost 14 ms when the
+standalone exact-scan baseline costs 60 ms. Direct timing confirmed it:
+
+```
+per-query hybrid_exact ms:  845, 573, 817, 423, 485, 7.6
+```
+
+The first five are a real seq scan. The sixth is not.
+
+**Root cause:** the baseline was built by toggling `enable_indexscan =
+off` between calls on one connection. psycopg prepares a statement after
+5 executions (`prepare_threshold=5`), and PostgreSQL serves custom plans
+for the first five executions of a prepared statement before switching to
+a cached **generic plan**. That generic plan was built while the index was
+still allowed. From roughly the tenth execution on, the server kept
+executing the index plan no matter what the GUC said — so the baseline
+became the candidate, and the ratio decayed toward 1.0.
+
+**Why the existing guard could not catch it.** `verify_plans()` ran
+`EXPLAIN` on the same SQL and asserted `Seq Scan on papers`. It passed —
+every time, including after the collapse:
+
+```
+exec  0: uses papers_embed_idx = False  (GUC says off)
+exec 13: uses papers_embed_idx = False  (GUC says off)
+```
+
+`EXPLAIN <sql>` plans the statement fresh and obeys the current GUC.
+The PREPAREd statement executes the cached plan. They are different
+objects, and only `EXPLAIN EXECUTE` sees the one that runs. **A plan
+assertion written against EXPLAIN cannot verify what a prepared statement
+did** — which makes this the fourth "check whose passing condition is
+independent of the property under test" and the 6th instance of that
+pattern overall.
+
+**Fix:** `harness.pinned_connection()`. One connection per plan, GUC
+applied before its first query, never toggled; the measurement alternates
+between connections instead. Both sides keep prepared statements, which
+is also what the API does in production, so neither side is handicapped.
+Verified directly — with the GUC set at open, the exact plan holds for
+all 16 executions:
+
+```
+toggled  (prepare_threshold=5):  839, 887, 478, 489, ..., 1933, 2837, ...
+pinned   (GUC set before open):  617, 419, 450, 486, ..., 340, 374, 434
+```
+
+**Verified:** `tests/test_harness.py::test_a_toggled_planner_guc_stops_
+taking_effect_once_the_plan_is_cached` reproduces the whole mechanism on
+a 20,000-row scratch table in 0.6 s: it PREPAREs a statement, executes it
+six times, sets `enable_indexscan = off`, then asserts that a freshly
+planned statement obeys the GUC while `EXPLAIN EXECUTE` still shows the
+index — and that a connection pinned before PREPARE does not. If a future
+PostgreSQL invalidates cached plans on planner-GUC changes, that test
+fails and says `pinned_connection` can be simplified.
+
+**Blast radius:** `paired_speedup.py` had the identical construction and
+was corrected the same way. Its published figures were re-measured rather
+than assumed safe — its exact side had measured 70.4 ms p50, consistent
+with a real scan, which is why the bug surfaced in the hybrid script
+first: hybrid's higher execution count per query reached the generic-plan
+threshold sooner.

@@ -78,6 +78,36 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # Queue workers. `docker compose up --scale worker=4` is the whole
+  # scale-out story: SELECT ... FOR UPDATE SKIP LOCKED makes N workers claim
+  # disjoint jobs with no coordinator, no broker, and no leader election.
+  #
+  # Not started by a plain `up`: a worker with an empty queue is just a
+  # process polling once a second, and the crawl should be a deliberate act
+  # (`docker compose run --rm worker python -m api.queue --seed-pubmed`).
+  #
+  # NOTE the rate-limit caveat from api/queue/handlers.py: each worker holds
+  # its own token bucket, so N workers fetch at N times the documented rate.
+  # Scale for embedding throughput, not for fetch throughput.
+  worker:
+    build:
+      context: .
+      target: runtime
+    profiles: ["worker"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sieve}:${POSTGRES_PASSWORD:-sieve}@postgres:5432/${POSTGRES_DB:-sieve}
+      EMBED_MODEL_DIR: /models
+    volumes:
+      - ./api:/app/api
+      - ./models/bge-small-en-v1.5:/models:ro
+    command: python -m api.queue
+    # SIGTERM makes the loop finish its job and exit; the default 10s is
+    # tight for a page fetch against a rate-limited API.
+    stop_grace_period: 60s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
   # The independent check: `make test` (or `docker compose run --rm test`)
   # runs the pytest suite in a container built from the dev target — no host
   # Python, no trusting reported test counts. profiles: keeps it out of a

@@ -41,6 +41,51 @@ environmental. Not isolated. The paired treatment needs extending to
 `search_hybrid()` before any hybrid before/after claim is published.
 
 
+### 2026-08-12 (later) — Phase 3 build: source three, the queue, screening
+
+**PubMed client** (`api/ingest/pubmed.py`, 14 tests). esearch for PMIDs +
+efetch for records, MEDLINE XML via stdlib ElementTree, structured
+abstracts keeping their section labels, is_retracted from PublicationType
+("Retracted Publication", NOT "Retraction of Publication"). Bucket at
+2.5/s against NCBI's documented 3/s — they block rather than throttle.
+Live smoke run: 12 articles, rerun changed no counts. `get_response()` now
+holds the retry loop with `get_json`/`get_text` as wrappers, so the XML
+path gets the same full-jitter discipline.
+
+**Queue** (`api/queue/`, migrations 0010-0011, 17 + 7 tests). `SELECT ...
+FOR UPDATE SKIP LOCKED` claim, full-jitter backoff via `run_after`,
+dead-lettering at `max_attempts`, `reap_stale()` for jobs whose worker was
+SIGKILLed. Work and completion commit in ONE transaction; failure recording
+runs in its own, because a failure written inside the aborted transaction
+rolls back with the work and the job spins forever. Ingestion is converted
+one job per PAGE: the page is the idempotent unit, its dedupe_key is
+(source, query, offset), and each page enqueues its successor inside its
+own transaction — so the queue holds the crawl's position, committed with
+the data. Verified: 8 threads racing for 200 jobs claim each exactly once;
+a worker killed mid-crawl loses no pages and creates no duplicates.
+
+OpenAlex is deliberately NOT converted: cursor pagination means page N+1 is
+only reachable by holding page N's cursor, so a page is not addressable by
+a dedupe key. Its client keeps its own resumable loop.
+
+**Screening + export** (`api/collections/`, migration 0012, 17 tests).
+Collections, include/exclude/maybe as an upsert on (collection_id,
+paper_id), BibTeX export with TeX escaping, brace-protected acronyms, and
+stable collision-suffixed keys so the same collection exports byte
+identically. `@misc` when there is no venue — a preprint is not an article
+with a blank journal. `ON DELETE CASCADE` from collections but NOT from
+papers: dedup deletes paper rows, and a human decision must not vanish
+because its paper was merged.
+
+**`/api/stats`** now also reports per-source counts, merges by strategy,
+queue depth with `oldest_pending_age_s` and `stale_running`, and screening
+totals.
+
+**Deferred, with reasons:** cross-process rate limiting (N workers hold N
+buckets, so scale workers for embedding throughput not fetch throughput);
+embed_batch and dedup_batch handlers; the full PubMed pull, which will
+change the corpus and invalidate every latency number above.
+
 ## Phase 3 status (2026-08-01)
 
 DONE:

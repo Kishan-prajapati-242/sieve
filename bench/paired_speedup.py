@@ -24,7 +24,10 @@ Protocol:
   default) — with the order ROTATED by query index, so no variant
   systematically benefits from being second on a warm buffer.
 
-  SET/RESET of the planner GUCs happens outside every timing window.
+  The planner GUCs are pinned per CONNECTION, never toggled: toggling
+  them on one connection stops working once psycopg prepares the
+  statement and PostgreSQL caches a generic plan, and the baseline
+  silently becomes the candidate (findings.md 2026-08-12).
 
   e2e adds the per-query embed cost to BOTH sides: an exact-scan
   implementation of the endpoint would embed the query too.
@@ -52,6 +55,7 @@ from bench.harness import (
     load_ground_truth,
     method_record,
     paired_ratio,
+    pinned_connection,
 )
 
 K = 20
@@ -63,49 +67,36 @@ WARMUP_RUNS = 1
 VARIANTS = ("exact", "hnsw_ef40", "hnsw_ef600")
 
 
-def force_exact(conn: psycopg.Connection) -> None:
-    conn.execute("SET enable_indexscan = off")
-    conn.execute("SET enable_bitmapscan = off")
+EXACT_GUCS = {"enable_indexscan": "off", "enable_bitmapscan": "off"}
 
 
-def allow_index(conn: psycopg.Connection) -> None:
-    conn.execute("RESET enable_indexscan")
-    conn.execute("RESET enable_bitmapscan")
-
-
-def verify_plans(conn: psycopg.Connection, vec: list[float]) -> dict[str, str]:
-    """Prove each side gets the plan it claims before timing anything."""
+def verify_plans(
+    conn: psycopg.Connection, exact_conn: psycopg.Connection, vec: list[float]
+) -> dict[str, str]:
+    """Prove each connection plans what it claims, at the start and again at
+    the end. The pinned connection is what makes the guarantee (see
+    harness.pinned_connection); this corroborates it."""
     from api.search.vector import VECTOR_SQL, vector_literal
 
     params = {"q": vector_literal(vec), "k": K, "year_from": None, "year_to": None}
     plans = {}
-    for name, setup in (("exact", force_exact), ("hnsw", allow_index)):
-        setup(conn)
+    for name, target in (("exact", exact_conn), ("hnsw", conn)):
         plans[name] = "\n".join(
             r[0]
-            for r in conn.execute(f"EXPLAIN {VECTOR_SQL}", params)  # noqa: S608
+            for r in target.execute(f"EXPLAIN {VECTOR_SQL}", params)  # noqa: S608
         )
-    allow_index(conn)
     assert "Seq Scan on papers" in plans["exact"], plans["exact"]
     assert "papers_embed_idx" not in plans["exact"], plans["exact"]
     assert "papers_embed_idx" in plans["hnsw"], plans["hnsw"]
-    return plans
+    return {k: v[:400] for k, v in plans.items()}
 
 
 def time_variant(conn: psycopg.Connection, variant: str, vec: list[float]) -> float:
-    """One timed call. GUC changes happen before the clock starts."""
-    if variant == "exact":
-        force_exact(conn)
-        ef = EF_VECTOR
-    else:
-        allow_index(conn)
-        ef = EF_VECTOR if variant == "hnsw_ef40" else EF_HYBRID
+    """One timed call on a connection whose plan is already pinned."""
+    ef = EF_HYBRID if variant == "hnsw_ef600" else EF_VECTOR
     t0 = time.perf_counter()
     search_vector(conn, query_vec=vec, k=K, ef_search=ef)
-    elapsed = (time.perf_counter() - t0) * 1000
-    if variant == "exact":
-        allow_index(conn)
-    return elapsed
+    return (time.perf_counter() - t0) * 1000
 
 
 def main() -> None:
@@ -113,11 +104,15 @@ def main() -> None:
     labels, gt_method = load_ground_truth(out_dir / "labels" / "exact_top200_wide.json")
     encoder = OnnxEncoder(os.environ["EMBED_MODEL_DIR"])
 
-    with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
+    dsn = os.environ["DATABASE_URL"]
+    with (
+        pinned_connection(dsn) as conn,
+        pinned_connection(dsn, gucs=EXACT_GUCS) as exact_conn,
+    ):
         conn.execute("CREATE EXTENSION IF NOT EXISTS pg_prewarm")
         conn.execute("SELECT pg_prewarm('papers_embed_idx', 'read'), pg_prewarm('papers', 'read')")
         state = db_state(conn)
-        plans = verify_plans(conn, labels[0]["embedding"])
+        plans = verify_plans(conn, exact_conn, labels[0]["embedding"])
 
         for _ in range(3):
             encoder.encode([query_text("warmup")])
@@ -134,10 +129,12 @@ def main() -> None:
             for i, entry in enumerate(labels):
                 rot = i % len(VARIANTS)  # rotate order: no fixed second-mover advantage
                 for variant in VARIANTS[rot:] + VARIANTS[:rot]:
-                    run[variant].append(time_variant(conn, variant, entry["embedding"]))
+                    target = exact_conn if variant == "exact" else conn
+                    run[variant].append(time_variant(target, variant, entry["embedding"]))
             if run_index >= WARMUP_RUNS:
                 for variant in VARIANTS:
                     per_run[variant].append(run[variant])
+        verify_plans(conn, exact_conn, labels[0]["embedding"])  # nothing drifted
 
     # Collapse repetitions per query first: repeats of one query are
     # correlated, so the bootstrap resamples queries, not measurements.
