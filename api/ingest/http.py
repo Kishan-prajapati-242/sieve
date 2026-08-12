@@ -19,6 +19,12 @@ discarding it once turned a billing problem into a fake rate mystery.
 Other 5xx and transport errors keep the jitter schedule; any other 4xx is
 a bug in our request and raises immediately.
 
+get_response holds the retry loop; get_json and get_text are one-line
+wrappers over it. PubMed's efetch returns XML and nothing else, and a
+second retry loop written beside this one would drift from it — arXiv's
+client already skips retries entirely because it predates this helper
+(its pages are idempotent GETs, so a failure costs a rerun, not data).
+
 rng and sleep are injectable for tests.
 """
 
@@ -124,6 +130,63 @@ def get_json(
     rng: Callable[[], float] = random.random,
     sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
+    data: dict[str, Any] = get_response(
+        client,
+        url,
+        params=params,
+        bucket=bucket,
+        max_attempts=max_attempts,
+        base_delay=base_delay,
+        max_delay=max_delay,
+        retry_after_ceiling=retry_after_ceiling,
+        rng=rng,
+        sleep=sleep,
+    ).json()
+    return data
+
+
+def get_text(
+    client: httpx.Client,
+    url: str,
+    *,
+    params: dict[str, Any],
+    bucket: TokenBucket,
+    max_attempts: int = 6,
+    base_delay: float = 1.0,
+    max_delay: float = 30.0,
+    retry_after_ceiling: float = 300.0,
+    rng: Callable[[], float] = random.random,
+    sleep: Callable[[float], None] = time.sleep,
+) -> str:
+    """Same rules, XML body. PubMed's efetch speaks XML and nothing else,
+    and a second retry loop written next to this one would drift from it."""
+    return get_response(
+        client,
+        url,
+        params=params,
+        bucket=bucket,
+        max_attempts=max_attempts,
+        base_delay=base_delay,
+        max_delay=max_delay,
+        retry_after_ceiling=retry_after_ceiling,
+        rng=rng,
+        sleep=sleep,
+    ).text
+
+
+def get_response(
+    client: httpx.Client,
+    url: str,
+    *,
+    params: dict[str, Any],
+    bucket: TokenBucket,
+    max_attempts: int = 6,
+    base_delay: float = 1.0,
+    max_delay: float = 30.0,
+    retry_after_ceiling: float = 300.0,
+    rng: Callable[[], float] = random.random,
+    sleep: Callable[[float], None] = time.sleep,
+) -> httpx.Response:
     last_failure = ""
     for attempt in range(max_attempts):
         bucket.acquire()
@@ -148,8 +211,7 @@ def get_json(
                 last_failure = f"HTTP {resp.status_code}: {resp.text[:200]}"
             else:
                 resp.raise_for_status()  # non-retryable 4xx: our bug, fail now
-                data: dict[str, Any] = resp.json()
-                return data
+                return resp
         if attempt < max_attempts - 1:
             if delay is None:
                 delay = rng() * min(max_delay, base_delay * 2**attempt)

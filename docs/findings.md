@@ -1064,3 +1064,87 @@ makes the system look worse is the one the evidence supports, and it
 stays. That is the counterexample to the drift pattern above — the same
 review that found a flattering ratio also found a chance to improve a
 number honestly declined.
+
+---
+
+## 2026-08-12: Demanding an explanation for noise (pattern, 5th instance)
+
+**Symptom:** the exact-scan p50 moved 54.6 → 61.7 between sessions and I
+was asked to account for a "~22% unexplained gap" — 7% expected
+improvement plus 15% observed regression. Hours went into candidate
+mechanisms: scratch tables, page cache, thermal load.
+
+**Why it could not work:** the gap was smaller than the instrument's own
+spread. Four measurements of a byte-identical database returned p50
+between 56.0 and 64.0, and a `VACUUM FULL` that removed 20% of the heap
+pages moved it by nothing detectable. A difference below the noise floor
+has no mechanism to find, so every hypothesis fits equally well and none
+can be eliminated — the investigation had no possible outcome that would
+have falsified any candidate.
+
+**Attribution, since it matters to the lesson:** this one was Kishan's
+framing, and the four before it were mine. The pattern is not a property
+of who is careless. It is what happens when a number is trusted before
+its resolution is known, and the correct first move is the same for
+everyone: measure the instrument's spread on an unchanged system before
+attributing any difference to a change.
+
+**The pattern, now five instances** (see 2026-07-31 for 1–4):
+1. the durability test that read through the writer's own connection;
+2. p95 = p99 from 20 samples, where both are the max by construction;
+3. the fusion convergence proxy that reaches 1.0 by construction;
+4. the drift count of 0, where both hypotheses predict zero;
+5. this gap, smaller than the spread of the instrument measuring it.
+
+The shared shape: a number asked to support a conclusion its construction
+cannot support. "What result would falsify this?" catches 1–4. For 5 the
+question is narrower and worth adding to the harness discipline: **what
+is the smallest difference this measurement can resolve?** If the answer
+is not known, no before/after claim from it is publishable.
+
+**Fix:** the repeated-measure control is now the first step of any
+before/after — re-measure the unchanged system 3+ times and publish the
+spread alongside the effect. `paired_ratio()` sidesteps the problem for
+ratios; for absolute levels there is no substitute for knowing the floor.
+
+---
+
+## 2026-08-12: 24x and 3.8x are the same system at two settings
+
+**Symptom:** the paired measurement returned retrieval-only speedup of
+**24.1x at ef=40** and **3.8x at ef=600**. Every speedup figure quoted so
+far — including in a resume draft — came from the ef=40 end. The hybrid
+path, which is what ships as the flagship mode, runs at ef=600.
+
+**How it was found:** Kishan, on reading the paired table: "quoting 24x
+for a system whose flagship mode runs at 3.8x is the flattering-drift
+error one layer up."
+
+**Why it is the same error:** both numbers are true, both are measured,
+and neither is a lie in isolation. The selection between them is where
+the flattery enters — the same shape as publishing the favorable end of a
+p99 spread, moved from picking a sample to picking a configuration.
+
+**The honest framing is the exchange rate, not either endpoint.** ef is a
+recall/latency dial, so a speedup quoted without its recall is a number
+with its price removed:
+
+| ef_search | paired retrieval speedup | recall@200 |
+|---|---|---|
+| 40 | 24.1x [23.3, 25.0] | (measured separately — see below) |
+| 600 | 3.8x [3.6, 3.9] | 0.9861 (se 0.0010) |
+
+**and Sieve ships the second.** The claim worth making is not "24x
+faster"; it is that the ef dial buys recall with latency at a measured
+rate, and that the shipped configuration deliberately spends most of the
+available speedup on recall.
+
+**Related, on the guard that was supposed to prevent this:**
+`harness.speedup()` compares timing-window *strings*. Two genuinely
+different windows — a 50-row `(id, distance)` scan and a 20-full-row
+search — pass it as long as the caller hands both the same string. String
+equality cannot verify that two code paths did the same work.
+`paired_speedup.py` fixes this structurally rather than by assertion:
+both sides call `search_vector()`, differing only in whether
+`enable_indexscan` lets the planner reach the HNSW index, so there is one
+code path and the window is identical by construction.
