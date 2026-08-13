@@ -478,6 +478,21 @@ correct merges in strategies measuring 1.000 precision); leaving the cap
 at 8 (accepts ~32% error on 122 groups); deleting the bad merges outright
 rather than unwinding (loses the audit trail and the ability to revisit).
 
+**REVISIT CONDITION MET, 2026-08-13.** This says a second labeling pass
+with the taxonomy fixed in advance, and names title_exact's 0.684 off n=19
+as the number most worth re-measuring because it drove a rule change. The
+evidence that meets it: the strata themselves are attribution artifacts.
+bench/dedup_sample.py stratified on merges.strategy, which dedup_execute
+writes from the EARLIEST contributing strategy in ORDER — and abstract_hash
+precedes title_exact. So acc_abstract_hash (n=11, precision 1.000) contains
+large groups that also carry title_exact edges, while acc_title_exact_group
+(n=19, precision 0.684) contains only groups with no abstract_hash edge.
+The two strata are disjoint by attribution, not by content, and the same
+122 groups re-attributed between two runs of a corpus differing only by the
+unwind. The cap this decision set is therefore not re-derivable until a
+pass stratifies on which strategies CONTRIBUTED edges (findings.md
+2026-08-13).
+
 **What would change my mind:** a second labeling pass with the taxonomy
 fixed in advance. It would move precision, probably by less than the first
 review did, and title_exact's 0.684 is the number most worth re-measuring
