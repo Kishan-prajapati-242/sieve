@@ -66,18 +66,11 @@
   },
   "total_pairs": 1830,
   "groups_total": 179,
-  "groups_merged": 122,
-  "groups_flagged_for_review": 57,
-  "papers_in_flagged_groups": 889,
-  "rows_merged_away": 314,
-  "size_distribution_merged": {
-    "3": 89,
-    "4": 17,
-    "5": 3,
-    "6": 7,
-    "7": 4,
-    "8": 2
-  },
+  "groups_merged": 0,
+  "groups_flagged_for_review": 179,
+  "papers_in_flagged_groups": 1325,
+  "rows_merged_away": 0,
+  "size_distribution_merged": {},
   "components_4plus": 90,
   "components_that_are_chains": 1,
   "chain_examples": [

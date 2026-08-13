@@ -9,11 +9,12 @@ had been attributed, wrongly, from `pg_stat_activity` elapsed time. The
 rule this restates: read the plan.
 
 > **SUPERSEDED IN PART, same day.** The "four hours" this document was
-> written to explain is very likely host sleep, not work: independently
-> measured per-step costs sum to 15-20 minutes, and the Docker daemon's
-> clock had frozen ~3h45m behind the host during that run. The plans below
-> are still the plans; the runtime attribution is corrected in
-> findings.md 2026-08-13. `dd_scored` measures ~6 minutes, not 3.2 hours.
+> written to explain was host sleep, not work. Confirmed by re-running
+> under `caffeinate` with VM-side timestamps: **10 m 11 s VM-measured,
+> 10 m 09 s host-measured** — the two clocks agree when the host stays
+> awake, and diverged ~3h45m when it did not. A 23x inflation. The plans
+> below are still the plans; the runtime attribution is corrected in
+> findings.md 2026-08-13. `dd_scored` measures ~6 minutes of that 10.
 
 ## Summary — where the time goes
 

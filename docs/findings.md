@@ -1962,8 +1962,23 @@ a measurement of that work. In-VM clocks (`pg_stat_activity`,
 `EXPLAIN ANALYZE`) were right the whole time and I overrode them with a
 host-side number because it was larger.
 
-**Confirmation still owed:** a re-run with the host kept awake. At ~20
-minutes that is now affordable, where at four hours it was not.
+**CONFIRMED 2026-08-13.** Re-run under `caffeinate -dimsu`, with VM-side
+timestamps bracketing it:
+
+| | |
+|---|---|
+| VM start | 18:46:29 |
+| VM end | 18:56:40 |
+| **VM elapsed** | **10 m 11 s** |
+| host `time` | 10 m 09 s |
+
+Host and VM agree to within 2 seconds when the host stays awake, against a
+~3h45m divergence when it did not. **The full cascade `--rebuild` is 10
+minutes, not 3 h 55 m — a 23x inflation, entirely host sleep.**
+
+The per-step extrapolation predicted 15-20 min against an actual 10, so it
+was conservative by ~1.5-2x — the right direction for an estimate, and the
+gap is the four steps that were estimated rather than measured.
 
 ---
 
