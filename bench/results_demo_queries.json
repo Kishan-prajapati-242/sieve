@@ -1,0 +1,371 @@
+[
+  {
+    "query": "ts_rank_cd BM25 ranking",
+    "bm25_n": 0,
+    "bm25_only": 0,
+    "vector_only": 10,
+    "overlap_bm25_vector": 0,
+    "hybrid_from_bm25_only": 0,
+    "hybrid_from_vector_only": 8,
+    "hybrid_titles": [
+      "Bayesian BM25 - A Probabilistic Framework for Hybrid Text and Vector S",
+      "BM25S: Orders of magnitude faster lexical search via eager sparse scor",
+      "An Improved BM25 for Clinical Decision Support in Precision Medicine B",
+      "LTM-TCM: A comprehensive database for the linking of Traditional Chine",
+      "Twenty-One at TREC-7: ad-hoc and cross-language track"
+    ],
+    "bm25_titles": [],
+    "vector_titles": [
+      "Bayesian BM25 - A Probabilistic Framework for Hybrid Text and Vector S",
+      "BM25S: Orders of magnitude faster lexical search via eager sparse scor",
+      "LTM-TCM: A comprehensive database for the linking of Traditional Chine"
+    ]
+  },
+  {
+    "query": "reciprocal rank fusion",
+    "bm25_n": 10,
+    "bm25_only": 9,
+    "vector_only": 9,
+    "overlap_bm25_vector": 1,
+    "hybrid_from_bm25_only": 4,
+    "hybrid_from_vector_only": 3,
+    "hybrid_titles": [
+      "Subset selection based fusion for biomedical information retrieval tas",
+      "Rag-Fusion: A New Take on Retrieval Augmented Generation",
+      "QPP-RA: Aggregating Large Language Model Rankings",
+      "MMLF: Multi-query Multi-passage Late Fusion Retrieval",
+      "DS4DH at #SMM4H 2023: Zero-Shot Adverse Drug Events Normalization usin"
+    ],
+    "bm25_titles": [
+      "DS4DH at #SMM4H 2023: Zero-Shot Adverse Drug Events Normalization usin",
+      "MMMORRF: Multimodal Multilingual MOdularized Reciprocal Rank Fusion",
+      "Rag-Fusion: A New Take on Retrieval Augmented Generation"
+    ],
+    "vector_titles": [
+      "Subset selection based fusion for biomedical information retrieval tas",
+      "Hybrid Retrieval for COVID-19 Literature: Comparing Rank Fusion and Pr",
+      "The Treatment of Ties in Rank-Biased Overlap"
+    ]
+  },
+  {
+    "query": "MIMIC-III clinical notes",
+    "bm25_n": 10,
+    "bm25_only": 9,
+    "vector_only": 9,
+    "overlap_bm25_vector": 1,
+    "hybrid_from_bm25_only": 1,
+    "hybrid_from_vector_only": 2,
+    "hybrid_titles": [
+      "2166",
+      "Unsupervised extraction, classification and visualization of clinical ",
+      "Natural language processing of MIMIC-III clinical notes for identifyin",
+      "Experimental Evaluation and Development of a Silver-Standard for the M",
+      "Reducing Diagnostic Uncertainty Using Large Language Models"
+    ],
+    "bm25_titles": [
+      "Natural language processing of MIMIC-III clinical notes for identifyin",
+      "Transformer-based named entity recognition for parsing clinical trial ",
+      "2166"
+    ],
+    "vector_titles": [
+      "MIMICause : Defining, identifying and predicting types of causal relat",
+      "Unsupervised extraction, classification and visualization of clinical ",
+      "MIMIC-IV, a freely accessible electronic health record dataset"
+    ]
+  },
+  {
+    "query": "SNOMED CT concept normalization",
+    "bm25_n": 10,
+    "bm25_only": 7,
+    "vector_only": 7,
+    "overlap_bm25_vector": 3,
+    "hybrid_from_bm25_only": 2,
+    "hybrid_from_vector_only": 0,
+    "hybrid_titles": [
+      "SapBERT-Based Medical Concept Normalization Using SNOMED CT",
+      "Application of Deep Learning Methods to SNOMED CT Encoding of Clinical",
+      "Use of SNOMED CT in Large Language Models: Scoping Review",
+      "Auditing the Semantic Completeness of SNOMED CT Using Formal Concept A",
+      "Use of the Systematized Nomenclature of Medicine Clinical Terms (SNOME"
+    ],
+    "bm25_titles": [
+      "SapBERT-Based Medical Concept Normalization Using SNOMED CT",
+      "PharmaCoNER corpus: gold standard annotations of Pharmacological Subst",
+      "Data Augmentation for Layperson\u2019s Medical Entity Linking Task"
+    ],
+    "vector_titles": [
+      "SapBERT-Based Medical Concept Normalization Using SNOMED CT",
+      "Automatic medical encoding with SNOMED categories",
+      "Application of Deep Learning Methods to SNOMED CT Encoding of Clinical"
+    ]
+  },
+  {
+    "query": "readability formulas for health texts",
+    "bm25_n": 10,
+    "bm25_only": 2,
+    "vector_only": 2,
+    "overlap_bm25_vector": 8,
+    "hybrid_from_bm25_only": 1,
+    "hybrid_from_vector_only": 0,
+    "hybrid_titles": [
+      "The Accuracy of Readability Formulas in Health Content: A Systematic R",
+      "Parallel Corpus Analysis of Text and Audio Comprehension to Evaluate R",
+      "Assessing Readability of Consumer Health Information: An Exploratory S",
+      "Beyond surface characteristics: a new health text-specific readability",
+      "Razvoj formula \u010ditkosti za zdravstvenu komunikaciju na hrvatskom jezik"
+    ],
+    "bm25_titles": [
+      "Parallel Corpus Analysis of Text and Audio Comprehension to Evaluate R",
+      "Reading Grade Level Estimates of Public Health Communication on Social",
+      "Readability Formulas and User Perceptions of Electronic Health Records"
+    ],
+    "vector_titles": [
+      "The Accuracy of Readability Formulas in Health Content: A Systematic R",
+      "Beyond surface characteristics: a new health text-specific readability",
+      "Razvoj formula \u010ditkosti za zdravstvenu komunikaciju na hrvatskom jezik"
+    ]
+  },
+  {
+    "query": "making hospital paperwork easier for patients to read",
+    "bm25_n": 0,
+    "bm25_only": 0,
+    "vector_only": 10,
+    "overlap_bm25_vector": 0,
+    "hybrid_from_bm25_only": 0,
+    "hybrid_from_vector_only": 9,
+    "hybrid_titles": [
+      "Patient Perception of Plain-Language Medical Notes Generated Using Art",
+      "Enhancing the Readability of Preoperative Patient Instructions Using L",
+      "Exploring strategies to improve documentation of nursing notes in hosp",
+      "Designing paper\u2010based records to improve the quality of nursing docume",
+      "A patient-centered digital scribe for automatic medical documentation"
+    ],
+    "bm25_titles": [],
+    "vector_titles": [
+      "Patient Perception of Plain-Language Medical Notes Generated Using Art",
+      "Enhancing the Readability of Preoperative Patient Instructions Using L",
+      "Exploring strategies to improve documentation of nursing notes in hosp"
+    ]
+  },
+  {
+    "query": "spotting people at risk of self-harm from what they write online",
+    "bm25_n": 0,
+    "bm25_only": 0,
+    "vector_only": 10,
+    "overlap_bm25_vector": 0,
+    "hybrid_from_bm25_only": 0,
+    "hybrid_from_vector_only": 10,
+    "hybrid_titles": [
+      "Self-harm: detection and support on Twitter",
+      "Information-Seeking on the Internet",
+      "Writing Characteristics of Suicidal People on the Internet: A Psycholo",
+      "Understanding and Discovering Deliberate Self-harm Content in Social M",
+      "Detecting Critical Responses from Deliberate Self-harm Videos on YouTu"
+    ],
+    "bm25_titles": [],
+    "vector_titles": [
+      "Self-harm: detection and support on Twitter",
+      "Information-Seeking on the Internet",
+      "Writing Characteristics of Suicidal People on the Internet: A Psycholo"
+    ]
+  },
+  {
+    "query": "teaching computers to find drug names in doctors notes",
+    "bm25_n": 0,
+    "bm25_only": 0,
+    "vector_only": 10,
+    "overlap_bm25_vector": 0,
+    "hybrid_from_bm25_only": 0,
+    "hybrid_from_vector_only": 8,
+    "hybrid_titles": [
+      "Methods and techniques for clinical text modeling and analytics",
+      "PharmaCoNER: Pharmacological Substances, Compounds and proteins Named ",
+      "Interpreting Doctors' Notes Using Handwriting Recognition and Deep Lea",
+      "Development of a Pipeline for Adverse Drug Reaction Identification in ",
+      "A Natural Language Processing System That Links Medical Terms in Elect"
+    ],
+    "bm25_titles": [],
+    "vector_titles": [
+      "Methods and techniques for clinical text modeling and analytics",
+      "PharmaCoNER: Pharmacological Substances, Compounds and proteins Named ",
+      "Interpreting Doctors' Notes Using Handwriting Recognition and Deep Lea"
+    ]
+  },
+  {
+    "query": "why medical jargon confuses ordinary readers",
+    "bm25_n": 0,
+    "bm25_only": 0,
+    "vector_only": 10,
+    "overlap_bm25_vector": 0,
+    "hybrid_from_bm25_only": 0,
+    "hybrid_from_vector_only": 10,
+    "hybrid_titles": [
+      "Laypeople\u2019s (Mis)Understanding of Common Medical Acronyms",
+      "Evaluation of lexical clarification by patients reading their clinical",
+      "Terminology in medical reports",
+      "Valoda \u0101rst\u0113 vai mulsina? Par medi\u0137u valodu un t\u0101s \u012bpatn\u012bb\u0101m",
+      "Comprehending technical texts: predicting and defining unfamiliar term"
+    ],
+    "bm25_titles": [],
+    "vector_titles": [
+      "Laypeople\u2019s (Mis)Understanding of Common Medical Acronyms",
+      "Evaluation of lexical clarification by patients reading their clinical",
+      "Terminology in medical reports"
+    ]
+  },
+  {
+    "query": "shortening long research papers automatically",
+    "bm25_n": 2,
+    "bm25_only": 2,
+    "vector_only": 10,
+    "overlap_bm25_vector": 0,
+    "hybrid_from_bm25_only": 2,
+    "hybrid_from_vector_only": 7,
+    "hybrid_titles": [
+      "Evaluation of Transformer Models for Summarizing Lengthy Clinical Note",
+      "Streamlining Academic Insights Gen AI in Research Paper Summarization",
+      "An Efficient Workflow for Collecting, Entering, and Proofing Field Dat",
+      "PaperOrchestrator: An LLM-Orchestrated multi-agent pipeline for automa",
+      "Automatic Summarization of Scientific Articles"
+    ],
+    "bm25_titles": [
+      "Evaluation of Transformer Models for Summarizing Lengthy Clinical Note",
+      "An Efficient Workflow for Collecting, Entering, and Proofing Field Dat"
+    ],
+    "vector_titles": [
+      "Streamlining Academic Insights Gen AI in Research Paper Summarization",
+      "PaperOrchestrator: An LLM-Orchestrated multi-agent pipeline for automa",
+      "Automatic Summarization of Scientific Articles"
+    ]
+  },
+  {
+    "query": "BERT for de-identification of clinical records",
+    "bm25_n": 5,
+    "bm25_only": 5,
+    "vector_only": 10,
+    "overlap_bm25_vector": 0,
+    "hybrid_from_bm25_only": 5,
+    "hybrid_from_vector_only": 5,
+    "hybrid_titles": [
+      "Applying and Sharing pre-trained BERT-models for Named Entity Recognit",
+      "Utility Preservation of Clinical Text After De-Identification",
+      "Preserving the Privacy of Language Models : Experiments in Clinical NL",
+      "De-identifying Clinical Texts using Biomed-Clinical BERTs and Comprehe",
+      "Publicly Available Clinical"
+    ],
+    "bm25_titles": [
+      "Utility Preservation of Clinical Text After De-Identification",
+      "Automated redaction of names in adverse event reports using transforme",
+      "Preserving the Privacy of Language Models : Experiments in Clinical NL"
+    ],
+    "vector_titles": [
+      "De-identifying Clinical Texts using Biomed-Clinical BERTs and Comprehe",
+      "Publicly Available Clinical",
+      "Publicly Available Clinical BERT Embeddings"
+    ]
+  },
+  {
+    "query": "transformer models for patient education materials",
+    "bm25_n": 10,
+    "bm25_only": 10,
+    "vector_only": 10,
+    "overlap_bm25_vector": 0,
+    "hybrid_from_bm25_only": 6,
+    "hybrid_from_vector_only": 1,
+    "hybrid_titles": [
+      "The evolving landscape of artificial intelligence in patient education",
+      "Toward Improving Health Literacy in Patient Education Materials with N",
+      "A Review of Large Language Models in Medical Education, Clinical Decis",
+      "Empowering patients: how accurate and readable are large language mode",
+      "Evaluating Language Models for Simplifying Health Literacy Materials"
+    ],
+    "bm25_titles": [
+      "Assessment of ChatGPT-Generated Endodontic Patient Education Materi al",
+      "Tailoring glaucoma education using large language models: Addressing h",
+      "Artificial Intelligence\u2010Generated Patient Education Materials for <i>H"
+    ],
+    "vector_titles": [
+      "Advancing Predictive Healthcare: A Systematic Review of Transformer Mo",
+      "Task-Specific Transformer-Based Language Models in Health Care: Scopin",
+      "Large language models in patient education: a scoping review of applic"
+    ]
+  },
+  {
+    "query": "zero-shot classification of biomedical abstracts",
+    "bm25_n": 4,
+    "bm25_only": 3,
+    "vector_only": 9,
+    "overlap_bm25_vector": 1,
+    "hybrid_from_bm25_only": 3,
+    "hybrid_from_vector_only": 5,
+    "hybrid_titles": [
+      "Zero-Shot Classification of Biomedical Articles with Emerging MeSH Des",
+      "Zero-Shot and Few-Shot Classification of Biomedical Articles in Contex",
+      "Domain-Adaptive Fine-Tuning of BioMedBERT for Medical Text Classificat",
+      "A novel application of machine learning and zero-shot classification m",
+      "Zero-Shot Aspect-Based Scientific Document Summarization using Self-Su"
+    ],
+    "bm25_titles": [
+      "Zero-Shot Classification of Biomedical Articles with Emerging MeSH Des",
+      "Domain-Adaptive Fine-Tuning of BioMedBERT for Medical Text Classificat",
+      "Zero-Shot and Few-Shot Classification of Biomedical Articles in Contex"
+    ],
+    "vector_titles": [
+      "Zero-Shot Classification of Biomedical Articles with Emerging MeSH Des",
+      "Zero-Shot Aspect-Based Scientific Document Summarization using Self-Su",
+      "Abstractive Biomedical Long Document Summarization Through Zero-Shot P"
+    ]
+  },
+  {
+    "query": "explainable AI for clinical decision support",
+    "bm25_n": 10,
+    "bm25_only": 5,
+    "vector_only": 5,
+    "overlap_bm25_vector": 5,
+    "hybrid_from_bm25_only": 2,
+    "hybrid_from_vector_only": 1,
+    "hybrid_titles": [
+      "Co-design of Human-centered, Explainable AI for Clinical Decision Supp",
+      "Explainable AI for Clinical Decision Support Systems: Literature Revie",
+      "To explain or not to explain?\u2014Artificial intelligence explainability i",
+      "Enhancing Disease Prediction in Healthcare through Explainable AI in C",
+      "What Is the Role of Explainability in Medical Artificial Intelligence?"
+    ],
+    "bm25_titles": [
+      "Co-design of Human-centered, Explainable AI for Clinical Decision Supp",
+      "NLP and Explainable AI for Clinical Decision Support: A Comprehensive ",
+      "Explainable AI for Clinical Decision Support Systems: Literature Revie"
+    ],
+    "vector_titles": [
+      "Co-design of Human-centered, Explainable AI for Clinical Decision Supp",
+      "Explainable AI for Clinical Decision Support Systems: Literature Revie",
+      "A Human-Centered Approach to Interpretable Machine Learning in Clinica"
+    ]
+  },
+  {
+    "query": "low-resource languages in medical NLP",
+    "bm25_n": 10,
+    "bm25_only": 9,
+    "vector_only": 9,
+    "overlap_bm25_vector": 1,
+    "hybrid_from_bm25_only": 4,
+    "hybrid_from_vector_only": 2,
+    "hybrid_titles": [
+      "Exploring the Latest Highlights in Medical Natural Language Processing",
+      "Small Language Models for Privacy-Preserving Clinical Information Extr",
+      "Multilingual Medical Question Answering and Information Retrieval for\\",
+      "A Retrieval-Based Approach to Medical Procedure Matching in Romanian",
+      "TurkMedNLI: a Turkish medical natural language inference dataset throu"
+    ],
+    "bm25_titles": [
+      "A Retrieval-Based Approach to Medical Procedure Matching in Romanian",
+      "Multilingual Medical Question Answering and Information Retrieval for\\",
+      "BU82 Settlement-Surface Reclassification of Cross-Domain Misalignment "
+    ],
+    "vector_titles": [
+      "Natural Language Processing for Healthcare in Low-Resource Settings: A",
+      "Towards Clinical NLP in a Low-Resource Language: Structuring Estonian ",
+      "Natural language processing: an introduction"
+    ]
+  }
+]
