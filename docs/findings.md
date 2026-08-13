@@ -1649,3 +1649,186 @@ time this code was slow the cause was quadratic self-joins, found by
 reading a plan rather than guessing; there is no reason to think this one
 is different in kind. Paying four hours per cascade run in a loop is how
 that one survived as long as it did.
+
+---
+
+## 2026-08-13: I attributed 537 seconds to the wrong statement, then to the wrong step
+
+**The claim, retracted:** that the cascade's cost was a
+`LIKE '%/preprint%'` leading-wildcard scan, evidenced by
+`pg_stat_activity` showing that statement at 8m57s.
+
+**How it was found:** Kishan, on arithmetic alone. The exact-scan baseline
+reads the same 276 MiB heap AND does 183,167 x 384-dim halfvec distance
+computations in 60.9 ms warm. 537 s is 8,818x that, implying ~2.9 ms per
+row for a substring search over a ~30-character DOI, where `memmem` over 30
+bytes is tens of nanoseconds. Five orders of magnitude off.
+
+**Measured:** the statement runs in **11.5 s** cold and the whole
+CREATE TABLE AS, write included, in **3.4 s** warm — 27,904 rows out. A
+concurrent wait sampler caught only `IO/DataFileRead`. Within the 11.5 s
+the `LIKE` is not even the cost: **7.3 s is the correlated `EXISTS` over
+source_records**, whose `raw->>'type'` extracts JSONB from 199,382 rows,
+and 1.0 s is JIT compilation.
+
+**Two errors, and the second is the instructive one:**
+
+1. Wrong mechanism inside the statement — the `LIKE` is one of eight OR'd
+   predicates and the cheapest of them.
+2. **Wrong statement entirely.** `bench/dedup_plan.py` sends its scratch
+   build as ONE multi-statement string. For a multi-statement simple query,
+   `pg_stat_activity.query` holds the WHOLE batch and `query_start` is the
+   batch's start. My probe did `left(regexp_replace(query,...), 110)`,
+   which returned the batch's first 110 characters — the beginning of
+   `CREATE TABLE dd_preprints` — for any statement in the batch. So
+   "8m57s" was the elapsed time of the entire scratch build to that point,
+   attributed by my truncation to whichever statement happened to be first
+   in the file.
+
+**The lesson, which is not "sample more carefully":** `pg_stat_activity`
+reports elapsed, not work, and a blocked query, a spilling sort, and a
+serialized batch all look identical in it. The instrument had no power to
+distinguish them, and I read a specific mechanism out of it anyway. The
+project's own rule already covers this — the last time this code was slow
+the cause was quadratic self-joins found by reading a PLAN.
+
+**Verified:** `EXPLAIN (ANALYZE, BUFFERS)` per step, plans in
+`docs/plans/`. The corpus was not modified; the probe wrote to a throwaway
+table and dropped it.
+
+---
+
+## 2026-08-13: 46.7 million pairs to produce 1,616 — the cascade is still quadratic, inside the blocks
+
+**Measured, on the current corpus:**
+
+| | |
+|---|---|
+| rows in `dd_sn` (papers x authors, deduped) | 737,487 |
+| (surname, year) blocks | 322,447 |
+| largest block | **wang / 2025 — 1,966 rows** |
+| **candidate pairs generated before any filter** | **46,730,069** |
+| rows surviving into `dd_scored` | **1,616** |
+
+Top blocks: wang/2025 1.93M pairs, wang/2024 1.59M, li/2025 1.42M,
+zhang/2025 1.38M. The top eight blocks alone are ~11.4M pairs, 24% of the
+total. At roughly 0.25 ms per trigram `similarity()` call, 46.7M calls is
+about 3.2 hours — which accounts for the measured **3 h 55 m** wall clock
+for a full `--rebuild`.
+
+**So the 2026-07-31 entry "the dedup cascade was quadratic as first
+written" is only half-retired.** Blocking on (surname, year) removed the
+all-pairs join across the corpus and left an all-pairs join INSIDE each
+block. Where the blocking key is uninformative — a common surname in a
+recent year — the block is thousands of rows and the quadratic is intact.
+The proportional length prefilter is inside the join condition, so it
+prunes pairs but only after they are enumerated.
+
+**Directions, none applied — this is a behaviour change and Kishan's:**
+cap block size and route oversized blocks to review; extend the blocking
+key so common surnames split (surname + year + first title character, say);
+or prefilter on something cheaper than trigram similarity before scoring.
+Each changes which duplicates are FOUND, so each needs its own precision
+measurement rather than a wall-clock argument.
+
+**On `--rebuild` being all-pairs (Kishan's question):** it is.
+`dd_sn` is built from every paper and `dd_scored` self-joins all of it, so
+adding PubMed regenerates every existing-vs-existing pair whose
+relationship cannot have changed. An incremental `(new x all)` shape is
+available without new invariants — build `dd_sn_new` for the arriving
+papers, join it against the full `dd_sn` — and it is strictly less work.
+But it is not the order-of-magnitude win it sounds like: if new papers are
+~12% of a block, `n_new x n_all` is ~24% of `n_all^2 / 2`, so a 4x
+reduction against a 4-hour baseline. **The block size is the problem; the
+join shape is a multiplier on it.**
+
+---
+
+## 2026-08-13: The precision measurement's strata are defined by the same attribution the cap depends on
+
+**The question:** DECISION-3c caps `title_exact` groups at 2 on a measured
+precision of 0.684. The cap binds on a group's ATTRIBUTED strategy, which
+is the earliest contributing strategy in `ORDER`, and `abstract_hash`
+precedes `title_exact`. The proposed fix was to bind the cap on every
+contributing strategy instead. Kishan asked whether the labeling harness
+stratified the same way, because if it did, the fix contradicts the
+measurement it claims to honour.
+
+**It did.** `bench/dedup_sample.py` builds its accepted strata with
+
+```sql
+SELECT ... FROM merges
+WHERE merged_from ? 'deleted_papers' AND strategy = %(strategy)s
+```
+
+and `merges.strategy` is written by `dedup_execute` from
+`best[root]` — the same earliest-in-`ORDER` attribution. So:
+
+* `acc_abstract_hash` (n=11, **precision 1.000**) contains groups whose
+  earliest contributing strategy is abstract_hash. Because abstract_hash
+  precedes title_exact, that stratum INCLUDES large groups that also carry
+  title_exact edges.
+* `acc_title_exact_group` (n=19, **precision 0.684**) contains only groups
+  with title_exact edges and no abstract_hash, doi_exact, jmir_doi or
+  id_exact edge.
+
+The two strata are disjoint by attribution, not by content.
+
+**Consequence: the cap rule is not choosable yet.** Binding the cap on all
+contributing strategies would apply a bound derived from title_exact's
+0.684 to groups that the labels scored at 1.000 under abstract_hash —
+contradicting the measurement rather than honouring it. Kishan's framing of
+the argument is also the correct one: the reason to prefer a max over
+contributing strategies is **order-invariance**, not strictness. A cap that
+binds on "earliest in ORDER" is a function of a list's ordering, and the
+122-group re-attribution between two runs of the same corpus shows it is
+also a function of run history.
+
+**What would resolve it:** a second labeling pass that stratifies on
+CONTENT rather than attribution — sample by which strategies contributed
+edges, not by which one won the ORDER race — with the taxonomy fixed in
+advance. That is DECISION-3c's own stated revisit condition, and it names
+title_exact's 0.684 off n=19 as the number most worth re-measuring because
+it drove a rule change. **That condition is now met by evidence**, and the
+evidence is that the strata themselves are attribution artifacts.
+
+---
+
+## 2026-08-13: Pair-level negative constraints, costed against the group-keyed options
+
+**The problem:** `dedup_review` is write-only, so a human decision to hold
+a group back survives only until the next planning run. Both options
+recorded on 2026-08-12 are GROUP-keyed, which is why the second carries a
+corpus-invalidation caveat: a group is a set of ids that a later corpus can
+dissolve.
+
+**Kishan's third option, recorded here as the preferred shape:** store the
+judgment at PAIR level — "A and B are not duplicates" as a negative
+constraint. Durable for a structural reason rather than a policy one: if
+both papers exist the judgment holds regardless of what else joined the
+component, and if either is gone the constraint is moot rather than wrong.
+There is no state in which a stored pair judgment becomes silently
+incorrect.
+
+**The union-find complication and its resolution.** A component containing
+a negative pair cannot simply be merged, and splitting it is ambiguous —
+which side each other member falls on depends on edge insertion order, so
+two runs can split the same component differently. **Refuse the whole
+component and route it to review.** Deterministic, order-independent, and
+consistent with the project's standing preference that under-merging is
+safer than over-merging (DECISION-1c, DECISION-3c).
+
+**Cost, against the other two:**
+
+| option | keyed on | durable across corpus change | new invariants | work |
+|---|---|---|---|---|
+| 1. cap on all contributing strategies | rule | n/a | none | small, but blocked on the stratification question above |
+| 2. planner reads `dedup_review` | group (member set) | **no** — a dissolved group silently stops matching | "a review row's member set is still meaningful" | small |
+| 3. pair-level negative constraints | pair | **yes** — moot, never wrong | none; refusal rule is total | table + refusal check in grouping; the labeling harness already emits pair-level labels |
+
+**Option 3 needs no new invariant**, which is the property options 1 and 2
+lack, and the shape already exists: `bench/labels/dedup_pairs.json` is 120
+hand-labeled PAIRS. The 'n' labels in it are exactly this constraint,
+already collected and currently used only for scoring.
+
+**Not implemented.** All three change dedup behaviour.
