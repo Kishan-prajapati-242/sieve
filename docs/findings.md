@@ -1832,3 +1832,191 @@ hand-labeled PAIRS. The 'n' labels in it are exactly this constraint,
 already collected and currently used only for scoring.
 
 **Not implemented.** All three change dedup behaviour.
+
+---
+
+## 2026-08-13: The four hours was probably the laptop asleep, and every number I built on it was wrong
+
+**Retracted, in order:** (a) that a `LIKE` was the mechanism; (b) that
+`dd_preprints` was the step; (c) that `similarity()` costs 0.25 ms;
+(d) that `dd_scored` is 83% of the runtime; (e) that the cascade takes
+3 h 55 m at all.
+
+**How (c) fell:** Kishan noticed the 0.25 ms/call was obtained by dividing
+`dd_scored`'s runtime by its pair count, so it could not then explain that
+runtime. Measured directly, on real title pairs from the densest block:
+
+| wang/2025 block | rows | time |
+|---|---|---|
+| with `similarity()` | 737,094 | 2,253 ms |
+| without it | 737,094 | 1,055 ms |
+| **difference** | 737,094 calls | **1,198 ms = 1.63 us/call** |
+
+**1.63 microseconds, not 250.** Off by 150x, in the direction that made my
+story work.
+
+**How (d) and (e) fell:** running the real `dd_scored` shape on bounded
+subsets, with ANALYZE:
+
+| subset | pairs | time | per pair |
+|---|---|---|---|
+| q-surnames (sparse blocks) | 82,983 | 1,030 ms | 12.4 us |
+| **wang (the densest surname, all years)** | **8,629,321** | **64.3 s** | **7.45 us** |
+
+Extrapolating the dense case to the full 46,730,069 pairs: **~348 s, under
+six minutes.** Every other step is seconds. The whole scratch build should
+be **15-20 minutes**.
+
+**So what was the 3 h 55 m?** Almost certainly the host asleep. The
+evidence:
+
+* During that run the Docker daemon reported the container "Up 8 minutes"
+  while its own `CreatedAt` was 3 h 53 m earlier — the VM clock had frozen.
+* `pg_stat_activity` inside the VM reported the batch at 8m57s, which is
+  consistent with the real work, not with four hours.
+* Independently measured per-step costs sum to ~15-20 min, matching the
+  VM's 9 minutes at the sampling point mid-build.
+* The two clocks agree to within 1 second now.
+
+`time` measured host wall clock, which includes sleep. **The VM was not
+working for most of those four hours; it was suspended.**
+
+**What this invalidates:** "dedup is 80% of the PubMed wall clock" — twice
+over. Dedup is roughly 15-20 minutes against an embed cost of 22-51
+minutes, so **embedding is the dominant term after all** and the slice size
+matters again.
+
+**The instrument lesson, third variation of the same one:** `time` on a
+container measures host wall clock, and a laptop that sleeps makes that
+meaningless. A duration measured outside the machine doing the work is not
+a measurement of that work. In-VM clocks (`pg_stat_activity`,
+`EXPLAIN ANALYZE`) were right the whole time and I overrode them with a
+host-side number because it was larger.
+
+**Confirmation still owed:** a re-run with the host kept awake. At ~20
+minutes that is now affordable, where at four hours it was not.
+
+---
+
+## 2026-08-13: The trigram index loses to the blocking it was supposed to replace
+
+**The hypothesis** (Kishan): `papers_title_trgm_idx` is live — VACUUM FULL
+shrank it 70 -> 39 MB — and `similarity(a,b) > t` is not indexable while
+the `%` operator is, via `gin_trgm_ops`. That is one index probe per record,
+183,167 probes instead of 46.7M comparisons, with the index doing the
+blocking. If it lands, the framing changes from "the blocking key is
+uninformative" to "blocking stands in for an index that already exists".
+
+**The index is on the right column:**
+`CREATE INDEX papers_title_trgm_idx ON papers USING gin (title_norm gin_trgm_ops)`
+— `title_norm` is exactly what the cascade compares, no expression index
+needed. And the rewrite IS a superset by construction: `%` at threshold
+0.85 is definitionally `similarity >= 0.85`, and dropping the surname
+requirement and the length band only adds pairs.
+
+**Measured, at `pg_trgm.similarity_threshold = 0.85`:**
+
+| | |
+|---|---|
+| per-probe cost, first 500 by id | 33.6 ms |
+| per-probe cost, random 500 (TABLESAMPLE) | 24.7 ms |
+| buffers per probe | ~988 |
+| **extrapolated to 183,167 probes** | **1.3 - 1.7 hours** |
+
+Against a blocked nested loop measured at **~6 minutes**. **The index is
+10-17x SLOWER.**
+
+**Why:** a GIN trigram probe is not O(1). A ~100-character title yields
+~100 trigrams, and the probe scans and intersects a posting list per
+trigram — ~988 buffer accesses, 25-34 ms. The blocked nested loop does
+~1.9 buffer accesses per pair because (surname, year) is a b-tree equality
+lookup into a 116 MB table that stays cached.
+
+**So the hypothesis is falsified, and cleanly.** For near-duplicate
+detection at a HIGH threshold over short strings, blocking on a cheap
+equality key beats an inverted index on the expensive one. GIN trigram
+search earns its keep for low-threshold fuzzy lookup of ONE string against
+a corpus, which is a different query.
+
+**Consequence for the blocking-key decision:** it does not need making.
+Nothing needs to be traded against recall, because there is no performance
+problem to buy off — the cascade is ~20 minutes, and the pair count that
+looked alarming costs ~6 of them.
+
+**Left as a cheap improvement, not applied:** `similarity()` has the
+default `procost = 1`, so the planner prices it as cheaply as an integer
+comparison and orders it AHEAD of the numeric length band that exists to
+avoid calling it (visible in the Filter clause order). Raising its cost, or
+restructuring so the band is evaluated first, would cut some of the 46.7M
+calls. At 1.63 us each the whole saving is bounded by ~76 seconds.
+
+---
+
+## 2026-08-13: Pair-level negative constraints — the migration and the planner change
+
+Design recorded before wiring, per Kishan. Migration written
+(`0013_dedup_negative_pairs.sql`), planner change NOT applied.
+
+**The table.** `(a, b, source, note, decided_at)`, PK `(a, b)`, `CHECK
+(a < b)` so a pair has one representation, `ON DELETE CASCADE` from
+`papers`.
+
+The cascade direction differs from `screenings` deliberately. A screening
+is a judgment ABOUT a paper and must outlive a merge — its FK is RESTRICT
+so a merge that would orphan it fails loudly. A negative pair is a judgment
+about a RELATIONSHIP: when one side stops existing the relationship is
+moot, not lost. That asymmetry is the whole durability argument, so it is
+enforced in the schema rather than in a comment.
+
+**The planner change, exactly three additions to `dedup_execute`:**
+
+1. Load the constraint set once, as a Python `set` of `(a, b)` tuples with
+   `a < b`. It is small — 120 hand-labeled pairs today — so a set membership
+   test costs nothing against the 1,616 candidate pairs.
+
+2. After union-find builds components, mark any component containing a
+   negative pair. The test is over pairs WITHIN the component, not over the
+   candidate edges: a negative pair can be joined transitively by two
+   positive edges without ever appearing as a candidate itself, and that is
+   precisely the case worth catching.
+
+   ```python
+   def refused(members: list[int]) -> tuple[int, int] | None:
+       for i, x in enumerate(members):
+           for y in members[i + 1:]:
+               if (min(x, y), max(x, y)) in negatives:
+                   return (min(x, y), max(x, y))
+       return None
+   ```
+
+   Quadratic in component size, which is bounded by MAX_GROUP_SIZE (8), so
+   at most 28 lookups per component.
+
+3. Route a marked component to `dedup_review` with the offending pair in
+   the note, instead of merging it. **Refuse the whole component; do not
+   split it.** Splitting asks which side each other member falls on, and
+   the answer depends on edge insertion order, so two runs can split the
+   same component differently. Refusal is deterministic and
+   order-independent, and it matches the standing preference that
+   under-merging is safer than over-merging (DECISION-1c, DECISION-3c).
+
+**What it does NOT do:** it does not stop the 122 groups from being
+re-proposed by the planner. `dedup_plan` still generates them as
+candidates; the executor refuses them at merge time. That is the right
+layer — the planner's job is to find candidates, and a candidate that a
+human has ruled on is still a candidate, just a resolved one.
+
+**Seeding it from data that already exists:** `bench/labels/dedup_pairs.json`
+holds 120 hand-labeled pairs, and its `n` labels ARE this constraint. They
+are currently used only for scoring precision. A loader would turn the
+measurement into an artifact the system acts on, which is the first time in
+this project that hand-labeling would feed back into behaviour rather than
+only into a number.
+
+**Open question for Kishan, not decided here:** whether the 122 unwound
+groups should be seeded as negative pairs directly. They were unwound on an
+AGGREGATE precision measurement (0.684 at n=19), not on a per-pair
+judgment, so seeding them would record 122 group-level inferences as though
+they were pair-level observations. The conservative reading is that they
+stay in `dedup_review` awaiting the second labeling pass DECISION-3c calls
+for, and only labeled pairs become constraints.

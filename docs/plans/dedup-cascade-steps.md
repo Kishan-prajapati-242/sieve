@@ -8,7 +8,14 @@ Captured because a full `--rebuild` measured **3 h 55 m 11 s** and the cost
 had been attributed, wrongly, from `pg_stat_activity` elapsed time. The
 rule this restates: read the plan.
 
-## Summary — where the four hours are
+> **SUPERSEDED IN PART, same day.** The "four hours" this document was
+> written to explain is very likely host sleep, not work: independently
+> measured per-step costs sum to 15-20 minutes, and the Docker daemon's
+> clock had frozen ~3h45m behind the host during that run. The plans below
+> are still the plans; the runtime attribution is corrected in
+> findings.md 2026-08-13. `dd_scored` measures ~6 minutes, not 3.2 hours.
+
+## Summary — where the time goes
 
 | step | rows out | planner estimate | actual | verdict |
 |---|---|---|---|---|
@@ -91,8 +98,17 @@ Largest blocks: wang/2025 1,931,595 pairs; wang/2024 1,586,871; li/2025
 1,415,403; zhang/2025 1,383,616. The top eight blocks are ~11.4M pairs,
 24% of the total.
 
-At ~0.25 ms per trigram `similarity()` call, 46.7M calls is ≈3.2 h, which
-accounts for the measured 3 h 55 m.
+**Corrected:** `similarity()` measures **1.63 us** per call, not 0.25 ms —
+the latter was obtained by dividing runtime by pair count and could not
+then explain that runtime. Measured on the real query shape: q-surnames
+82,983 pairs in 1,030 ms (12.4 us/pair), wang 8,629,321 pairs in 64.3 s
+(7.45 us/pair). Extrapolated to 46.7M pairs: **~6 minutes**.
+
+No spill: the `similarity() >= 0.85` qual is pushed into the inner index
+scan's Filter, so the Sort receives only survivors — `quicksort 25kB`,
+measured. Extended statistics on (surname, year) would fix the 119x row
+estimate but there is no sort or hash to mis-size, so it would not change
+the work.
 
 **Why the planner is 119x low:** it assumes `surname` and `year` are
 independent and roughly uniform. They are neither — a common surname in a
@@ -116,6 +132,15 @@ precision measurement rather than a wall-clock argument:
 4. **`(new x all)` on rebuild** instead of `(all x all)`. No new invariants
    and strictly less work, but at ~12% new that is roughly a 4x reduction,
    not an order of magnitude. Block size dominates; join shape multiplies it.
-5. **`CREATE STATISTICS (surname, year) ON dd_sn`** would fix the
-   correlation estimate. Cheap and non-behavioural, but it only lets the
-   planner cost the work correctly — it does not remove the work.
+5. **`CREATE STATISTICS (surname, year) ON dd_sn`** would fix the 119x
+   correlation estimate. Checked: there is no spill to fix — the
+   similarity qual is pushed below the Sort, which handles 1,616 rows in
+   25 kB — so this changes the estimate and not the work.
+6. **Raise `similarity()`'s `procost`.** It defaults to 1, so the planner
+   prices it like an integer comparison and orders it AHEAD of the numeric
+   length band written to avoid calling it. Bounded saving: 46.7M x
+   1.63 us = ~76 s.
+7. **The GIN trigram index rewrite: measured and REJECTED.** 25-34 ms per
+   probe, ~988 buffers, extrapolating to 1.3-1.7 h against the blocked
+   join's ~6 min. A ~100-character title is ~100 trigrams and the probe
+   scans a posting list per trigram. See findings.md 2026-08-13.
