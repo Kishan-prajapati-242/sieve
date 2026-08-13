@@ -1,0 +1,59 @@
+{
+  "measured_at": "2026-08-12T23:52:42.909519+00:00",
+  "method": {
+    "timing_window": "n/a \u2014 this is an overlap rate, not a latency",
+    "hardware": "MacBook Air M1 8GB (fanless), podman VM 4 vCPU / 4GB",
+    "database": "PostgreSQL 16.14, pgvector 0.8.5, shared_buffers 128MB, in compose",
+    "db_state": {
+      "corpus_size": 183167,
+      "heap_pages": 35348,
+      "heap_bytes": 289570816,
+      "index_bytes": {
+        "papers_abstract_md5_idx": 10657792,
+        "papers_arxiv_id_idx": 16384,
+        "papers_doi_key": 8036352,
+        "papers_embed_idx": 213401600,
+        "papers_fts_idx": 87007232,
+        "papers_pkey": 4136960,
+        "papers_pubmed_id_idx": 1409024,
+        "papers_title_trgm_idx": 40992768,
+        "papers_title_year_idx": 20242432,
+        "papers_year_idx": 1294336
+      }
+    },
+    "protocol": "esearch-only for 7180 distinct PMIDs across 4 query terms (nothing written); efetch subsample of 600 records, evenly spread, for the DOI and title arms",
+    "requests": {
+      "esearch": 38,
+      "efetch": 3
+    },
+    "caveat": "id_exact overlap is EXACT (a column lookup). The DOI and title arms are measured on the subsample and carry its sampling error. Title+year here is title_norm equality only, which is a lower bound on what title_trgm would catch."
+  },
+  "pmid_arm_full_pilot": {
+    "distinct_pmids": 7180,
+    "already_in_corpus": 1675,
+    "rate": 0.2333,
+    "ci95": [
+      0.2236,
+      0.2432
+    ]
+  },
+  "subsample_arms": {
+    "n": 600,
+    "by_pmid": 153,
+    "by_doi_not_pmid": 0,
+    "by_title_not_doi_or_pmid": 8,
+    "total_overlap": 161,
+    "overlap_rate": 0.2683,
+    "ci95": [
+      0.2344,
+      0.3052
+    ],
+    "implied_survival_rate": 0.7317
+  },
+  "per_query_pmids": {
+    "pubmed-clinical-nlp": 2000,
+    "pubmed-simplification": 2000,
+    "pubmed-mental-health-nlp": 2000,
+    "pubmed-biomedical-ner": 1455
+  }
+}

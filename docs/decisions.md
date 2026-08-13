@@ -266,38 +266,44 @@ are indistinguishable. That is the correct framing, not "free" and not
 "inside noise": we cannot see the cost, which is different from there
 being none.
 
-**Re-measured 2026-08-12, and the margin is STABLE — read the caveat
-before quoting either column.** The basis above was measured 2026-07-31,
-BEFORE the dedup cascade, against a ground truth since rebuilt (8.2% of the
-ids it referenced were later deleted). The ladder was re-run against the
-183,167-paper corpus. Both columns are recorded; neither supports a claim
-that the decision got stronger or weaker.
+**Re-measured 2026-08-12. The cross-corpus comparison is RETIRED; the
+decision stands on the post-cascade ladder alone.** The basis above was
+measured 2026-07-31, before the dedup cascade, against a ground truth since
+rebuilt. It cannot be compared with what follows, for a reason worth
+stating rather than footnoting: it is a mean over 520 ground-truth ENTRIES,
+and the entry set contains one query string 28 times whose recall swings
+from ~0 at low ef to ~1 at ef=600. The post-cascade column below is over
+493 DISTINCT strings. `bench/results_ef_at_fixed_depth.json` stored only
+means — no per-query values — and its corpus no longer exists, so the
+pre-cascade column cannot be re-aggregated onto a matched basis. **The
+pre-cascade gap on a 493-basis is unrecoverable, with an admissible range
+of roughly [0.0, +4.5] points. No claim that this decision got stronger or
+weaker is supportable.**
 
-| ef | recall@200, 07-31 (196,893) | recall@200, 08-12 (183,167), 493 distinct queries |
-|---|---|---|
-| 40  | not measured | 0.8804 |
-| 200 | 0.9431 ± .0028 | 0.9401 |
-| 400 | 0.9766 ± .0015 | 0.9760 ± .0016 |
-| 600 | 0.9857 ± .0011 | 0.9856 |
-| 800 | 0.9898 ± .0008 | 0.9900 ± .0008 |
+**The post-cascade ladder (183,167 papers, 493 distinct queries):**
 
-**ef=600 over ef=200: +4.3 points before, +4.5 points after.** The decision
-holds on an essentially unchanged margin.
+| ef | recall@200 | recall@20 | recall@10 | sql p50 |
+|---|---|---|---|---|
+| 40  | 0.8804 | 0.9238 | 0.9308 | 2.3 ms |
+| 160 | 0.9318 | 0.9782 | 0.9795 | 5.0 ms |
+| 200 | 0.9401 | 0.9819 | 0.9824 | — |
+| 400 | 0.9750 | 0.9900 | 0.9905 | — |
+| 600 | **0.9856** | 0.9943 | 0.9941 | 11.7 ms |
+| 800 | 0.9897 | 0.9954 | 0.9951 | — |
 
-**Caveat that produced these numbers, not a footnote.** A first pass
-reported the gap as +9.4 points, from means taken over all 520 ground-truth
-ENTRIES. The query set contains the string "Occurrence Download" 28 times —
-a GBIF export title whose near-identical embeddings make the exact scan's
-tie order arbitrary — and it scores 0.0003 recall@200 at ef=40 and 0.0099
-at ef=200 while scoring 0.9952 at ef=600. Weighted 28x it moves the low-ef
-means about five points and none of the high-ef ones. The columns above are
-over 493 DISTINCT query strings; the 520-entry figures are in
-bench/results_ef_tradeoff.json and should not be compared with the
-pre-cascade column (findings.md 2026-08-12).
+**This alone is sufficient for the decision.** ef=600 buys +4.5 points of
+recall@200 over ef=200 at a latency cost below what this hardware can
+resolve, and the next rung (800) buys 0.4 points more. No comparison to a
+vanished corpus is needed to justify it.
 
-**Also first measured here:** recall@20 at ef=40 = 0.9238, which is the
-figure that belongs beside the vector mode's speedup — vector mode serves
-k=20, so recall@200 describes a depth it never requests.
+**Headline correction:** the shipped recall@200 figure moves 0.9861 (520
+entries) to **0.9856** (493 distinct). Both round to 0.986, so nothing
+downstream changes; the corrected basis is recorded so the number is
+reproducible rather than merely right.
+
+**Also first measured here:** recall@20, which is the figure that belongs
+beside the VECTOR mode's speedup — that mode serves k=20 and never requests
+depth 200.
 
 **Alternatives considered:** ef=200 (leaves 4.3 recall points
 unclaimed); ef=800 (+0.4 points for +4 ms — past the elbow); N=500

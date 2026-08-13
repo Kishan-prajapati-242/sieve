@@ -1404,10 +1404,9 @@ The deleted group is slightly worse, as expected, but it is 6% of the query
 set and nowhere near enough to move the mean 5 points.
 
 **Root cause: the query set contains the string "Occurrence Download" 28
-times.** It is a GBIF export title, shared by dozens of corpus papers with
-near-identical embeddings. All 28 entries carry identical query vectors and
-DIFFERENT ground-truth lists, because the exact scan breaks their distance
-ties arbitrarily. Solving for its own recall from the two runs' means:
+times.** All 28 entries carry the identical query vector — same string,
+same encoder — and DIFFERENT ground-truth lists. Solving for its own recall
+from the two runs' means:
 
 | ef | its recall@200 | mean over 520 entries | mean over 493 distinct |
 |---|---|---|---|
@@ -1415,16 +1414,26 @@ ties arbitrarily. Solving for its own recall from the two runs' means:
 | 200 | **0.0099** | 0.8918 | 0.9401 |
 | 600 | 0.9952 | 0.9861 | 0.9856 |
 
-At low ef the index returns a different subset of the tied cluster than the
-ground truth's arbitrary ordering, and scores zero. Weighted 28 times, that
-drags the ef=40 and ef=200 means by roughly five points while leaving
-ef=600 untouched — which is exactly the "drop shape" both hypotheses were
-invented to explain.
+Weighted 28 times, that drags the ef=40 and ef=200 means by roughly five
+points while leaving ef=600 untouched — which is exactly the "drop shape"
+both hypotheses were invented to explain.
 
-**Corrected conclusion:** on 493 distinct queries the ef=600-over-ef=200
-gap is **+4.5 points**, against +4.3 published pre-cascade. DECISION-2e's
-basis is **stable, not strengthened**. The "+9.4" was an artifact and never
-reached the decision record as a conclusion.
+**Correction to this entry's own first mechanism, same day.** It originally
+said the corpus papers have "near-identical embeddings" and that the exact
+scan "breaks their distance ties arbitrarily". Measured, that is wrong:
+those papers share a TITLE, not an embedding — their abstracts differ, so
+their vectors differ and there are no exact ties. The real mechanism is
+denser and worse, and has its own entry below.
+
+**Corrected conclusion:** the ef=600-over-ef=200 gap on 493 distinct
+queries is **+4.5 points**. It CANNOT be compared against the +4.3
+published pre-cascade, because that column is a 520-entry mean over a
+corpus that no longer exists and `results_ef_at_fixed_depth.json` stored
+only means — no per-query values survive to re-aggregate on a matched
+basis. The pre-cascade gap on a 493-basis is therefore unrecoverable, and
+its admissible range spans roughly [0.0, +4.5] points depending on what
+that one query scored then. **No "stable" and no "stronger" claim is
+supportable**; DECISION-2e stands on the post-cascade ladder alone.
 
 **Why the artifact survived the ground-truth rebuild:** the rebuild
 deliberately reused the stored query vectors verbatim, "so the new numbers
@@ -1477,3 +1486,65 @@ abstract's first sentence (cheap, lossy); store with a NULL title and let
 bm25 index the abstract alone (needs the FTS generated column to tolerate a
 null title, which it already does via coalesce); or keep the skip and
 report the 238 as a known, counted coverage gap. **Kishan's call.**
+
+---
+
+## 2026-08-12: Low-ef vector search fails inside a 11,044-paper title cluster
+
+**Symptom:** one query's recall@200 reads 0.0003 at ef=40, 0.0099 at
+ef=200, and 0.9952 at ef=600 — a 99-point jump between two rungs of a dial
+that moves every other query by two or three points.
+
+**How it was found:** as a benchmark artifact, while explaining away a
+recall drop. Kishan's read is that it is not an artifact: it is a live
+property of the shipped system, on content the product deliberately keeps.
+
+**The cluster, measured:** 11,044 papers share the `title_norm`
+"occurrence download" — **6% of the entire corpus** — each with a distinct
+DOI, so the cascade correctly refuses to merge them. They are GBIF
+occurrence-download records that arrived through the topic queries.
+
+Their embeddings are NOT identical: the titles match, the abstracts differ,
+so the vectors differ. Density around one member:
+
+| radius (cosine distance) | papers within |
+|---|---|
+| 0.0001 | 1 (itself) |
+| 0.001 | 1 |
+| 0.01 | 1 |
+| 0.05 | 131 |
+| 0.10 | 1,343 |
+
+**Mechanism.** The k=200 boundary for this query falls inside a shell where
+hundreds of papers are near-equidistant — between 131 and 1,343 candidates
+separated by less than a tenth of the distance scale. Which 200 you get is
+decided by where the greedy traversal enters the shell, not by the metric.
+At ef=40 the candidate list is smaller than the confusable population by an
+order of magnitude and the returned set shares almost nothing with the
+exact top-200. Recall climbs only when ef grows past the size of the
+confusable shell, which is why the jump sits between 200 and 600 and not
+somewhere else.
+
+This is the failure mode a graph index has and an exact scan does not: HNSW
+is a greedy walk over neighbours, and inside a region where every neighbour
+is equidistant the walk has no gradient to follow.
+
+**Why it is a product property and not a corpus curiosity.** The system
+deliberately retains near-duplicate families: 179 groups sit unmerged in
+`dedup_review`, "COVID Twitter" returns 141 times, and DECISION-1c's
+versioned-release policy keeps release families intact on purpose. Every
+one of those is a shell of the same kind. So **low-ef vector search has a
+known, measured failure mode on exactly the content the dedup policy chose
+to keep** — and vector mode currently ships at ef=40.
+
+**What is NOT established:** whether the cascade sharpened this or merely
+exposed it. Testing that needs pre-cascade per-query recall, and
+`results_ef_at_fixed_depth.json` stored only means against a corpus that no
+longer exists. Recorded as unresolved rather than guessed.
+
+**Bearing on the open ef_search decision:** at ef=160 this query's
+neighbourhood is still smaller than the shell, so 160 does not fix this
+case. What 160 does buy, measured on 493 distinct queries, is recall@20
+0.9238 -> 0.9782 for sql p50 2.3 ms -> 5.0 ms. The cluster pathology argues
+for a larger ef than the recall table alone would; how much larger is
+Kishan's call, and no default was changed here.

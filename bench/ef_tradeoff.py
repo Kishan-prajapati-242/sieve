@@ -51,8 +51,11 @@ WARMUP_RUNS = 1
 # Recall is measured at every rung of the dial; latency only at the two
 # SHIPPED settings, because the decomposition question is "what does the
 # configuration we run cost", not "what would every configuration cost".
-RECALL_EF = (DEFAULT_EF_SEARCH, 200, 400, HYBRID_DEFAULT_EF_SEARCH, 800)  # 40..800
-LATENCY_EF = (DEFAULT_EF_SEARCH, HYBRID_DEFAULT_EF_SEARCH)  # 40, 600
+RECALL_EF = (DEFAULT_EF_SEARCH, 160, 200, 400, HYBRID_DEFAULT_EF_SEARCH, 800)
+# 160 is the never-decided vector-mode recommendation in progress.md; it is
+# measured here so the choice can be made once instead of surviving
+# another corpus change. Measuring it changes no default.
+LATENCY_EF = (DEFAULT_EF_SEARCH, 160, HYBRID_DEFAULT_EF_SEARCH)
 
 
 def stat(vals: list[float]) -> dict[str, float]:
@@ -183,7 +186,8 @@ def main() -> None:
     }
     (out_dir / "results_ef_tradeoff.json").write_text(json.dumps(report, indent=2))
     print(
-        f"ground truth: {gt_method.get('corpus_size')} papers, live corpus: {state['corpus_size']}"
+        f"ground truth: {gt_corpus} papers (built {gt_method.get('built_at')}), "
+        f"live corpus: {state['corpus_size']} — asserted equal"
     )
     print(f"ground truth method block present: {bool(gt_method) and 'note' not in gt_method}")
     print(

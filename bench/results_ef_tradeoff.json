@@ -1,15 +1,17 @@
 {
-  "measured_at": "2026-08-12T17:56:13.973514+00:00",
+  "measured_at": "2026-08-12T23:51:01.331919+00:00",
   "method": {
     "timing_window": "sql: search_vector(k=20) round trip as the API calls it. e2e adds the per-query single-text encode. Recall is measured at depth 200 in the same session but is not part of any timing window.",
     "hardware": "MacBook Air M1 8GB (fanless), podman VM 4 vCPU / 4GB",
     "database": "PostgreSQL 16.14, pgvector 0.8.5, shared_buffers 128MB, in compose",
-    "protocol": "pg_prewarm; 520 distinct queries; per ef 1 warmup + 3 measured runs, across_runs gate; both ef settings in one session so the comparison between them is paired",
+    "protocol": "pg_prewarm; 493 distinct queries; per ef 1 warmup + 3 measured runs, across_runs gate; both ef settings in one session so the comparison between them is paired",
     "settings": {
       "k": 20,
+      "queries": "493 distinct of 520 entries",
       "recall_depth": 200,
       "recall_ef": [
         40,
+        160,
         200,
         400,
         600,
@@ -17,6 +19,7 @@
       ],
       "latency_ef": [
         40,
+        160,
         600
       ]
     },
@@ -39,7 +42,7 @@
     },
     "ground_truth_corpus": null,
     "embed_component": {
-      "p50_ms": 11.7
+      "p50_ms": 6.9
     },
     "tie_handling": "hit if id in exact top-k OR distance <= boundary + 1e-9",
     "known_item_caveat": "500/520 queries are corpus titles"
@@ -47,217 +50,340 @@
   "by_ef": {
     "40": {
       "recall_at_200": {
-        "mean": 0.8347,
-        "se": 0.0105
+        "mean": 0.8804,
+        "se": 0.0063
+      },
+      "recall_at_20": {
+        "mean": 0.9238,
+        "se": 0.007
       },
       "recall_at_10": {
-        "mean": 0.8825,
-        "se": 0.0116
+        "mean": 0.9308,
+        "se": 0.0076
       },
       "sql": {
         "n_runs": 3,
         "samples_per_run": [
-          520,
-          520,
-          520
+          493,
+          493,
+          493
         ],
         "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
         "per_run": [
           {
-            "n_samples": 520,
+            "n_samples": 493,
             "p50_ms": 2.1,
-            "p95_ms": 3.3,
-            "p99_ms": 4.0,
-            "min_ms": 0.8,
-            "max_ms": 25.4
+            "p95_ms": 3.7,
+            "p99_ms": null,
+            "not_reportable": "p99: fewer than 5 samples beyond the percentile at n=493",
+            "min_ms": 1.1,
+            "max_ms": 36.0
           },
           {
-            "n_samples": 520,
-            "p50_ms": 2.2,
-            "p95_ms": 3.4,
-            "p99_ms": 4.4,
-            "min_ms": 0.9,
-            "max_ms": 9.2
+            "n_samples": 493,
+            "p50_ms": 2.3,
+            "p95_ms": 3.7,
+            "p99_ms": null,
+            "not_reportable": "p99: fewer than 5 samples beyond the percentile at n=493",
+            "min_ms": 1.4,
+            "max_ms": 5.6
           },
           {
-            "n_samples": 520,
-            "p50_ms": 2.1,
-            "p95_ms": 3.2,
-            "p99_ms": 3.7,
-            "min_ms": 0.8,
-            "max_ms": 4.2
+            "n_samples": 493,
+            "p50_ms": 2.3,
+            "p95_ms": 4.1,
+            "p99_ms": null,
+            "not_reportable": "p99: fewer than 5 samples beyond the percentile at n=493",
+            "min_ms": 1.1,
+            "max_ms": 8.5
           }
         ],
-        "p50_ms": 2.1,
-        "p95_ms": 3.3,
-        "p99_ms": 4.0
+        "p50_ms": 2.3,
+        "p95_ms": 3.7,
+        "p99_ms": null,
+        "p99_note": "not reportable within a run (see per_run)"
       },
       "e2e_with_embed": {
         "n_runs": 3,
         "samples_per_run": [
-          520,
-          520,
-          520
+          493,
+          493,
+          493
         ],
         "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
         "per_run": [
           {
-            "n_samples": 520,
-            "p50_ms": 14.0,
-            "p95_ms": 23.1,
-            "p99_ms": 40.8,
-            "min_ms": 6.3,
-            "max_ms": 112.9
+            "n_samples": 493,
+            "p50_ms": 9.1,
+            "p95_ms": 14.3,
+            "p99_ms": null,
+            "not_reportable": "p99: fewer than 5 samples beyond the percentile at n=493",
+            "min_ms": 5.4,
+            "max_ms": 60.4
           },
           {
-            "n_samples": 520,
-            "p50_ms": 14.0,
-            "p95_ms": 23.2,
-            "p99_ms": 40.9,
-            "min_ms": 6.2,
-            "max_ms": 115.1
+            "n_samples": 493,
+            "p50_ms": 9.3,
+            "p95_ms": 13.9,
+            "p99_ms": null,
+            "not_reportable": "p99: fewer than 5 samples beyond the percentile at n=493",
+            "min_ms": 5.9,
+            "max_ms": 60.7
           },
           {
-            "n_samples": 520,
-            "p50_ms": 13.8,
-            "p95_ms": 22.9,
-            "p99_ms": 40.6,
-            "min_ms": 6.4,
-            "max_ms": 113.4
+            "n_samples": 493,
+            "p50_ms": 9.3,
+            "p95_ms": 14.3,
+            "p99_ms": null,
+            "not_reportable": "p99: fewer than 5 samples beyond the percentile at n=493",
+            "min_ms": 5.5,
+            "max_ms": 60.5
           }
         ],
-        "p50_ms": 14.0,
-        "p95_ms": 23.1,
-        "p99_ms": 40.8
+        "p50_ms": 9.3,
+        "p95_ms": 14.3,
+        "p99_ms": null,
+        "p99_note": "not reportable within a run (see per_run)"
       },
-      "embed_share_of_e2e_p50": 0.837
+      "embed_share_of_e2e_p50": 0.74
+    },
+    "160": {
+      "recall_at_200": {
+        "mean": 0.9318,
+        "se": 0.0038
+      },
+      "recall_at_20": {
+        "mean": 0.9782,
+        "se": 0.0032
+      },
+      "recall_at_10": {
+        "mean": 0.9795,
+        "se": 0.0033
+      },
+      "sql": {
+        "n_runs": 3,
+        "samples_per_run": [
+          493,
+          493,
+          493
+        ],
+        "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
+        "per_run": [
+          {
+            "n_samples": 493,
+            "p50_ms": 4.6,
+            "p95_ms": 10.6,
+            "p99_ms": null,
+            "not_reportable": "p99: fewer than 5 samples beyond the percentile at n=493",
+            "min_ms": 1.7,
+            "max_ms": 48.5
+          },
+          {
+            "n_samples": 493,
+            "p50_ms": 5.0,
+            "p95_ms": 10.0,
+            "p99_ms": null,
+            "not_reportable": "p99: fewer than 5 samples beyond the percentile at n=493",
+            "min_ms": 1.7,
+            "max_ms": 21.3
+          },
+          {
+            "n_samples": 493,
+            "p50_ms": 5.0,
+            "p95_ms": 9.2,
+            "p99_ms": null,
+            "not_reportable": "p99: fewer than 5 samples beyond the percentile at n=493",
+            "min_ms": 1.8,
+            "max_ms": 26.6
+          }
+        ],
+        "p50_ms": 5.0,
+        "p95_ms": 10.0,
+        "p99_ms": null,
+        "p99_note": "not reportable within a run (see per_run)"
+      },
+      "e2e_with_embed": {
+        "n_runs": 3,
+        "samples_per_run": [
+          493,
+          493,
+          493
+        ],
+        "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
+        "per_run": [
+          {
+            "n_samples": 493,
+            "p50_ms": 11.8,
+            "p95_ms": 19.5,
+            "p99_ms": null,
+            "not_reportable": "p99: fewer than 5 samples beyond the percentile at n=493",
+            "min_ms": 6.4,
+            "max_ms": 62.1
+          },
+          {
+            "n_samples": 493,
+            "p50_ms": 12.2,
+            "p95_ms": 19.1,
+            "p99_ms": null,
+            "not_reportable": "p99: fewer than 5 samples beyond the percentile at n=493",
+            "min_ms": 6.6,
+            "max_ms": 61.8
+          },
+          {
+            "n_samples": 493,
+            "p50_ms": 12.1,
+            "p95_ms": 18.5,
+            "p99_ms": null,
+            "not_reportable": "p99: fewer than 5 samples beyond the percentile at n=493",
+            "min_ms": 6.5,
+            "max_ms": 62.2
+          }
+        ],
+        "p50_ms": 12.1,
+        "p95_ms": 19.1,
+        "p99_ms": null,
+        "p99_note": "not reportable within a run (see per_run)"
+      },
+      "embed_share_of_e2e_p50": 0.568
     },
     "200": {
       "recall_at_200": {
-        "mean": 0.8918,
-        "se": 0.0096
+        "mean": 0.9401,
+        "se": 0.0034
+      },
+      "recall_at_20": {
+        "mean": 0.9819,
+        "se": 0.0031
       },
       "recall_at_10": {
-        "mean": 0.9417,
-        "se": 0.0082
+        "mean": 0.9824,
+        "se": 0.0031
       }
     },
     "400": {
       "recall_at_200": {
-        "mean": 0.976,
-        "se": 0.0016
+        "mean": 0.975,
+        "se": 0.0017
+      },
+      "recall_at_20": {
+        "mean": 0.99,
+        "se": 0.0019
       },
       "recall_at_10": {
-        "mean": 0.991,
-        "se": 0.0019
+        "mean": 0.9905,
+        "se": 0.002
       }
     },
     "600": {
       "recall_at_200": {
-        "mean": 0.9861,
-        "se": 0.001
+        "mean": 0.9856,
+        "se": 0.0011
+      },
+      "recall_at_20": {
+        "mean": 0.9943,
+        "se": 0.0009
       },
       "recall_at_10": {
-        "mean": 0.9944,
-        "se": 0.0011
+        "mean": 0.9941,
+        "se": 0.0012
       },
       "sql": {
         "n_runs": 3,
         "samples_per_run": [
-          520,
-          520,
-          520
+          493,
+          493,
+          493
         ],
         "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
         "per_run": [
           {
-            "n_samples": 520,
-            "p50_ms": 9.5,
-            "p95_ms": 17.3,
-            "p99_ms": 21.9,
-            "min_ms": 3.9,
-            "max_ms": 27.3
+            "n_samples": 493,
+            "p50_ms": 11.7,
+            "p95_ms": 22.8,
+            "p99_ms": null,
+            "not_reportable": "p99: fewer than 5 samples beyond the percentile at n=493",
+            "min_ms": 4.0,
+            "max_ms": 41.3
           },
           {
-            "n_samples": 520,
-            "p50_ms": 10.1,
-            "p95_ms": 19.7,
-            "p99_ms": 25.1,
-            "min_ms": 3.8,
-            "max_ms": 53.3
+            "n_samples": 493,
+            "p50_ms": 11.7,
+            "p95_ms": 24.6,
+            "p99_ms": null,
+            "not_reportable": "p99: fewer than 5 samples beyond the percentile at n=493",
+            "min_ms": 4.1,
+            "max_ms": 68.8
           },
           {
-            "n_samples": 520,
-            "p50_ms": 10.5,
-            "p95_ms": 23.2,
-            "p99_ms": 39.0,
-            "min_ms": 3.8,
-            "max_ms": 94.1
+            "n_samples": 493,
+            "p50_ms": 11.2,
+            "p95_ms": 23.3,
+            "p99_ms": null,
+            "not_reportable": "p99: fewer than 5 samples beyond the percentile at n=493",
+            "min_ms": 4.0,
+            "max_ms": 53.0
           }
         ],
-        "p50_ms": 10.1,
-        "p95_ms": null,
-        "p95_unstable_range_ms": [
-          17.3,
-          23.2
-        ],
+        "p50_ms": 11.7,
+        "p95_ms": 23.3,
         "p99_ms": null,
-        "p99_unstable_range_ms": [
-          21.9,
-          39.0
-        ]
+        "p99_note": "not reportable within a run (see per_run)"
       },
       "e2e_with_embed": {
         "n_runs": 3,
         "samples_per_run": [
-          520,
-          520,
-          520
+          493,
+          493,
+          493
         ],
         "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
         "per_run": [
           {
-            "n_samples": 520,
-            "p50_ms": 21.7,
-            "p95_ms": 35.2,
-            "p99_ms": 48.6,
-            "min_ms": 8.8,
-            "max_ms": 121.2
+            "n_samples": 493,
+            "p50_ms": 19.0,
+            "p95_ms": 32.7,
+            "p99_ms": null,
+            "not_reportable": "p99: fewer than 5 samples beyond the percentile at n=493",
+            "min_ms": 9.6,
+            "max_ms": 72.6
           },
           {
-            "n_samples": 520,
-            "p50_ms": 22.6,
-            "p95_ms": 39.9,
-            "p99_ms": 58.3,
-            "min_ms": 8.6,
-            "max_ms": 120.1
+            "n_samples": 493,
+            "p50_ms": 19.1,
+            "p95_ms": 34.4,
+            "p99_ms": null,
+            "not_reportable": "p99: fewer than 5 samples beyond the percentile at n=493",
+            "min_ms": 10.1,
+            "max_ms": 74.9
           },
           {
-            "n_samples": 520,
-            "p50_ms": 22.8,
-            "p95_ms": 43.8,
-            "p99_ms": 64.2,
-            "min_ms": 8.8,
-            "max_ms": 120.3
+            "n_samples": 493,
+            "p50_ms": 18.5,
+            "p95_ms": 32.7,
+            "p99_ms": null,
+            "not_reportable": "p99: fewer than 5 samples beyond the percentile at n=493",
+            "min_ms": 10.0,
+            "max_ms": 67.0
           }
         ],
-        "p50_ms": 22.6,
-        "p95_ms": 39.9,
+        "p50_ms": 19.0,
+        "p95_ms": 32.7,
         "p99_ms": null,
-        "p99_unstable_range_ms": [
-          48.6,
-          64.2
-        ]
+        "p99_note": "not reportable within a run (see per_run)"
       },
-      "embed_share_of_e2e_p50": 0.518
+      "embed_share_of_e2e_p50": 0.362
     },
     "800": {
       "recall_at_200": {
-        "mean": 0.99,
+        "mean": 0.9897,
+        "se": 0.0008
+      },
+      "recall_at_20": {
+        "mean": 0.9954,
         "se": 0.0008
       },
       "recall_at_10": {
-        "mean": 0.9954,
+        "mean": 0.9951,
         "se": 0.0011
       }
     }
