@@ -112,6 +112,34 @@ and capture the encode's stdout — `backfill.py` now logs windowed rates
 with both clocks and flags any window where wall time outruns monotonic
 time, which is how this project finally gets a sustained throughput number.
 
+## PARKED — open, not blocking, revisit on the stated trigger
+
+Neither of these blocks the PubMed pull. They are here so they stop
+appearing in every status summary.
+
+**P1. The two-shares question.** DECISION-2's knob is the
+CLINICAL-INFORMATICS share (10%), tuned so hard negatives keep the Phase 4
+comparison meaningful; DECISION-2f's protected quantity is the OVERALL
+specialty share (62.2%), defended against general-nlp dilution. The PubMed
+pull moves the second up, 62.0% -> 65.2% at the pool. Whether that helps
+or hurts under the FIRST has never been tested — DECISION-2 sorts specialty
+mass into "on-topic mass" (welcomed) and "not random hard negatives" (cut
+in half), and nothing places PubMed's terms on either side. It is an
+argument, not a measurement.
+*Trigger: Phase 4's nDCG evaluation. If hybrid beats BM25 by less than
+expected on the post-PubMed corpus, this is the first thing to look at.*
+
+**P2. The order-dependent cap.** A group's cap binds on its ATTRIBUTED
+strategy — the earliest contributing strategy in ORDER — and abstract_hash
+precedes title_exact, so a group carrying both is capped at 8 rather than
+2. Order-invariance (bind on the strictest contributor) is a desirable
+property; the claim that attribution varies with run history was withdrawn
+as unsupported. The measurement objection stands: `dedup_sample` stratified
+on the same attribution, so the 1.000 stratum contains title_exact-edged
+groups and the rule cannot be chosen from existing labels.
+*Trigger: the post-PubMed labeling draw, whose
+`acc_abstract_hash_x_title_exact` stratum (n=20) is designed to settle it.*
+
 ## Phase 3 status (2026-08-01)
 
 DONE:
