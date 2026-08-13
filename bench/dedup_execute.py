@@ -20,7 +20,7 @@ from pathlib import Path
 import psycopg
 
 from api.dedup.cascade import UnionFind
-from api.dedup.merge import merge_group
+from api.dedup.merge import ScreeningConflict, merge_group
 from api.dedup.rules import ABSTRACT_TITLE_SIM, TRGM_THRESHOLD, max_group_size
 from bench.dedup_plan import EXACT_PAIRS, build_scratch
 
@@ -185,6 +185,7 @@ def main() -> None:
         deleted_total = 0
         text_moved = 0
         errors: list[str] = []
+        screening_conflicts: list[dict[str, object]] = []
         for i, (root, members) in enumerate(mergeable.items(), start=1):
             _rank, strategy, sim = best.get(root, (0, "unknown", None))  # type: ignore[assignment]
             try:
@@ -195,6 +196,26 @@ def main() -> None:
                 executed[strategy] += 1
                 deleted_total += len(res["deleted"])
                 text_moved += 1 if res["text_moved"] else 0
+            except ScreeningConflict as conflict:
+                # NOT an error: a human answered the same question twice,
+                # differently, about two records that turned out to be one
+                # paper. Route it to review rather than letting it sink into
+                # an error count nobody reads (findings.md 2026-08-13).
+                with conn.transaction():
+                    conn.execute(
+                        "INSERT INTO dedup_review (member_ids, size, strategies, note)"
+                        " VALUES (%s, %s, %s, %s)",
+                        (
+                            members,
+                            len(members),
+                            strategy,
+                            f"screening conflict in collection(s) {conflict.collection_ids}: "
+                            "members carry different decisions; merging would overrule a human",
+                        ),
+                    )
+                screening_conflicts.append(
+                    {"members": members, "collections": conflict.collection_ids}
+                )
             except Exception as exc:  # noqa: BLE001 — record and continue
                 errors.append(f"group {members[:4]}...: {exc}")
             if i % 2000 == 0:
@@ -222,6 +243,12 @@ def main() -> None:
             "embedded": after[1],
             "merges": after[2],
             "source_records": after[3],
+        },
+        "screening_conflicts": {
+            "groups": len(screening_conflicts),
+            "detail": screening_conflicts[:20],
+            "reads_as": "routed to dedup_review, NOT counted as errors — the "
+            "cascade declines to overrule a human who decided both ways",
         },
         "held_by_dedup_review": {
             "groups": len(withheld),

@@ -15,3 +15,4 @@ dist/
 
 # Model weights live on disk, never in git (127MB+); fetch documented in progress.md.
 models/
+.design-review/

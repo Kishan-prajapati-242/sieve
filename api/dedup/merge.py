@@ -50,6 +50,20 @@ def _publication_rank(row: dict[str, Any]) -> int:
     return int(row.get("publication_rank") or 1)
 
 
+class ScreeningConflict(Exception):
+    """Members carry DIFFERENT screening decisions in the same collection.
+
+    Raised instead of merging, so the caller routes the group to review. The
+    alternative — picking one decision — would have the machine overrule a
+    human on a question the human answered twice, differently.
+    """
+
+    def __init__(self, message: str, *, collection_ids: list[int], member_ids: list[int]) -> None:
+        super().__init__(message)
+        self.collection_ids = collection_ids
+        self.member_ids = member_ids
+
+
 def choose_survivor(members: list[dict[str, Any]]) -> dict[str, Any]:
     """DECISION-3b: published beats preprint, then lowest id."""
     return sorted(members, key=lambda m: (-_publication_rank(m), m["id"]))[0]
@@ -121,12 +135,51 @@ def merge_group(
         "SELECT id, kept_paper_id FROM merges WHERE kept_paper_id = ANY(%s)", (loser_ids,)
     ).fetchall()
 
+    # Screening decisions follow the paper (Kishan, 2026-08-13). Until then
+    # screenings.paper_id had no ON DELETE and merge_group did not repoint it,
+    # so the DELETE below raised and the group was skipped — the cascade
+    # silently under-merged on exactly the papers a human had screened, and a
+    # later precision/recall measurement would inherit that with recall
+    # understated and no trace in the metric (findings.md 2026-08-13).
+    #
+    # Two branches, and the split is the whole rule:
+    #   same decision on both  -> collapse. There is no conflict to resolve.
+    #   different decisions    -> refuse the merge, route to review. A human
+    #                             disagreed with themselves about two records
+    #                             that turned out to be one paper.
+    # Rejected: most-recent-wins (outcome depends on timestamp order — the
+    # order-dependence removed from the cap rule) and survivor's-decision-wins
+    # (survivorship is chosen on METADATA quality and says nothing about which
+    # judgment was better considered).
+    screenings = conn.execute(
+        "SELECT collection_id, paper_id, decision, note FROM screenings"
+        " WHERE paper_id = ANY(%s) ORDER BY collection_id, paper_id",
+        ([m["id"] for m in members],),
+    ).fetchall()
+    by_collection: dict[int, set[str]] = {}
+    for cid, _pid, decision, _note in screenings:
+        by_collection.setdefault(int(cid), set()).add(str(decision))
+    conflicts = sorted(c for c, ds in by_collection.items() if len(ds) > 1)
+    if conflicts:
+        raise ScreeningConflict(
+            f"collections {conflicts} hold different decisions across members "
+            f"{[m['id'] for m in members]}",
+            collection_ids=conflicts,
+            member_ids=[m["id"] for m in members],
+        )
+
     snapshot = {
         "survivor_id": survivor["id"],
         "survivor_before": {k: survivor[k] for k in SNAPSHOT_FIELDS},
         "deleted_papers": [{k: m[k] for k in SNAPSHOT_FIELDS} for m in losers],
         "source_record_map": [{"record_id": r[0], "paper_id": r[1]} for r in record_map],
         "prior_merge_map": [{"merge_id": r[0], "kept_paper_id": r[1]} for r in prior_merges],
+        # Every screening row as it stood, so rollback can put the collapsed
+        # ones back on the papers they were made about.
+        "screening_map": [
+            {"collection_id": r[0], "paper_id": r[1], "decision": r[2], "note": r[3]}
+            for r in screenings
+        ],
         "member_ids": [m["id"] for m in members],
     }
 
@@ -157,6 +210,17 @@ def merge_group(
         "UPDATE merges SET kept_paper_id = %s WHERE kept_paper_id = ANY(%s)",
         (survivor["id"], loser_ids),
     )
+    # Collapse screenings onto the survivor before the losers die. Same
+    # decision everywhere in a collection by the check above, so the survivor
+    # either already carries it or inherits it; the loser rows then go.
+    conn.execute(
+        "INSERT INTO screenings (collection_id, paper_id, decision, note)"
+        " SELECT collection_id, %s, decision, note FROM screenings"
+        " WHERE paper_id = ANY(%s)"
+        " ON CONFLICT (collection_id, paper_id) DO NOTHING",
+        (survivor["id"], loser_ids),
+    )
+    conn.execute("DELETE FROM screenings WHERE paper_id = ANY(%s)", (loser_ids,))
     conn.execute("DELETE FROM papers WHERE id = ANY(%s)", (loser_ids,))
 
     text_moved = (
@@ -215,6 +279,24 @@ def rollback(conn: psycopg.Connection, merge_id: int) -> dict[str, Any]:
             f"INSERT INTO papers ({cols}) VALUES ({placeholders})",  # noqa: S608
             paper,
         )
+    # Screenings: wipe what the merge left on the survivor for these
+    # collections, then reinstate every row exactly as snapshotted.
+    smap = snap.get("screening_map", [])
+    if smap:
+        conn.execute(
+            "DELETE FROM screenings WHERE collection_id = ANY(%s) AND paper_id = ANY(%s)",
+            (
+                [e["collection_id"] for e in smap],
+                sorted({e["paper_id"] for e in smap} | {snap["survivor_id"]}),
+            ),
+        )
+        for e in smap:
+            conn.execute(
+                "INSERT INTO screenings (collection_id, paper_id, decision, note)"
+                " VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                (e["collection_id"], e["paper_id"], e["decision"], e["note"]),
+            )
+
     for entry in snap.get("prior_merge_map", []):
         conn.execute(
             "UPDATE merges SET kept_paper_id = %s WHERE id = %s",
