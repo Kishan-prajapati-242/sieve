@@ -86,6 +86,32 @@ buckets, so scale workers for embedding throughput not fetch throughput);
 embed_batch and dedup_batch handlers; the full PubMed pull, which will
 change the corpus and invalidate every latency number above.
 
+### Post-pull measurement procedure (settled 2026-08-13, before the pull)
+
+The corpus change and the query-set change are separate effects and must
+not be confounded — untangling exactly that confound took two turns on the
+last rebuild, where a degenerate query weighted 28x moved a decision's
+apparent margin by five points.
+
+So after the pull, run the ground-truth rebuild TWICE, 38 s each:
+
+    python -m bench.rebuild_ground_truth
+        # same 493 queries, new corpus -> isolates the CORPUS effect,
+        # directly comparable with everything measured this session
+
+    python -m bench.rebuild_ground_truth --refresh-queries \
+        --out bench/labels/exact_top200_refreshed.json
+        # new titles drawn from the post-pull corpus -> represents a corpus
+        # a third of whose sources are new; NOT comparable with the above,
+        # and that is the point
+
+Recall is reported over DISTINCT query strings in both.
+
+Also standing, per CLAUDE.md: `caffeinate -dimsu` around the whole pull,
+and capture the encode's stdout — `backfill.py` now logs windowed rates
+with both clocks and flags any window where wall time outruns monotonic
+time, which is how this project finally gets a sustained throughput number.
+
 ## Phase 3 status (2026-08-01)
 
 DONE:

@@ -87,6 +87,21 @@ sieve/
 - Migrations are numbered SQL files, forward-only. No auto-generated migrations.
 - Every external HTTP call: explicit timeout, retry with full jitter, and a per-source token bucket. No bare `requests.get`.
 - Latency is reported as p50, p95, p99. Never a mean.
+- **Wrap every long run in `caffeinate -dimsu`.** A sleeping host freezes
+  the podman VM's clock while host wall clock keeps running: a 10-minute
+  cascade was reported as 3 h 55 m, a 23x inflation, and an unlogged
+  overnight encode is still carrying an unsupported 2.4x because of the
+  same effect (findings.md 2026-08-13).
+- **Any host-side duration gets cross-checked in-VM before it is
+  published.** `time docker compose run ...` measures the host. Bracket it
+  with `SELECT now()` inside Postgres, or take the number from a script
+  timing itself with `perf_counter` — that is CLOCK_MONOTONIC and does not
+  advance across a suspend. When the two disagree, the in-VM number is the
+  measurement.
+- **Capture the stdout of any run whose rate you will later quote.** The
+  full corpus encode printed a sleep-immune throughput figure and nobody
+  saved it, so the project still has no sustained rate for its own
+  hardware.
 - Every diagnosed bug gets an entry in `docs/findings.md`: symptom, how it was found, root cause, fix, verified before/after.
 - Log structured JSON. Include a request ID.
 - Secrets in `.env`, never committed. `.env.example` stays current.

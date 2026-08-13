@@ -55,6 +55,11 @@ LIMIT %(n)s
 
 WRITE_SQL = "UPDATE papers SET embedding = %(vec)s::halfvec WHERE id = %(id)s"
 
+# Rows per rate window. 2,048 is ~3 minutes at the observed 8.8-12.7
+# docs/s — short enough to localize a throttling knee, long enough that
+# batch noise averages out.
+RATE_WINDOW_ROWS = 2048
+
 
 def backfill(
     conn: psycopg.Connection,
@@ -73,7 +78,21 @@ def backfill(
         # the killed run lost all 2,304 "committed" rows. Autocommit mode
         # makes each conn.transaction() block a real, durable commit.
         raise ValueError("backfill requires an autocommit connection; batch commits are the point")
+    # Windowed rate logging, with BOTH clocks on every line.
+    #
+    # perf_counter is CLOCK_MONOTONIC and does not advance while the host
+    # sleeps; wall clock does. Printing both makes a suspend VISIBLE — the
+    # two deltas diverge — instead of leaving it to be inferred later from
+    # a total that looks 23x too large (findings.md 2026-08-13: a 10-minute
+    # cascade was reported as 3 h 55 m). The full 196,893-paper encode
+    # printed only a final rate and that output was never captured, so this
+    # project still has no sustained throughput measurement for its own
+    # hardware. This is how the next long run produces one.
     written = 0
+    run_start = time.perf_counter()
+    window_start = run_start
+    window_wall = time.time()
+    window_rows = 0
     while limit is None or written < limit:
         take = batch_rows if limit is None else min(batch_rows, limit - written)
         rows = conn.execute(CLAIM_SQL, {"n": take}).fetchall()
@@ -84,7 +103,26 @@ def backfill(
             for (paper_id, _, _), vec in zip(rows, vectors, strict=True):
                 conn.execute(WRITE_SQL, {"vec": vector_literal(vec), "id": paper_id})
         written += len(rows)
-        print(f"embedded {written} (through paper id {rows[-1][0]})", flush=True)
+        window_rows += len(rows)
+        if window_rows >= RATE_WINDOW_ROWS:
+            now_mono, now_wall = time.perf_counter(), time.time()
+            mono_s = now_mono - window_start
+            wall_s = now_wall - window_wall
+            print(
+                f"embedded {written} (through paper id {rows[-1][0]}) "
+                f"window={window_rows} rows in {mono_s:.1f}s monotonic / "
+                f"{wall_s:.1f}s wall -> {window_rows / mono_s:.1f} docs/s"
+                + (
+                    f"  [CLOCK DISCONTINUITY: wall exceeds monotonic by "
+                    f"{wall_s - mono_s:.0f}s — the host slept]"
+                    if wall_s - mono_s > 5.0
+                    else ""
+                ),
+                flush=True,
+            )
+            window_start, window_wall, window_rows = now_mono, now_wall, 0
+        else:
+            print(f"embedded {written} (through paper id {rows[-1][0]})", flush=True)
     return written
 
 

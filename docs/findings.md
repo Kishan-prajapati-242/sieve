@@ -798,30 +798,43 @@ cold/warm gap that the blended v1 sample averaged into invisibility.
 
 ## 2026-07-31: Short benchmarks don't capture thermal throttling
 
-> **THE 2.4x IS WITHDRAWN, 2026-08-13.** It compares a host-side wall
-> clock ("the completed overnight run") against a benchmark projection,
-> and this project has since found that host wall clock on a laptop
-> includes time the VM spent suspended — that is what turned a ~20-minute
-> cascade into a reported 3 h 55 m (findings.md 2026-08-13).
+> **AMENDED 2026-08-13. Throttling is real; the 2.4x magnitude is not
+> supported, and the "10+ hours" is the highest-prior candidate for the
+> sleep artifact this project measured two weeks later.**
 >
-> `api/embed/backfill.py` times itself with `time.perf_counter()`, which
-> is CLOCK_MONOTONIC and does NOT advance while the host sleeps, so its
-> printed rates are the sleep-immune instrument. Those rates are recorded
-> in progress.md as **8.8-12.7 docs/s sustained**, which over 196,893
-> papers predicts **4.3-6.2 h of encoding** — leaving 3.8-5.7 h of the
-> "10+ h" unaccounted for by the project's own measurements.
+> The entry's evidence is a host-side wall clock — "Kishan, comparing the
+> completed overnight run" — and `Verified: n/a`. On 2026-08-13 the same
+> instrument reported a cascade at 3 h 55 m that VM-side clocks measured at
+> **10 m 11 s**, a 23x inflation caused entirely by the host sleeping. An
+> unattended overnight run on a laptop is precisely the shape that produces
+> it, and nothing here rules it out.
 >
-> **The thermal factor, computed from in-process numbers on both sides,
-> is 14 docs/s burst against 8.8-12.7 sustained: 1.1x to 1.6x**, not 2.4x.
-> Throttling is real and the band shows it; the extra four-plus hours are
-> an artifact of measuring an overnight span rather than the work inside
-> it.
+> `api/embed/backfill.py` computes its rate from `time.perf_counter()`,
+> which is CLOCK_MONOTONIC and does NOT advance while the host is
+> suspended. That number was printed and never captured — **no encode log
+> exists in this repo**, so the sleep-immune measurement is gone.
 >
-> The entry's conclusions survive: short benchmarks do miss throttling,
-> resumability is what made an unattended multi-hour run safe, and int8
-> stays deferred behind its Recall@10 measurement. Only the magnitude
-> changes — and with it the int8 argument, which at 1.1-1.6x is weaker
-> than at 2.4x.
+> What can still be said: the 8.8-12.7 docs/s band in progress.md is
+> in-process, but it comes from the 2026-07-30 pre-encode resumability
+> runs — 5,000 rows, ~8 minutes each — so it is a SHORT-run band and
+> cannot demonstrate sustained behaviour either. **This project has no
+> sustained in-process throughput measurement for its own hardware.** The
+> 2.4x compared an unlogged overnight wall clock to a 75-second benchmark;
+> a 1.1-1.6x computed from the short-run band to the same benchmark is
+> better sourced but still not sustained.
+>
+> **What survives unchanged:** a fanless M1 Air does throttle under
+> sustained all-core load; a 75-second benchmark cannot see it; the
+> projection was honest arithmetic on a measurement that could not see
+> thermal behaviour; and resumability is what made an unattended multi-hour
+> run safe. Only the FACTOR is unsupported — and with it the int8 argument,
+> which is weaker at 1.1-1.6x than at 2.4x.
+>
+> **How it gets fixed:** `backfill.py` now logs windowed rates with BOTH
+> clocks, flagging any window where wall time exceeds monotonic time by
+> more than 5 s as a clock discontinuity. The PubMed encode is ~16,800
+> papers over 21-33 minutes and will produce this project's first sustained
+> rate, provided its stdout is captured.
 
 **Symptom:** the full 196,893-paper encode took **10+ hours** against a
 248-minute projection from the 1,000-document container benchmark —
@@ -1613,6 +1626,15 @@ Kishan's call, and no default was changed here.
 > **Fixed:** `dedup_plan.py` now applies the per-strategy cap, so the dry
 > run models the decision the executor will make. A dry run that does not
 > is worse than no dry run.
+>
+> **And the reasoning I built on this is withdrawn too.** I described the
+> 122 groups as having "re-attributed" from title_exact to abstract_hash
+> between runs, and Kishan corrected his own argument to me on that basis.
+> There was no re-attribution: the planner read a global cap and never
+> consulted attribution. The two runs differed in which CAP they applied.
+> Order-invariance remains a desirable property of a cap rule; "attribution
+> is a function of run history" is unsupported and marked as such in
+> DECISION-3c.
 
 **Symptom:** timing the cascade on the current corpus produced, as a side
 effect, a plan that is DECISION-3c run backwards:
@@ -2160,3 +2182,46 @@ inside the container and are sleep-immune. The only host-side durations
 this project has published are the cascade's 3 h 55 m (retracted,
 re-measured at 10 m 11 s) and VACUUM FULL's 2 m 42 s (short, observed
 live, not corrected).
+
+---
+
+## 2026-08-13: The shipped cascade's precision and recall, rescored
+
+**What changed and what did not.** `api/dedup/rules.py` has been unchanged
+since DECISION-3c (`1c6385a`) and the executor's `cap_for` with it. The
+2026-08-13 edit touched `bench/dedup_plan.py`'s REPORTING only — it had
+been filtering on the global `MAX_GROUP_SIZE` while the executor filtered
+on `max_group_size(strategy)`. No cap was fixed; a dry run was made to
+model the rule that actually runs. (My commit message called it a "cap
+fix", which was wrong.)
+
+**But the pair on the resume was measured under the OLD rule.** The 120
+labels were collected against merges executed with the global cap of 8.
+DECISION-3c then capped title_exact at 2 *because of* those labels, and
+the pair was never recomputed.
+
+Rescoring the same labels with `acc_title_exact_group` moved from merged
+to refused, which is exactly what the cap change does:
+
+| | precision | recall | F1 |
+|---|---|---|---|
+| as sampled (global cap 8) | 0.9568 [0.9035, 0.9983] | 0.9728 [0.9589, 0.9880] | 0.9647 |
+| **as shipped (title_exact cap 2)** | **0.9594** [0.9053, 1.0000] | **0.9662** [0.9524, 0.9813] | 0.9628 |
+
+Precision up, recall down, both inside the intervals — the stratum's
+population is 122 against `acc_abstract_hash`'s 6,662, so reweighting it
+moves the totals about a point.
+
+**This is a rescoring under UNCHANGED STRATUM WEIGHTS, not a
+re-measurement.** The weights come from the populations observed when the
+sample was drawn, and under the shipped rule
+`acc_title_exact_group`'s accepted population is **zero** — those groups
+are flagged now, not merged. So the inverse-probability weights being
+applied are the old population's, and a fresh sample drawn from the cap-2
+cascade would not produce them. What the table shows is "what would these
+120 labels have scored had the cap been 2 when they were drawn", which is
+the right question for a resume number and is NOT the same as measuring
+the shipped cascade on its own sample. `--as-shipped` makes it
+reproducible; only a fresh draw makes it a measurement.
+
+**Resume consequence:** recall should read **0.966**, not 0.973.

@@ -14,6 +14,7 @@ block. The old file is kept beside the new one, renamed, not deleted.
 
 import json
 import os
+import pathlib
 import shutil
 import time
 from datetime import UTC, datetime
@@ -38,7 +39,34 @@ def vector_literal(vec: list[float]) -> str:
     return "[" + ",".join(f"{x:.8g}" for x in vec) + "]"
 
 
+# Refreshing the query set draws new corpus titles the same deterministic
+# way the original did: evenly across the id range, so a post-pull draw
+# includes the new sources in proportion to their share.
+REFRESH_SQL = """
+SELECT title FROM (
+    SELECT title, row_number() OVER (ORDER BY id) AS rn, count(*) OVER () AS total
+    FROM papers WHERE title_norm <> '' AND length(title) >= 20
+) t
+WHERE rn %% (total / %(n)s) = 1
+LIMIT %(n)s
+"""
+
+
 def main() -> None:
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument(
+        "--refresh-queries",
+        action="store_true",
+        help="draw a NEW query set from the current corpus instead of reusing the "
+        "stored one. Run BOTH after a corpus change: the reused set isolates the "
+        "corpus effect, the refreshed set represents the corpus as it now is, and "
+        "comparing only one of them confounds the two (findings.md 2026-08-13).",
+    )
+    ap.add_argument("--out", default=None, help="write somewhere other than the default")
+    args = ap.parse_args()
+
     old_queries, _ = load_ground_truth(OUT)
     if not SUPERSEDED.exists():
         shutil.copy(OUT, SUPERSEDED)
@@ -58,9 +86,26 @@ def main() -> None:
         assert "Seq Scan on papers" in plan, plan
         assert "papers_embed_idx" not in plan, plan
 
+        if args.refresh_queries:
+            # A refreshed set needs its own embeddings; reuse is the point of
+            # the other mode, so this branch is only for the second run.
+            from api.embed.onnx_encoder import OnnxEncoder
+            from api.embed.texts import query_text
+
+            encoder = OnnxEncoder(os.environ["EMBED_MODEL_DIR"])
+            titles = [t for (t,) in conn.execute(REFRESH_SQL, {"n": len(old_queries)}).fetchall()]
+            vecs = encoder.encode([query_text(t) for t in titles])
+            source_entries = [
+                {"query": t, "embedding": [float(x) for x in v]}
+                for t, v in zip(titles, vecs, strict=True)
+            ]
+            print(f"refreshed query set: {len(source_entries)} titles from the current corpus")
+        else:
+            source_entries = old_queries
+
         start = time.perf_counter()
         queries = []
-        for entry in old_queries:
+        for entry in source_entries:
             rows = conn.execute(EXACT_SQL, {"q": vector_literal(entry["embedding"])}).fetchall()
             queries.append(
                 {
@@ -91,7 +136,8 @@ def main() -> None:
         ),
         "queries": queries,
     }
-    OUT.write_text(json.dumps(payload))
+    out_path = pathlib.Path(args.out) if args.out else OUT
+    out_path.write_text(json.dumps(payload))
     print(f"rebuilt {len(queries)} queries against {corpus[0]:,} papers in {elapsed:.0f}s")
     print(f"superseded file kept at {SUPERSEDED.name}")
 

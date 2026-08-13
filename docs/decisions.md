@@ -487,9 +487,16 @@ writes from the EARLIEST contributing strategy in ORDER — and abstract_hash
 precedes title_exact. So acc_abstract_hash (n=11, precision 1.000) contains
 large groups that also carry title_exact edges, while acc_title_exact_group
 (n=19, precision 0.684) contains only groups with no abstract_hash edge.
-The two strata are disjoint by attribution, not by content, and the same
-122 groups re-attributed between two runs of a corpus differing only by the
-unwind. The cap this decision set is therefore not re-derivable until a
+The two strata are disjoint by attribution, not by content.
+
+**One supporting claim here is WITHDRAWN (2026-08-13):** that the same 122
+groups "re-attributed between two runs". No re-attribution occurred. The
+planner never consulted attribution at all — it filtered on the global
+MAX_GROUP_SIZE — so the two runs differed in which CAP they applied, not in
+how they attributed. The order-invariance argument for binding the cap on
+all contributing strategies is therefore a claim about a DESIRABLE
+property, not an observed failure; nothing has demonstrated that attribution
+varies with run history. The cap this decision set is therefore not re-derivable until a
 pass stratifies on which strategies CONTRIBUTED edges (findings.md
 2026-08-13).
 
