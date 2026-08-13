@@ -1548,3 +1548,104 @@ case. What 160 does buy, measured on 493 distinct queries, is recall@20
 0.9238 -> 0.9782 for sql p50 2.3 ms -> 5.0 ms. The cluster pathology argues
 for a larger ef than the recall table alone would; how much larger is
 Kishan's call, and no default was changed here.
+
+---
+
+## 2026-08-12: The DECISION-3c unwind is not durable — the next cascade re-merges all 314 papers
+
+**Symptom:** timing the cascade on the current corpus produced, as a side
+effect, a plan that is DECISION-3c run backwards:
+
+| plan output | value | what it equals |
+|---|---|---|
+| groups_total | 179 | the exact row count of `dedup_review` |
+| groups_merged | **122** | the exact number of groups the unwind reversed |
+| groups_flagged | 57 | the groups that were already flagged before it |
+| rows_merged_away | **314** | the exact number of papers the unwind restored |
+| merged size distribution | 3:89, 4:17, 5:3, 6:7, 7:4, 8:2 | all above the title_exact cap of 2 |
+
+So `dedup_execute --execute` on the current corpus would silently re-merge
+precisely the 314 papers that were restored on hand-labeled evidence.
+
+**How it was found:** not by a test. By timing the cascade for a cost
+estimate and reading the numbers it printed.
+
+**Root cause 1 — the per-strategy cap binds to one strategy per group.**
+Grouping is union-find across all strategies, then each group is attributed
+to the EARLIEST strategy in `ORDER` that contributed any edge:
+
+```
+ORDER = [doi_exact, jmir_doi, id_exact, abstract_hash, title_exact, ...]
+cap_for(root) = max_group_size(best[root].strategy)
+```
+
+`abstract_hash` precedes `title_exact`. So a single `abstract_hash` edge
+anywhere in a group raises that group's cap from 2 to 8, no matter how many
+`title_exact` edges are what made it large. The re-plan found 596
+abstract_hash pairs and 974 title_exact pairs over these same 179 groups.
+**DECISION-3c's cap of 2 binds only when title_exact happens to be the
+group's attributed strategy**, which is not the case that motivated it —
+the measured 0.684 precision came from groups of 3+, and those are exactly
+the ones most likely to carry an edge from more than one strategy.
+
+**Root cause 2 — `dedup_review` is write-only.** `dedup_execute` inserts
+into it; nothing reads it. Not the planner, not the executor. A human
+decision to hold a group back therefore survives exactly until the next
+planning run, which re-derives candidates from the corpus with no memory
+that the question was already asked and answered.
+
+**Why this is blocking for the PubMed pull:** the post-PubMed cascade is a
+full `--rebuild`, and its first act would be to undo DECISION-3c.
+
+**Not fixed here** — both fixes change dedup behaviour, which is Kishan's
+call and needs its own measurement. The options, with what each costs:
+
+1. **Cap by the STRICTEST contributing strategy, not the earliest.**
+   `cap_for` takes `min(max_group_size(s) for s in strategies_in_group)`.
+   Smallest change, and it makes the cap mean what DECISION-3c says it
+   means. Would re-flag the 122 and probably some groups beyond them —
+   the number is unmeasured.
+2. **Have the planner read `dedup_review`** and exclude member sets already
+   recorded there. Makes human review durable, but pins decisions to a
+   member set that a later corpus can invalidate.
+3. **Both.** They are independent: (1) is about what the rule means, (2) is
+   about whether a human decision persists.
+
+**Verified:** the plan above is a dry run — `dedup_plan.py` never writes to
+`papers` or `merges`, and nothing was executed. The corpus is unchanged at
+183,167 papers.
+
+---
+
+## 2026-08-12: Cascade candidate generation costs 3 h 55 m, and it is one seq scan
+
+**Measured:** a full `--rebuild` of the dedup plan on 183,167 papers took
+**3 h 55 m 11 s** wall clock. This was the last unmeasured component of the
+PubMed cost estimate, and it dominates every other component by an order of
+magnitude — fetch is ~7 minutes for the entire available pool, embedding
+22-51 minutes, the HNSW rebuild 36-41 seconds.
+
+**Where it goes:** sampled mid-run, `pg_stat_activity` showed one statement
+holding two parallel workers for **8m57s**:
+
+```sql
+CREATE TABLE dd_preprints AS
+SELECT p.id FROM papers p
+WHERE p.arxiv_id IS NOT NULL OR p.doi LIKE '%/preprint%'
+```
+
+A leading-wildcard `LIKE` cannot use an index, so this is a full scan — and
+nine minutes for one filtered scan of a 276 MB heap is not explained by
+corpus size. That is one step of seven.
+
+**Why a rebuild is not optional post-PubMed:** the `dd_*` scratch tables
+are materialized from the corpus, so new papers invalidate them. Every
+future cascade run pays this.
+
+**Recommendation, not applied:** the cascade needs its own optimization
+pass before the pull, and it should be measured the way the search paths
+were — `EXPLAIN ANALYZE` per step, committed to `docs/plans/`. The last
+time this code was slow the cause was quadratic self-joins, found by
+reading a plan rather than guessing; there is no reason to think this one
+is different in kind. Paying four hours per cascade run in a loop is how
+that one survived as long as it did.

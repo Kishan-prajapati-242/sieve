@@ -7,91 +7,80 @@
   "threshold_sweeps_post_fix": {
     "title_trgm": {
       "0.85": {
-        "kept": 3968,
-        "enum_refused": 1627
+        "kept": 567,
+        "enum_refused": 1049
       },
       "0.9": {
-        "kept": 1539,
-        "enum_refused": 1601
+        "kept": 196,
+        "enum_refused": 822
       },
       "0.92": {
-        "kept": 1208,
-        "enum_refused": 1586
+        "kept": 114,
+        "enum_refused": 785
       },
       "0.95": {
-        "kept": 533,
-        "enum_refused": 1447
+        "kept": 20,
+        "enum_refused": 637
       },
       "0.98": {
-        "kept": 145,
-        "enum_refused": 10
+        "kept": 6,
+        "enum_refused": 4
       }
     },
     "preprint_trgm": {
       "0.85": {
-        "kept": 2390,
+        "kept": 255,
         "enum_refused": 6
       },
       "0.9": {
-        "kept": 2288,
+        "kept": 185,
         "enum_refused": 5
       },
       "0.92": {
-        "kept": 2209,
-        "enum_refused": 5
+        "kept": 146,
+        "enum_refused": 4
       },
       "0.95": {
-        "kept": 2027,
-        "enum_refused": 2
+        "kept": 145,
+        "enum_refused": 1
       },
       "0.98": {
-        "kept": 1849,
+        "kept": 142,
         "enum_refused": 0
       }
     }
   },
   "band_0.95_to_0.98": {
-    "total": 1825,
-    "enumerated_siblings": 1437
+    "total": 647,
+    "enumerated_siblings": 633
   },
   "abstract_hash": {
-    "pairs_before_sibling_rule": 9147,
-    "pairs_after_sibling_rule": 8342
+    "pairs_before_sibling_rule": 1331,
+    "pairs_after_sibling_rule": 596
   },
   "pairs_per_strategy": {
-    "abstract_hash": 8342,
-    "title_exact": 5267,
-    "title_trgm": 1144,
-    "preprint_trgm": 1927
+    "abstract_hash": 596,
+    "title_exact": 974,
+    "title_trgm": 114,
+    "preprint_trgm": 146
   },
-  "total_pairs": 16680,
-  "groups_total": 12796,
-  "groups_merged": 12738,
-  "groups_flagged_for_review": 58,
-  "papers_in_flagged_groups": 908,
-  "rows_merged_away": 13982,
+  "total_pairs": 1830,
+  "groups_total": 179,
+  "groups_merged": 122,
+  "groups_flagged_for_review": 57,
+  "papers_in_flagged_groups": 889,
+  "rows_merged_away": 314,
   "size_distribution_merged": {
-    "2": 11931,
-    "3": 561,
-    "4": 147,
-    "5": 44,
-    "6": 31,
-    "7": 11,
-    "8": 13
+    "3": 89,
+    "4": 17,
+    "5": 3,
+    "6": 7,
+    "7": 4,
+    "8": 2
   },
-  "components_4plus": 304,
-  "components_that_are_chains": 3,
+  "components_4plus": 90,
+  "components_that_are_chains": 1,
   "chain_examples": [
-    {
-      "size": 4,
-      "edges_found": 6,
-      "edge_density": 1.0,
-      "mean_pairwise_sim": 0.89,
-      "min_pairwise_sim": 0.835,
-      "strategies": [
-        "abstract_hash"
-      ]
-    },
     {
       "size": 12,
       "edges_found": 33,
@@ -102,16 +91,6 @@
         "abstract_hash",
         "title_exact",
         "title_trgm"
-      ]
-    },
-    {
-      "size": 4,
-      "edges_found": 6,
-      "edge_density": 1.0,
-      "mean_pairwise_sim": 0.901,
-      "min_pairwise_sim": 0.802,
-      "strategies": [
-        "abstract_hash"
       ]
     }
   ],
@@ -172,28 +151,6 @@
         [
           "PMDB: a relational database for PubMed",
           20
-        ]
-      ]
-    },
-    {
-      "size": 19,
-      "distinct_titles": 12,
-      "strategies": [
-        "title_exact",
-        "title_trgm"
-      ],
-      "top_titles": [
-        [
-          "Figure S4 from Inferring Drug\u2013Gene Relationships in Cancer",
-          2
-        ],
-        [
-          "Figure S7 from Inferring Drug\u2013Gene Relationships in Cancer",
-          2
-        ],
-        [
-          "Figure S2 from Inferring Drug\u2013Gene Relationships in Cancer",
-          2
         ]
       ]
     },
@@ -289,6 +246,25 @@
         [
           "Complete Rxivist dataset of scraped bioRxiv data",
           12
+        ]
+      ]
+    },
+    {
+      "size": 12,
+      "distinct_titles": 2,
+      "strategies": [
+        "abstract_hash",
+        "title_exact",
+        "title_trgm"
+      ],
+      "top_titles": [
+        [
+          "PheKnowLator Human Disease KG Benchmarks: Instance-Standar",
+          6
+        ],
+        [
+          "PheKnowLator Human Disease KG Benchmarks: Class-Standard R",
+          6
         ]
       ]
     }
