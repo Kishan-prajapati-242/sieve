@@ -103,14 +103,42 @@ def bootstrap_ci(
     return values[int(0.025 * len(values))], values[int(0.975 * len(values))]
 
 
+# Strata whose verdict the SHIPPED rule reverses relative to the rule in
+# force when the sample was drawn. DECISION-3c capped title_exact at 2
+# AFTER these labels were collected, so its 3+ groups are now flagged for
+# review rather than merged. Scoring them as merges measures a cascade that
+# no longer runs (findings.md 2026-08-13).
+SHIPPED_RULE_OVERRIDES = {"acc_title_exact_group": "refused"}
+
+
+def apply_shipped_rule(strata: dict[str, Any]) -> dict[str, Any]:
+    out = {k: dict(v) for k, v in strata.items()}
+    for name, verdict in SHIPPED_RULE_OVERRIDES.items():
+        if name in out:
+            out[name]["verdict"] = verdict
+    return out
+
+
 def main() -> None:
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument(
+        "--as-shipped",
+        action="store_true",
+        help="score against the CURRENT rule (title_exact caps at 2) rather than "
+        "the rule in force when the sample was drawn",
+    )
+    args = ap.parse_args()
     if not LABELS.exists():
         print("no labels yet — run: python -m bench.dedup_label")
         return
     store = json.loads(LABELS.read_text())
     frame = json.loads(SAMPLE.read_text())
     labels: dict[str, Any] = store["labels"]
-    strata = frame["strata"]
+    strata = apply_shipped_rule(frame["strata"]) if args.as_shipped else frame["strata"]
+    rule = "shipped (title_exact cap 2)" if args.as_shipped else "as-sampled (global cap 8)"
+    print(f"rule: {rule}")
 
     usable = {k: v for k, v in labels.items() if v["same_paper"] is not None}
     unsure = len(labels) - len(usable)

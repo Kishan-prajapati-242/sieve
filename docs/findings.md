@@ -2104,3 +2104,59 @@ judgment, so seeding them would record 122 group-level inferences as though
 they were pair-level observations. The conservative reading is that they
 stay in `dedup_review` awaiting the second labeling pass DECISION-3c calls
 for, and only labeled pairs become constraints.
+
+---
+
+## 2026-08-13: The sustained encode rate does not exist in this repo
+
+**The audit Kishan asked for, answered plainly: the data is not there.**
+
+**Does the encode log in-process rates or host elapsed?** Both, but only
+one survived. `api/embed/backfill.py` prints per-batch progress and a final
+`"wrote N embeddings in Xs (Y docs/s)"` computed from `time.perf_counter()`
+— CLOCK_MONOTONIC, which does not advance while the host sleeps, so it is
+the correct instrument. **That output was never saved.** There is no
+encode log anywhere in the repo. findings.md's "10+ hours" cites Kishan's
+observation of an overnight run, and progress.md's "Kishan's overnight run,
+10+ h" says the same. The sleep-immune number was printed to a terminal and
+lost.
+
+**Does 8.8 survive?** Unanswerable, and for a sharper reason than expected.
+The 8.8-12.7 band is recorded in progress.md's **pre-encode prerequisites,
+dated 2026-07-30** — it comes from the resumability runs, which totalled
+5,000 rows at roughly 8 minutes each. So it is a SHORT-run band, measured
+before the full encode, and it cannot show sustained thermal behaviour any
+more than the 13.2 docs/s benchmark could. There is no discontinuity to
+look for because there is no windowed log.
+
+**So the honest state of the three numbers:**
+
+| number | instrument | duration measured |
+|---|---|---|
+| 13.2 docs/s | in-process benchmark | 75 s |
+| 8.8-12.7 docs/s | in-process, real runs | ~8 min each |
+| "10+ h" | host wall clock, unlogged | overnight, includes any sleep |
+
+**No sustained in-process rate for this hardware exists.** The withdrawn
+2.4x compared row 3 against row 1; the 1.1-1.6x I offered instead compares
+row 2 against row 1, and row 2 is not sustained either. Both factors are
+built from short runs.
+
+**Consequence for the PubMed estimate, which is where this matters:** the
+encode there is ~16,800 papers, 22-32 minutes — a duration much closer to
+the 8-minute runs the band came from than to a 10-hour one. The band is
+defensible for THIS workload and would not be for a full-corpus re-encode.
+Propagating the survival CI [69.5%, 76.6%] rather than the 73.2% point
+gives **21-33 minutes**.
+
+**Fix, one line of operator discipline:** the pull's encode must have its
+stdout captured. `backfill.py` already prints the sleep-immune rate; the
+only failure was not keeping it. That single saved line would give this
+project its first sustained throughput measurement and retire both
+factors.
+
+**Also audited:** 15 bench/ and api/ scripts time with `perf_counter`
+inside the container and are sleep-immune. The only host-side durations
+this project has published are the cascade's 3 h 55 m (retracted,
+re-measured at 10 m 11 s) and VACUUM FULL's 2 m 42 s (short, observed
+live, not corrected).
