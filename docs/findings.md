@@ -2225,3 +2225,48 @@ the shipped cascade on its own sample. `--as-shipped` makes it
 reproducible; only a fresh draw makes it a measurement.
 
 **Resume consequence:** recall should read **0.966**, not 0.973.
+
+---
+
+## 2026-08-13: The PubMed weights were never a decision, so there is no deviation
+
+**Found by asking what the weights are FOR.** DECISION-2 states its
+composition weights explicitly and ties them to retrieval evaluation. The
+PubMed weights — 0.40 / 0.25 / 0.20 / 0.15 across clinical-nlp,
+simplification, mental-health-nlp, biomedical-ner — appear in **no
+decision record**. They live in `api/ingest/pubmed.py` with the comment
+"DECISION-2 domains in PubMed's field syntax". An assistant chose them.
+
+**Consequences, and they retire work:**
+
+* **"Realized composition as a labeled deviation" is the wrong frame.** A
+  deviation needs a target. There is none, only a mapping of DECISION-2's
+  domains into PubMed syntax. The posture is: take the pool as a coverage
+  decision under DECISION-2f's standard ("new specialty sources in Phase 3
+  grow it for coverage, not for roundness"), and record the composition it
+  produces as the composition.
+* **The biomedical-ner "gap" does not exist.** It was defined as 1,455
+  available against a 0.15 weight. Under a coverage standard, 1,455 is what
+  that term yields. The substitute measurements taken to close it — no date
+  bound +153, adding `"relation extraction"[tiab]` +493 — were answering a
+  question nobody asked. They are kept as data, not as options.
+* **The query-terms question shrinks** from "how do we hit the weights" to
+  "are these four the right coverage", which is a DECISION-2-shaped
+  question about what the corpus is for.
+
+**And a distinction I had collapsed.** I wrote that the pull moves "the
+engineered specialty share the right way". Two decisions use the word
+"share" for different quantities: DECISION-2's knob is the
+**clinical-informatics** share (10%), tuned for hard-negative difficulty;
+DECISION-2f's protected quantity is the **overall specialty** share
+(62.2%), defended against general-nlp dilution. The pull moves the second
+up. Whether that is good under the first is open — DECISION-2 sorts
+specialty mass into "on-topic mass" (welcomed) and "not random hard
+negatives" (cut in half), and nothing has established which side PubMed's
+terms fall on. Recorded in decisions.md beside DECISION-2.
+
+**Interval on the round number.** At survival [69.5%, 76.6%] the post-pull
+corpus is **199,152 to 200,785**, so the low end does NOT cross 200,000.
+The DECISION-2f observation stands — the round number it declined to
+manufacture may arrive as a side effect of coverage — but it is a
+coin-flip, not a fact.

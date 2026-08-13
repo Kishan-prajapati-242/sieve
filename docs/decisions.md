@@ -156,6 +156,30 @@ the eval mean something, and clinical-informatics share is the knob.
 
 ---
 
+> **Note added 2026-08-13, for the PubMed composition call.** Two decisions
+> talk about "share" and they are DIFFERENT quantities, which was conflated
+> once already:
+>
+> * **DECISION-2's knob is the CLINICAL-INFORMATICS share** (T10350|T13702,
+>   set at 10%). Its concern is eval difficulty via hard negatives — those
+>   topics are "largely not NLP", so at 20% they are "clinical papers
+>   lacking simplification vocabulary", which "could make hybrid look worse
+>   than BM25 in Phase 4". The revisit condition names that share as the
+>   knob. **62.2% appears nowhere in DECISION-2.**
+> * **DECISION-2f's protected quantity is the OVERALL specialty share**,
+>   62.2%, "deliberately engineered", defended against dilution by
+>   general-nlp top-ups.
+>
+> The PubMed pull moves the second up (62.0% -> 65.2% at the pool). Whether
+> that is good under the FIRST is a separate question nobody has answered:
+> DECISION-2 sorts specialty mass into "on-topic mass" (T11710 biomedical
+> text mining, welcomed) versus "not random hard negatives" (T10350
+> clinical informatics, cut in half). PubMed's four terms all require NLP
+> or ML vocabulary in title/abstract, which places them nearer the first
+> category — but that is an argument, not a measurement, and the
+> homogeneity direction it implies has never been tested. **Open, and part
+> of the composition call.**
+
 ## DECISION-2b: What goes into the embedding, and which model encodes it
 
 **Date:** 2026-07-29
