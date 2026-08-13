@@ -2270,3 +2270,52 @@ corpus is **199,152 to 200,785**, so the low end does NOT cross 200,000.
 The DECISION-2f observation stands — the round number it declined to
 manufacture may arrive as a side effect of coverage — but it is a
 coin-flip, not a fact.
+
+---
+
+## 2026-08-13: The screenings FK is a silent contamination path into the precision number
+
+**Measured** (`tests/test_screening_survives_merge.py`): merging a paper
+that carries a screening decision raises `ForeignKeyViolation`.
+`merge_group` repoints `source_records` and `merges` but not `screenings`,
+and `screenings.paper_id` has no `ON DELETE`.
+
+**I framed this as "safe for the judgment, blocking for dedup". That
+understates it.** The full path, per Kishan:
+
+1. the merge raises;
+2. `dedup_execute` catches per-group exceptions and continues;
+3. the group is skipped, so **the cascade silently under-merges**;
+4. it under-merges on exactly the papers a human cared enough to screen;
+5. post-PubMed precision/recall is then measured on that cascade, with
+   **recall understated** and the cause invisible unless somebody reads the
+   error counts in the results file.
+
+So it is not a workflow annoyance. It is a contamination path into the
+number Kishan's labeling session pays for, and it is the kind that leaves
+no trace in the metric itself — the same shape as the stale ground truth
+and the sleeping clock.
+
+**Recommended collision rule (Kishan's call, not implemented):** when the
+survivor and the loser carry decisions in the same collection —
+
+* **same decision on both** -> collapse the rows silently. There is no
+  conflict to resolve, and refusing would be pedantry.
+* **different decisions** -> refuse the merge and route the group to
+  `dedup_review`. A human disagreed with themselves about two records that
+  turned out to be one paper; that is exactly what review is for.
+
+**Rules rejected, with reasons:**
+
+* *most-recent-wins* — makes the outcome depend on timestamp order, which
+  is the order-dependence three exchanges were just spent removing from the
+  cap rule.
+* *survivor's-decision-wins* — borrows DECISION-3b's survivorship logic,
+  but survivorship is chosen on METADATA QUALITY (which record has the DOI,
+  the abstract, the citations) and says nothing about which of two human
+  judgments was better considered.
+
+**Tests to add once the rule is picked:** the pinned refusal test stays as
+the pre-fix baseline, plus one per branch — same-decision collapses to one
+row on the survivor, different-decisions refuses and lands in
+`dedup_review`.

@@ -48,6 +48,10 @@ Hybrid's top-10 takes 10 of 10 from the vector arm.
 
 ## 3. Hybrid beats both — `BERT for de-identification of clinical records`
 
+**Hybrid's #1 result was ranked first by neither arm.** That is the whole
+argument for fusion in one sentence, and it is what to say out loud before
+scrolling: neither ranker found this paper best; the combination did.
+
 A rare exact term (`BERT`) plus a concept (`de-identification`). Each arm
 gets half the query.
 
@@ -59,7 +63,8 @@ gets half the query.
 
 BM25 finds de-identification papers that are not BERT-specific; vector
 finds BERT papers that are not de-identification-specific. **Hybrid's
-top-10 is 5 from each arm**, and its #1 was ranked first by neither.
+top-10 is 5 from each arm**, and the per-result `keyword #n / semantic #n`
+badges show exactly which arm each row came from.
 
 That is the mode toggle's whole argument, on one screen, with the per-result
 `keyword #n / semantic #n` breakdown showing where each result came from.
