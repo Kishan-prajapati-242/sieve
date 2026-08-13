@@ -531,91 +531,85 @@ since it drove a rule change off n=19.
 
 ---
 
-## DECISION-4a: The design system, and the evidence behind the choice
+## DECISION-4a: Assemble the motion language from effects, not from a library
 
 **Date:** 2026-08-13
 
-**Decision:** PENDING — Kishan picks from images. This record exists now
-because the evidence lives in `.design-review/`, which is gitignored, and
-would otherwise vanish with it. The funnel, the gates and the
-verified-versus-assumed split are recorded here; the winner and the reason
-it beat the runner-up get appended when he chooses.
+**Decision:** PENDING Kishan's picks. Recorded now because the evidence
+lives in `.design-review/`, which is gitignored and would vanish with it.
+
+**The framing, corrected mid-task.** The first pass produced a shortlist of
+twelve component LIBRARIES and asked which to adopt. That answered a
+question nobody asked. Adopting one registry produces an app that looks
+like that registry's demo — the templated look this project explicitly
+rejects. **The unit is the EFFECT; the deliverable is assembly.** The funnel
+work stands and was re-cut; only the output format was wrong.
 
 **The funnel, with counts:** 3,587 unique URLs harvested from 11
-awesome-lists (component libraries, design systems, animation collections,
-React ecosystems) -> 465 after keyword filter plus a curated seed of the
-animation-first Tailwind/React collections that postdate those lists ->
-37 screenshotted live -> 30 viewed as images -> 8 put through motion
-capture -> 12 on the contact sheet.
+awesome-lists -> 465 after keyword filter plus a curated seed -> 37
+screenshotted live -> 30 viewed as images -> 8 + 10 put through motion
+capture -> **8 effect categories catalogued**, each with sources, frames and
+a lift cost.
 
-**Hard gates, objective:** React + Tailwind compatible; license permits a
-public deploy (Phase 4 acceptance is a live demo URL); animation survives
-lists of hundreds of rows via virtualization or per-item opt-out; must not
-require abandoning TanStack Query.
+**Licenses were over-weighted and the gating is dropped.** A stagger, an
+ease curve, a reorder transition are patterns; nobody owns them. License
+matters only where a substantial component is lifted verbatim. The one live
+case: React Bits' split-text is **MIT + Commons Clause v1.0**, read in full
+— commercial use permitted "as part of an application, website, or
+product", the Clause forbids only reselling the library. Fine here.
 
-**The virtualization gate eliminated nobody, for a reason worth recording.**
-Every animation-first candidate is a copy-paste REGISTRY, not a framework,
-so adoption is per component and the opt-out is free by construction — you
-simply do not use the animated variant for list rows. The gate only bites
-on opinionated frameworks, and the one framework on the sheet (HeroUI) has
-an explicit `disableAnimation` prop. So the split Kishan proposed — heavy
-motion on transitions, cards and the decision bar, restrained motion inside
-the long lists — is available with all of them. It is a usage decision, not
-a selection constraint.
+**The anchor effect, and the reason it is the anchor.** The mode toggle
+re-ranks results, so animating that transition *shows* fusion rather than
+narrating it. On the real query "BERT for de-identification of clinical
+records", paper 101226 is **#5 under bm25, outside vector's top 5, and #1
+under hybrid** — the best demo fact in the project, made visual.
 
-**Retrofit cost is identical across candidates: zero test rewrites.**
-`web/src/App.test.tsx` and `web/src/ResultCard.test.tsx` assert only on
-visible text, ARIA roles and request bodies. There are no class-name
-assertions, so a restyle cannot break them.
+Built and verified rather than assumed: `.design-review/reorder-proof.html`
+runs FLIP (First-Last-Invert-Play, the Web Animations API) over the REAL
+per-mode orderings. Frames confirm the highlighted row travelling from
+position 5 to #1, deltas decaying 10.1 -> 3.9 in a clean ease-out.
 
-**What was VERIFIED versus ASSUMED — the distinction the sheet is built on.**
-Motion was judged from frame bursts, not from marketing copy. Verified by
-looking at frames: Magic UI (staggered image-grid entrance), React Bits
-(character-by-character split text, the only candidate still moving during
-hover), SmoothUI (Dynamic Island morph), Motion-Primitives (one subtle text
-effect), Cult UI (Roll In / Whip In fading up, on retry). NOT verified
-after two attempts each: Aceternity's signature hover effect (8 hover
-frames pixel-static), Eldora (screenshot protocol error both times), Luxe
-(all-zero deltas twice), Kokonut (one paint then flat). Those are
-statements about my sampling, not about the libraries.
+**What it needs here is less than expected:** `web/src/App.tsx` already
+renders `<ResultCard key={r.id}>` and paper ids are stable across modes, so
+the prerequisite — stable keys — is met today. ~25 lines of vanilla FLIP,
+no dependency; or `<motion.li layout>` if Motion is adopted for other
+effects. One wrinkle: switching modes changes the RESULT SET as well as the
+order (bm25 returns zero results for some queries), so enter/exit is needed
+alongside reorder.
 
-**The limit of my instrument, measured rather than assumed:** a Playwright
-screenshot round-trip costs 20-375 ms, typically 30-90, so sampling runs at
-roughly 11-33 fps with jitter and cannot go faster. Dropped frames occur at
-16.7 ms and are invisible at that rate. **I can establish that something
-animates and roughly how much; I cannot establish that it is smooth.** Final
-motion judgment on the finalists is Kishan's, in a browser — minutes of his
-time on the one thing only eyes settle.
+**What was VERIFIED versus ASSUMED.** Verified by looking at frames:
+reorder (on our own data), staggered entrance (Magic UI blur-fade),
+state-change morph (SmoothUI Dynamic Island), text reveal (React Bits, Cult
+UI, Motion-Primitives). Partially verified: number transitions. NOT
+verified, and flagged as questions for Kishan rather than as conclusions:
+card hover (Aceternity, unobserved in two attempts), Luxe and Kokonut
+(measured zero twice), Eldora (never yielded a frame), page transitions
+(not captured at all — recorded as a gap rather than filled with a guess).
 
-**Licenses, read rather than inferred:** MIT — Magic UI, Motion-Primitives,
-Cult UI, SmoothUI, Kokonut, Eldora, shadcn/ui. Apache-2.0 — HeroUI, Tremor.
-**React Bits is MIT + Commons Clause v1.0**, read in full: commercial use is
-explicitly permitted "as part of an application, website, or product" and
-the Clause forbids only selling the component library itself, so a public
-portfolio deploy is fine — though it is not OSI-open-source, which matters
-only if that label is ever claimed. UNRESOLVED and flagged on the sheet:
-Aceternity and Luxe, no canonical repo found via GitHub search.
+**The limit of the instrument, measured not assumed:** a Playwright
+screenshot round-trip costs 20-375 ms, so bursts sample at 11-33 fps with
+jitter and cannot go faster. Dropped frames occur at 16.7 ms. **Whether
+motion is smooth is not establishable this way** — that is why four
+specific things go to Kishan's eyes at thirty seconds each.
 
-**What a template does NOT supply:** the information design, which is
-already specced and approved — collections list, collection detail with the
-decision bar, and the "Add to..." control on search results. The fuller
-View B is being built rather than the lean version, because a `maybe` exists
-to be revisited and without a list there is no mechanism to revisit it. The
-template supplies the visual language; it does not supply what the app does.
+**What no source supplies:** the information design, which is specced and
+approved — collections list, collection detail with the decision bar, and
+the "Add to..." control on search results. The fuller View B is being built
+because a `maybe` exists to be revisited and without a list there is no
+mechanism to revisit it.
 
-**Alternatives considered:** designing a bespoke system (rejected: Kishan's
-instruction was to adopt one chosen by looking at it, and bespoke costs a
-session of his time for a portfolio's visual layer); staying on plain
-Tailwind (rejected: the screening UI closes one of Phase 3's three
-acceptance criteria and reads as an unfinished product without a visual
-language).
+**Alternatives considered:** adopting a single design system (rejected
+above); designing bespoke visuals (rejected: the instruction was to source
+widely and assemble, not to invent); staying on plain Tailwind (rejected:
+the screening UI closes one of Phase 3's three acceptance criteria).
 
-**What would change my mind:** if the finalist's motion turns out to be
-janky in a browser at 60 fps, which my 11-33 fps sampling cannot see.
+**What would change my mind:** an effect Kishan sees as janky at 60 fps
+that my 11-33 fps sampling scored as fine.
 
-**Evidence:** `.design-review/contact-sheet.html` (gitignored, 3.5 MB,
-base64-inlined, self-contained). Regenerate with
-`.design-review/enumerate.py`, `shoot.py`, `motion_v3.py`, `sheet.py`.
+**Evidence:** `.design-review/contact-sheet.html` (effects catalogue) and
+`.design-review/reorder-proof.html` (the anchor, runnable). Regenerate with
+`enumerate.py`, `shoot.py`, `motion_v3.py`, `effects.py`, `reorder.py`,
+`catalogue.py` in that folder.
 
 ---
 
