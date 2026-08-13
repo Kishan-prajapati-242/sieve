@@ -108,8 +108,42 @@ def main() -> None:
         def cap_for(root: int) -> int:
             return max_group_size(best.get(root, (0, "unknown", None))[1])
 
-        mergeable = {r: m for r, m in groups.items() if len(m) <= cap_for(r)}
+        # A paper already sitting in dedup_review is HELD, not re-decided.
+        #
+        # Without this, --execute re-merges exactly what DECISION-3c unwound:
+        # a re-plan on 2026-08-13 proposed 122 groups and 314 papers, the
+        # precise set the unwind had restored, because the cap binds on a
+        # group's ATTRIBUTED strategy and re-attribution moved those groups
+        # from title_exact (cap 2) to abstract_hash (cap 8).
+        #
+        # Held at PAPER level, not member-set level, deliberately: a member
+        # set dissolves when the corpus changes and the hold would silently
+        # stop applying, which is the durability hole that ruled out the
+        # group-keyed option. A paper id is stable. It over-refuses — one
+        # held paper holds any component containing it — and that is the
+        # direction this project has consistently chosen (DECISION-1c,
+        # DECISION-3c: under-merging is safer than over-merging).
+        #
+        # This asserts no judgment about those groups. It says a human was
+        # asked and has not answered, so the machine does not answer for
+        # them. Seeding them as negative pairs WOULD assert a judgment, and
+        # it is not one the labels support: the unwind rests on an aggregate
+        # 0.684 at n=19, which is a group-level inference, not 122
+        # pair-level observations (findings.md 2026-08-13).
+        held_rows = conn.execute("SELECT member_ids FROM dedup_review").fetchall()
+        held: set[int] = {pid for (ids,) in held_rows for pid in ids}
+
+        def is_held(members: list[int]) -> bool:
+            return any(m in held for m in members)
+
+        mergeable = {r: m for r, m in groups.items() if len(m) <= cap_for(r) and not is_held(m)}
         flagged = {r: m for r, m in groups.items() if len(m) > cap_for(r)}
+        withheld = {r: m for r, m in groups.items() if len(m) <= cap_for(r) and is_held(m)}
+        print(
+            f"held by dedup_review: {len(withheld)} groups / "
+            f"{sum(len(m) for m in withheld.values())} papers ({len(held)} ids under review)",
+            flush=True,
+        )
 
         print(
             f"plan: {len(pairs)} pairs, {len(groups)} groups, "
@@ -188,6 +222,14 @@ def main() -> None:
             "embedded": after[1],
             "merges": after[2],
             "source_records": after[3],
+        },
+        "held_by_dedup_review": {
+            "groups": len(withheld),
+            "papers": sum(len(m) for m in withheld.values()),
+            "review_ids": len(held),
+            "reads_as": "components containing a paper already in dedup_review are "
+            "held, not merged and not re-flagged — a human was asked and has not "
+            "answered (findings.md 2026-08-13)",
         },
         "pairs_per_strategy": dict(per_strategy_pairs),
         "groups_merged_per_strategy": dict(executed),

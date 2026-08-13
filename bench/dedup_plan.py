@@ -29,7 +29,13 @@ from typing import Any
 import psycopg
 
 from api.dedup.cascade import SURVIVOR_SQL, UnionFind
-from api.dedup.rules import ABSTRACT_TITLE_SIM, MAX_GROUP_SIZE, TRGM_THRESHOLD, sibling_sql
+from api.dedup.rules import (
+    ABSTRACT_TITLE_SIM,
+    MAX_GROUP_SIZE,
+    TRGM_THRESHOLD,
+    max_group_size,
+    sibling_sql,
+)
 
 LOOSEST = 0.85
 SWEEP = [0.85, 0.90, 0.92, 0.95, 0.98]
@@ -208,9 +214,18 @@ def main() -> None:
 
         edges_by_root: Counter[int] = Counter()
         strat_by_root: dict[int, set[str]] = {}
+        # Earliest strategy in ORDER per component — the same attribution
+        # dedup_execute uses, so the cap below matches what will actually run.
+        best_strategy: dict[int, str] = {}
+        best_rank: dict[int, int] = {}
         for a, _b, _s, name in pairs:
-            edges_by_root[uf.find(a)] += 1
-            strat_by_root.setdefault(uf.find(a), set()).add(name)
+            root = uf.find(a)
+            edges_by_root[root] += 1
+            strat_by_root.setdefault(root, set()).add(name)
+            rank = ORDER.index(name)
+            if root not in best_rank or rank < best_rank[root]:
+                best_rank[root] = rank
+                best_strategy[root] = name
 
         chain_report: list[dict[str, Any]] = []
         for root, members in groups.items():
@@ -235,8 +250,18 @@ def main() -> None:
                 }
             )
 
-        oversized = {r: m for r, m in groups.items() if len(m) > MAX_GROUP_SIZE}
-        merged = {r: m for r, m in groups.items() if len(m) <= MAX_GROUP_SIZE}
+        # The PER-STRATEGY cap, matching bench/dedup_execute.py. Until
+        # 2026-08-13 this used the global MAX_GROUP_SIZE while the executor
+        # used max_group_size(strategy), so the plan reported 122 groups as
+        # mergeable that the executor would never merge — and that
+        # discrepancy was read as evidence the executor would undo
+        # DECISION-3c. A dry run that does not model the real decision is
+        # worse than no dry run (findings.md 2026-08-13).
+        def plan_cap(root: int) -> int:
+            return max_group_size(best_strategy.get(root, "unknown"))
+
+        oversized = {r: m for r, m in groups.items() if len(m) > plan_cap(r)}
+        merged = {r: m for r, m in groups.items() if len(m) <= plan_cap(r)}
         sizes = Counter(len(m) for m in merged.values())
 
         flagged: list[dict[str, Any]] = []

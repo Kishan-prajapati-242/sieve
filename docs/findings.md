@@ -798,6 +798,31 @@ cold/warm gap that the blended v1 sample averaged into invisibility.
 
 ## 2026-07-31: Short benchmarks don't capture thermal throttling
 
+> **THE 2.4x IS WITHDRAWN, 2026-08-13.** It compares a host-side wall
+> clock ("the completed overnight run") against a benchmark projection,
+> and this project has since found that host wall clock on a laptop
+> includes time the VM spent suspended — that is what turned a ~20-minute
+> cascade into a reported 3 h 55 m (findings.md 2026-08-13).
+>
+> `api/embed/backfill.py` times itself with `time.perf_counter()`, which
+> is CLOCK_MONOTONIC and does NOT advance while the host sleeps, so its
+> printed rates are the sleep-immune instrument. Those rates are recorded
+> in progress.md as **8.8-12.7 docs/s sustained**, which over 196,893
+> papers predicts **4.3-6.2 h of encoding** — leaving 3.8-5.7 h of the
+> "10+ h" unaccounted for by the project's own measurements.
+>
+> **The thermal factor, computed from in-process numbers on both sides,
+> is 14 docs/s burst against 8.8-12.7 sustained: 1.1x to 1.6x**, not 2.4x.
+> Throttling is real and the band shows it; the extra four-plus hours are
+> an artifact of measuring an overnight span rather than the work inside
+> it.
+>
+> The entry's conclusions survive: short benchmarks do miss throttling,
+> resumability is what made an unattended multi-hour run safe, and int8
+> stays deferred behind its Recall@10 measurement. Only the magnitude
+> changes — and with it the int8 argument, which at 1.1-1.6x is weaker
+> than at 2.4x.
+
 **Symptom:** the full 196,893-paper encode took **10+ hours** against a
 248-minute projection from the 1,000-document container benchmark —
 roughly **2.4x** the projected wall clock.
@@ -1553,6 +1578,42 @@ Kishan's call, and no default was changed here.
 
 ## 2026-08-12: The DECISION-3c unwind is not durable — the next cascade re-merges all 314 papers
 
+> **HEADLINE RETRACTED 2026-08-13. The executor would have merged nothing.**
+> Everything below was inferred from `results_dedup_plan.json` and asserted
+> about `bench/dedup_execute.py`, which is a different code path. Run:
+>
+> ```
+> plan: 1830 pairs, 179 groups, 0 mergeable, 179 flagged
+> held by dedup_review: 0 groups / 0 papers (1325 ids under review)
+> ```
+>
+> **0 mergeable.** `dedup_plan.py` filtered on the GLOBAL `MAX_GROUP_SIZE`
+> (8) and reported 122 groups "merged"; `dedup_execute.py` filters on
+> `max_group_size(strategy)`, where title_exact is 2, and flags all 179.
+> The per-strategy cap was doing its job the whole time.
+>
+> Two further claims below are also unfounded. "179 = the exact row count
+> of dedup_review" — dedup_review holds 179 rows and 1,325 papers, and the
+> plan's 179 groups contain **none** of them. "314 = the papers the unwind
+> restored" — the unwound groups hold 436 papers (122 survivors + 314
+> restored), of which **44** appear anywhere in the current candidate set.
+> Two coincident integers were read as identity without checking either.
+>
+> This is the fifth mechanism I have asserted from a number produced by a
+> different instrument than the one the claim is about. The pattern is
+> exact each time: read a figure, name a mechanism, skip the run that would
+> have falsified it. Kishan caught all five.
+>
+> **What survives:** the ATTRIBUTION analysis (a group's cap binds on the
+> earliest strategy in ORDER, and abstract_hash precedes title_exact) is
+> real and independently verified, and it remains the reason DECISION-3c's
+> cap is order-dependent. What does not survive is the claim that it is
+> currently causing harm.
+>
+> **Fixed:** `dedup_plan.py` now applies the per-strategy cap, so the dry
+> run models the decision the executor will make. A dry run that does not
+> is worse than no dry run.
+
 **Symptom:** timing the cascade on the current corpus produced, as a side
 effect, a plan that is DECISION-3c run backwards:
 
@@ -1848,12 +1909,18 @@ runtime. Measured directly, on real title pairs from the densest block:
 
 | wang/2025 block | rows | time |
 |---|---|---|
-| with `similarity()` | 737,094 | 2,253 ms |
+| with `similarity()` | 737,094 pairs | 2,253 ms |
 | without it | 737,094 | 1,055 ms |
 | **difference** | 737,094 calls | **1,198 ms = 1.63 us/call** |
 
 **1.63 microseconds, not 250.** Off by 150x, in the direction that made my
 story work.
+
+*(Label note: 737,094 is the wang/2025 PAIR count after the title-inequality
+and length-band filters — 1,966 rows yield 1,931,595 raw pairs, of which
+38% survive. Its near-match to `dd_sn`'s 737,487 total ROWS is a 0.05%
+coincidence and not the same quantity; verified against both tables so a
+later re-derivation does not read one for the other.)*
 
 **How (d) and (e) fell:** running the real `dd_scored` shape on bounded
 subsets, with ANALYZE:
@@ -1874,8 +1941,10 @@ evidence:
   while its own `CreatedAt` was 3 h 53 m earlier — the VM clock had frozen.
 * `pg_stat_activity` inside the VM reported the batch at 8m57s, which is
   consistent with the real work, not with four hours.
-* Independently measured per-step costs sum to ~15-20 min, matching the
-  VM's 9 minutes at the sampling point mid-build.
+* Independently measured per-step costs sum to ~15-20 min. That 8m57s was
+  a MID-RUN sample, so it is a lower bound rather than a total, and the
+  15-20 min sums four measured steps of seven — `dd_sn_pp`, `dd_scored_pp`
+  and the per-table index builds are estimated, not measured.
 * The two clocks agree to within 1 second now.
 
 `time` measured host wall clock, which includes sleep. **The VM was not
