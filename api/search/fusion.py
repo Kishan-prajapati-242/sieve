@@ -66,6 +66,18 @@ SELECT p.id, p.doi, p.title, p.abstract, p.year, p.venue, p.citation_count,
        p.is_retracted, p.authors,
        b.rank AS bm25_rank,
        v.rank AS vector_rank,
+       -- The fused candidate pool, free. The FULL OUTER JOIN *is* the union
+       -- of the two arms, and the inner join to papers drops nothing (both
+       -- CTEs draw their ids from it), so the row count here is exactly
+       -- |bm25 candidates u vector candidates|. A window function is
+       -- evaluated after the joins and BEFORE ORDER BY/LIMIT, and the query
+       -- already has to materialize and sort every candidate to find the
+       -- top k -- so this reads a number the plan had already computed.
+       -- Counting it separately cost an entire second ef=600 vector search:
+       -- 11 ms on a query that otherwise takes 18, for an integer in hand.
+       -- (A literal percent sign here is parsed as a psycopg placeholder
+       -- even inside a SQL comment. Found the hard way, 2026-08-14.)
+       count(*) OVER () AS pool_total,
        (COALESCE(1.0 / (%(rrf_k)s + b.rank), 0) +
         COALESCE(1.0 / (%(rrf_k)s + v.rank), 0))::float8 AS score
 FROM bm25 b
@@ -88,7 +100,9 @@ def search_hybrid(
     ef_search: int,
 ) -> list[dict[str, Any]]:
     """Top-k RRF-fused papers, best first. Rows carry bm25_rank/vector_rank
-    (NULL when that ranker missed the paper at this depth) and score = RRF.
+    (NULL when that ranker missed the paper at this depth), score = RRF, and
+    pool_total = the size of the fused candidate set the top-k was drawn from
+    (identical on every row; the caller reads it off any one of them).
     Must be the first work on this connection, so SET LOCAL scopes to a
     real transaction (the savepoint trap, findings.md 2026-07-30)."""
     if ef_search < depth:

@@ -2360,3 +2360,48 @@ set fusion built. That is a genuine cost for a genuine number and it stays.
 container still running pre-reload code. Restarting the service changed the
 answer by 4x. Any latency measured through the API gets an explicit restart
 first, the same way host durations get cross-checked in-VM.
+
+## 2026-08-14 — Paying 11 ms for an integer already in the query plan
+
+**Symptom.** Hybrid carried a ~11 ms surcharge (29.1 ms retrieve against an
+18.2 ms baseline) to report its own candidate-pool size.
+
+**How found.** Not measured — questioned. Kishan: both arms already ran, so
+the pool looks derivable from the result sets in hand. It is.
+
+**Root cause.** `hybrid_total()` recomputed from scratch what the fusion
+query had just built: it re-ran the bm25 arm, re-ran a full ef=600 vector
+search, and joined them to count the overlap. But `HYBRID_SQL`'s
+`FULL OUTER JOIN` **is** that union, and `JOIN papers p USING (id)` drops
+nothing because both CTEs draw their ids from papers. The pool size is the
+row count of that join.
+
+**Fix.** `count(*) OVER () AS pool_total` in the fusion SELECT. A window
+function is evaluated after the joins and before ORDER BY/LIMIT, and the
+query already has to materialize and sort every candidate to find the top k,
+so the WindowAgg runs over rows already in hand. `hybrid_total`, its capped
+count, and the whole overlap query are deleted.
+
+**Verified — paired, not cross-session** (`bench/window_cost.py`,
+`results_window_cost.json`). Hybrid's own p50 has moved 13.6 -> 18.2 -> 14.3
+across sessions on an unchanged query, so a difference of medians cannot
+resolve a single-digit-ms effect. Both variants were timed back to back on
+the same connection, same query, alternating which went first, over 200
+queries; the statistic is the per-query ratio:
+
+    ratio with_window / without_window:  p50 0.987   mean 1.052
+                                         p05 0.737   p95 1.487
+    medians: 7.78 ms with, 7.76 ms without
+
+The window costs nothing measurable. The p05-p95 spread is per-query noise
+swamping any effect, which is the point of pairing.
+
+**Correctness cross-check.** Two independent computations agree: the
+hand-derived test on a 29-paper corpus (6 lexical matches, depth 10, 3
+shared -> 13) and the window count both return 13, and the demo query still
+returns 202.
+
+**Also found.** A literal `%` inside a SQL *comment* is still parsed as a
+psycopg placeholder. "~60% of latency" in the comment above the window
+column raised `incomplete placeholder: '%'` on every hybrid request. Caught
+by the test suite on the first run after the edit.

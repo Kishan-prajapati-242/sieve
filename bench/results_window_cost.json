@@ -1,0 +1,43 @@
+{
+  "measured_at": "2026-08-14T18:48:14.247241+00:00",
+  "method": {
+    "design": "paired, same connection/session/query, alternating order",
+    "statistic": "per-query ratio with_window / without_window",
+    "n_queries": 200,
+    "settings": {
+      "depth": 200,
+      "k": 20,
+      "ef_search": 600
+    },
+    "prepared_statements": "both variants are distinct SQL texts, so each gets its OWN prepared statement and generic plan after psycopg's threshold -- no plan is shared or reused across the two arms, which is the trap that voided an earlier measurement (findings.md 2026-08-12)",
+    "db_state": {
+      "corpus_size": 183167,
+      "heap_pages": 35348,
+      "heap_bytes": 289570816,
+      "index_bytes": {
+        "papers_abstract_md5_idx": 10657792,
+        "papers_arxiv_id_idx": 16384,
+        "papers_doi_key": 8036352,
+        "papers_embed_idx": 213401600,
+        "papers_fts_idx": 87007232,
+        "papers_pkey": 4136960,
+        "papers_pubmed_id_idx": 1409024,
+        "papers_title_trgm_idx": 40992768,
+        "papers_title_year_idx": 20242432,
+        "papers_year_idx": 1294336
+      }
+    }
+  },
+  "ratio": {
+    "p50": 0.987,
+    "p05": 0.7373,
+    "p95": 1.4874,
+    "mean": 1.0516
+  },
+  "with_window_ms": {
+    "p50": 7.78
+  },
+  "without_window_ms": {
+    "p50": 7.76
+  }
+}

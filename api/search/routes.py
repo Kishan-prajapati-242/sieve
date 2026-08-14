@@ -20,7 +20,7 @@ from api.db.pool import get_pool
 from api.embed.runtime import embed_query
 from api.search.bm25 import search_bm25
 from api.search.fusion import HYBRID_DEFAULT_EF_SEARCH, search_hybrid
-from api.search.totals import bm25_total, hybrid_total, vector_total
+from api.search.totals import bm25_total, vector_total
 from api.search.vector import DEFAULT_EF_SEARCH, search_vector
 
 logger = logging.getLogger("sieve.search")
@@ -147,12 +147,14 @@ def search(req: SearchRequest) -> SearchResponse:
                     year_to=req.year_to,
                     ef_search=ef_search,
                 )
+                # Read the pool off the fused rows and strip it: it is a
+                # property of the QUERY, identical on every row, not a field
+                # of any paper. Empty result set -> empty pool.
+                total_value, total_kind = (rows[0]["pool_total"] if rows else 0), "candidates"
                 for row in rows:
+                    del row["pool_total"]
                     rank_pairs = (("bm25", row["bm25_rank"]), ("vector", row["vector_rank"]))
                     row["sources"] = [name for name, rank in rank_pairs if rank is not None]
-                total_value, total_kind = hybrid_total(
-                    conn, count_params(req, query_vec), req.depth, ef_search
-                )
             else:
                 ef_search = DEFAULT_EF_SEARCH if req.ef_search is None else req.ef_search
                 rows = search_vector(
