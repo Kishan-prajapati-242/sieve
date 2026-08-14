@@ -1,7 +1,53 @@
 # Progress
 
-Phase: 3 IN PROGRESS. Dedup work is COMPLETE and MEASURED; three build
-items remain.
+Phase: 3 IN PROGRESS. Dedup work is COMPLETE and MEASURED. The UI is built
+and the four visual steers are landed; the functional list and the PubMed
+pull are what remain.
+
+### 2026-08-14 — the motion had never fired; row rebuilt; count labelled
+
+**The marquee interaction was animating nothing.** Instrumented rather than
+read: tag every `<li>` with a JS property, toggle mode, read back — 0 of 20
+nodes survived. The results block gated on `!isFetching`, so a mode change
+unmounted the list and React built fresh nodes. Layout animation moves
+EXISTING DOM. `placeholderData` fixed it; the probe now reports 5 of 5
+survivors, reordered. Every earlier motion decision had been made against
+frames that could not have been produced by the code.
+
+**Choreography re-derived at the real k=20.** The earlier pick was tuned on
+a top-8 slice the app never performs (3 arrivals); k=20 bm25 -> hybrid is 0
+leaving / 5 staying / 15 arriving, and bm25 -> vector is a total
+replacement. Survivors now move alone (420 ms), arrivals are gated on that
+completing and fill bottom-up over <=250 ms, so the top stays quiet while
+the tail populates. Total ~800 ms, stated not buried. No survivors -> the
+gate collapses to a pure staggered entrance.
+
+**Static legibility, not hover.** One hue per arm (amber keyword, violet
+semantic). Verified under `prefers-reduced-motion: reduce`: top rows show
+both chips coloured, tail rows show one greyed with an em-dash. A missing
+arm renders muted rather than being omitted. Works in a screenshot and on a
+phone, which is what a Phase 4 demo URL will actually be opened on.
+
+**Row anatomy rebuilt.** Title leads and is the DOI link, provenance below,
+three type levels, hairline dividers instead of cards. Six results per
+1000 px, up from four.
+
+**The count is resolved per mode** — 5 keyword matches / 183,167 papers
+ranked / 202 fused candidates — with the `kind` travelling alongside the
+integer so the UI cannot render a bare N. Two bugs found doing it: the
+overlap query ran at the default ef=40 while fusion runs at 600 (it
+reported overlap 1 while three visible rows carried both ranks), and the
+naive counts cost 47x on the modes they labelled. Both fixed and in
+findings.md. Timings breakdown now shows embed/retrieve/serialize/ef in the
+product.
+
+Warm p50 after the fix: bm25 1.9 ms, vector 14.9 ms e2e (1.9 retrieve),
+hybrid 32.9 ms e2e (29.1 retrieve). 196 backend tests + 25 frontend green.
+
+**Next:** the functional list in the accepted order — pagination, matched-term
+highlighting via `ts_headline`, sort control, faceted sidebar with counts,
+bulk add-to-collection, abstract preview. Then the PubMed pull, which is
+staged in `plans/pubmed-pull-runbook.md` and still NOT started.
 
 ### 2026-08-12 — retrieval re-measured, speedup methodology changed
 
