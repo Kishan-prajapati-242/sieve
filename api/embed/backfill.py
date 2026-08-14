@@ -21,6 +21,7 @@ with a cheap deterministic stub; the ONNX encoder plugs in for real runs.
 
 import argparse
 import os
+import pathlib
 import time
 from typing import Protocol
 
@@ -56,9 +57,30 @@ LIMIT %(n)s
 WRITE_SQL = "UPDATE papers SET embedding = %(vec)s::halfvec WHERE id = %(id)s"
 
 # Rows per rate window. 2,048 is ~3 minutes at the observed 8.8-12.7
+# [2026-08-14: that band is retired — see findings.md. The window size is
+# unchanged because what it has to resolve is the SHAPE of the curve, and
+# ~3 min windows over a ~30 min run give ten points, which is what
+# distinguished a cold-VM ramp from thermal decay in the benchmark.]
 # docs/s — short enough to localize a throttling knee, long enough that
 # batch noise averages out.
 RATE_WINDOW_ROWS = 2048
+
+
+def host_conditions() -> str:
+    """What the VM can see about the machine it is sharing.
+
+    The one known cause of encode-rate variance is host CPU availability
+    (findings.md 2026-08-14: identical input, 1.28x apart, one run dipping
+    to 4.7 docs/s mid-run and recovering), and it was the one variable the
+    log did not record. This captures the VM side; the HOST side — power
+    source, what else was open — cannot be seen from in here and is captured
+    by the runbook's wrapper, which is why both halves exist.
+    """
+    try:
+        load = pathlib.Path("/proc/loadavg").read_text().split()[:3]
+    except OSError:
+        load = ["?", "?", "?"]
+    return f"vm_loadavg={'/'.join(load)} vm_cpus={os.cpu_count()}"
 
 
 def backfill(
@@ -90,6 +112,7 @@ def backfill(
     # hardware. This is how the next long run produces one.
     written = 0
     run_start = time.perf_counter()
+    print(f"[host] {host_conditions()}", flush=True)
     window_start = run_start
     window_wall = time.time()
     window_rows = 0
@@ -111,7 +134,8 @@ def backfill(
             print(
                 f"embedded {written} (through paper id {rows[-1][0]}) "
                 f"window={window_rows} rows in {mono_s:.1f}s monotonic / "
-                f"{wall_s:.1f}s wall -> {window_rows / mono_s:.1f} docs/s"
+                f"{wall_s:.1f}s wall -> {window_rows / mono_s:.1f} docs/s "
+                f"[{host_conditions()}]"
                 + (
                     f"  [CLOCK DISCONTINUITY: wall exceeds monotonic by "
                     f"{wall_s - mono_s:.0f}s — the host slept]"

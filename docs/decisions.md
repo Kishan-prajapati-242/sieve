@@ -219,6 +219,26 @@ retrieval silently, so the contract is pinned by a test before any encode.
 projects the full encode beyond hours on the fanless 8 GB M1 Air, the
 fallback is MiniLM at 512 or bge-small at 256 — remeasure, don't assume.
 
+> **[2026-08-14 — this clause's INPUT is retired; the decision stands.]**
+> The 1,000-paper benchmark named here is exactly the number withdrawn in
+> findings.md: 13.2 docs/s came from an unseeded sample on a corpus that no
+> longer exists, and it exceeds every steady-state rate measured since. The
+> revised projection for the full corpus is 5.4 h at the one clean run's
+> 9.5 docs/s, against 4.1 h as recorded — worse, and in the direction of the
+> fallback.
+>
+> **It does not flip the decision, for three reasons, and they are worth
+> separating.** (1) The trigger cannot fire: the corpus is already fully
+> encoded at 183,167, so there is no full encode left to reconsider. (2) For
+> the only encode still ahead — ~16,800 PubMed documents, ~30 min — the
+> projection is nowhere near "beyond hours". (3) The clause said *remeasure,
+> don't assume*, and remeasuring is what retired the number.
+>
+> **Recorded because a retired number that fed a decision needs its
+> consequence traced, not just its value struck.** If the corpus were still
+> unencoded this clause would now be live and bge-small at 256 would be back
+> on the table.
+
 ---
 
 ## DECISION-2c: Dataset-type records stay in the corpus

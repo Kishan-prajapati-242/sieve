@@ -437,18 +437,18 @@ hnsw.ef_search, iterative_scan for year filters), then the recall sweep,
 then fusion.
 
 Phase 2 pre-encode prerequisites (2026-07-30): BOTH PASSED, full encode
-awaiting Kishan's go. (a) Container benchmark (bench/encode_throughput.py
+awaiting Kishan's go. **[2026-08-14: gate (a) had TWO conclusions and only
+one falls. The 13.2 docs/s throughput and its 248-min projection are
+retired — unseeded sample, corpus that no longer exists, exceeds every
+steady-state rate measured since. The peak-RSS conclusion is independent of
+throughput and REPRODUCED today at 1.97-2.06 GB, so "fits in the 4 GB VM"
+still stands. See the DECISION-2b note below for why the decision the gate
+fed does not flip.]** (a) Container benchmark (bench/encode_throughput.py
 inside the compose test container — the podman VM, not the host): 13.2
 docs/s fp32, **248 min projected for 196,893 papers**, peak RSS 2.05 GB
 in the 4 GB VM (no memory raise needed; `podman machine set --memory` is
 the knob if wanted). Sustained rates in real runs measured 8.8-12.7
 docs/s, so plan for ~4.5-6 h wall clock with throttling. **[SUPERSEDED
-2026-08-14: that band is ONE session — the two resumability runs, same
-afternoon — so its 44% width is within-session spread and bounds nothing
-across sessions. The same instrument re-run on 2026-08-14 gave 8.1 docs/s
-against 13.2 on 2026-07-30, 1.63x apart and below the band's floor. Treat
-encoder throughput as a quantity that varies 1.6x on this hardware, not as
-an estimate with a tight error bar. findings.md 2026-08-14.]** **[SUPERSEDED
 2026-08-14: that band is ONE session — the two resumability runs, same
 afternoon — so its 44% width is within-session spread and bounds nothing
 across sessions. The same instrument re-run on 2026-08-14 gave 8.1 docs/s

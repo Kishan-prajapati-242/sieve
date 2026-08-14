@@ -69,22 +69,54 @@ corpus that no longer exists). What exists is a single clean run's steady
 state, 9.5 docs/s over 1,000 documents.
 
 This step encodes ~16,800 documents with per-window rates and
-`[CLOCK DISCONTINUITY]` flags already instrumented. **That makes it the
-first sustained encode measurement this project will own** — a ~30 minute
-run is long enough to show whether the rate holds, decays, or dips, which
-1,000-document benchmarks cannot. It answers a question five earlier
-attempts could not.
+`[CLOCK DISCONTINUITY]` flags already instrumented.
+
+**Be precise about what the log can and cannot own.** The RATE is not
+reproducible by construction: host CPU availability moved byte-identical
+input 1.28x back to back, and a run on a different afternoon lands somewhere
+else in that spread. A single number from this run is one sample of a noisy
+quantity, and calling it "the project's sustained rate" would repeat exactly
+the mistake that put 13.2 docs/s in the docs for two weeks.
+
+**The durable half is the SHAPE.** The cold-VM ramp reproduces — it appeared
+in every run that started cold and vanished in every run that started warm.
+A windowed curve over ~30 minutes and ~16,800 documents shows whether the
+rate holds, decays, dips and recovers, or ramps and plateaus, and **no
+1,000-document benchmark can produce that** — a 1,000-document run is barely
+longer than the ramp itself, which is why five of them disagreed. That is
+the evidence this step yields, and it is worth having on its own.
 
 So: **capture stdout, commit the log, and treat a lost log as a failed
 step** even if the embeddings are fine. The numbers are the output.
 
-Planning figures, and their standing:
+**Record host conditions.** The one known cause of variance was the one
+variable absent from the log. The encoder now prints VM load average and CPU
+count with every window; the host side is invisible from inside the
+container, so capture it in the wrapper:
 
-| figure | value | standing |
-|---|---|---|
-| steady-state rate | 9.5 docs/s | one clean run, 2026-08-14 |
-| expected duration | ~30 min | 16,800 / 9.5 |
-| band | 21-45 min | worst and best observed |
+    { date -u; uptime; pmset -g batt | head -2; \
+      ps -A -o %cpu | awk '{s+=$1} END {print "host cpu% total:", s}'; } \
+      | tee -a pull-$(date +%F).log
+
+Run it before step 3 and again after. Power source matters most: on battery
+macOS caps sustained CPU, and a run that dropped to battery mid-encode would
+otherwise look like an unexplained dip.
+
+**Where 21-45 min comes from — read this before quoting it.** It is a
+PROJECTION built from retired numbers, not a measured band:
+
+| endpoint | derivation |
+|---|---|
+| 21 min | 16,800 / 13.2 docs/s — and 13.2 is WITHDRAWN |
+| 45 min | 16,800 / 6.7 docs/s, the worst aggregate observed 2026-08-14 |
+| ~30 min | 16,800 / 9.5, the one clean run's steady state — n=1, no spread |
+
+So the interval's width comes from a 1.28x identical-input variance plus a
+1.63x cross-run spread, both measured around figures that no longer stand,
+and its centre has a sample size of one. **Quote it as "we expect roughly
+half an hour and would not be surprised by twice that", never as a
+measurement.** After this run there will be a real distribution to replace
+it with — that is the point of keeping the log.
 
 Do not treat an overrun as a fault. Host CPU availability moved identical
 input 1.28x back to back, and it is **not thermal** — five runs showed
