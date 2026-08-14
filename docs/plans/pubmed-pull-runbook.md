@@ -14,6 +14,10 @@ a labelled gap until it happens.
 Every step is a checkpoint. **Wrap the entire session in
 `caffeinate -dimsu`** (CLAUDE.md standing rule) and capture stdout.
 
+**Total: 40-75 min.** The embed step's 21-45 is now the widest term, so the
+total carries its width rather than hiding it — an estimate whose largest
+component varies 2x cannot be quoted to a tighter range than its component.
+
     caffeinate -dimsu bash -c '<the whole sequence>' 2>&1 | tee pull-$(date +%F).log
 
 ## 0. Pre-flight — record the state you are leaving
@@ -54,15 +58,38 @@ if you want a cheap undo:
 
     docker compose exec -T postgres pg_dump -U sieve sieve | gzip > pre-cascade.sql.gz
 
-## 3. Embed — 21-45 min. REVERSIBLE (recompute).
+## 3. Embed — 21-45 min. **THIS STEP IS THE DELIVERABLE.**
 
-**The band was widened 2026-08-14 and is a projection, not an estimate.**
-The old 21-33 min came from 8.8-12.7 docs/s, which is a single session's
-spread (the two resumability runs, same afternoon). Re-running the same
-instrument gave **8.1 docs/s vs 13.2 on 2026-07-30 — 1.63x apart, below the
-band's floor**. At 8.1, ~16,800 papers is ~35 min. Encoder throughput on
-this hardware varies more than the estimate assumed; do not treat an
-overrun here as a fault.
+**The log from this step is the point, not a safety net.** The project has
+never had a sustained, reproducible encode rate. Every quantitative claim
+about one is now withdrawn — the 2.4x throttle factor (host-clock artifact),
+the 1.1-1.6x replacement (short runs), the 8.8-12.7 docs/s band (one
+session's jitter, real spread 1.63x), and 13.2 docs/s (unseeded sample on a
+corpus that no longer exists). What exists is a single clean run's steady
+state, 9.5 docs/s over 1,000 documents.
+
+This step encodes ~16,800 documents with per-window rates and
+`[CLOCK DISCONTINUITY]` flags already instrumented. **That makes it the
+first sustained encode measurement this project will own** — a ~30 minute
+run is long enough to show whether the rate holds, decays, or dips, which
+1,000-document benchmarks cannot. It answers a question five earlier
+attempts could not.
+
+So: **capture stdout, commit the log, and treat a lost log as a failed
+step** even if the embeddings are fine. The numbers are the output.
+
+Planning figures, and their standing:
+
+| figure | value | standing |
+|---|---|---|
+| steady-state rate | 9.5 docs/s | one clean run, 2026-08-14 |
+| expected duration | ~30 min | 16,800 / 9.5 |
+| band | 21-45 min | worst and best observed |
+
+Do not treat an overrun as a fault. Host CPU availability moved identical
+input 1.28x back to back, and it is **not thermal** — five runs showed
+rising, flat, and decaying shapes — so `caffeinate` protects the clock here,
+not the rate.
 
     docker compose run --rm ... test python -m api.embed.backfill
 

@@ -2580,3 +2580,64 @@ hour earlier: a number that is a joint measurement of the encoder and
 something else, where the encoder was assumed constant and is not. Two
 independent estimates in this project rest on encoder throughput being
 stable. It is not, and neither of them said so.
+
+## 2026-08-14 — Which mechanism: not thermal, not the sample, machine state
+
+**Question.** 8.1 vs 13.2 docs/s on identical hardware. If the per-window
+rates DECAY across a run it is thermal, and `caffeinate` plus mains power
+would tighten the band. If they are flat but low it is machine state, and
+nothing would.
+
+**Instrumented the benchmark** with per-window rates and a first-third /
+last-third decay ratio, then ran it five times.
+
+| run | aggregate | window rates | shape | steady state |
+|---|---|---|---|---|
+| 1 | 7.5 | 5.3 3.9 7.9 6.4 10.4 10.5 10.1 9.9 9.6 8.6 | **rises** 0.61x | 9.3 |
+| 2 | 6.7 | 6.5 3.8 7.7 4.3 6.9 7.7 7.6 9.5 10.4 10.1 | **rises** 0.60x | 10.0 |
+| 3 | 8.9 | 9.6 11.3 8.9 7.6 7.3 8.7 8.4 9.5 9.1 9.6 | flat 1.06x | 9.4 |
+| A (seeded) | 7.4 | 11.7 8.2 8.3 7.6 7.6 8.9 **4.7** 6.5 6.9 7.3 | decays 1.37x | 6.9 |
+| B (seeded) | **9.5** | 9.5 10.1 10.4 10.7 8.7 9.5 9.0 8.5 9.4 9.9 | flat 1.08x | 9.3 |
+
+**Not thermal.** Three of five runs do not decay at all and two RISE. A
+fanless M1 under sustained load decays monotonically; this does not. Runs 1
+and 2 rise because the VM was cold and the 8-document warmup does not cover
+a ramp that takes ~300 documents; run 3 had no ramp because runs 1-2 had
+just warmed it.
+
+**Not the sample either — though that was a real defect.** The benchmark
+drew `ORDER BY random()` with no seed, so every run encoded different texts,
+and encode cost is per-TOKEN not per-doc. Fixed with `setseed`. Runs A and B
+encode byte-identical input (1,303,048 chars both) and are still **1.28x
+apart**, so the sample explains some historical spread but not the effect.
+
+**Machine state.** Run A dips to 4.7 docs/s at window 7 and recovers; run B
+never dips. That is host CPU availability, invisible to
+`no_foreign_db_sessions` for the reason renamed above.
+
+**Consequence: `caffeinate` and mains power will not tighten this band.**
+What the machine can do when nothing else is happening is run B — **9.5
+docs/s aggregate, 12.4 k chars/s, flat windows 8.5-10.7**. Everything below
+that is interference, so the honest estimator is the best flat run, not the
+median of a contaminated set — the same logic as refusing contaminated
+absolute levels.
+
+**And 13.2 docs/s (2026-07-30) is now the outlier in the OTHER direction.**
+It exceeds every steady-state rate measured today, on a corpus that no
+longer exists, with an unseeded sample. It should not be quoted again.
+
+### What this retires
+
+**The project has never had a sustained, reproducible encode rate, and now
+every quantitative claim about one is withdrawn:**
+
+| claim | withdrawn because |
+|---|---|
+| 2.4x throttle factor | host-clock artifact across a suspend |
+| 1.1-1.6x throttle factor | built from short runs, neither sustained |
+| 8.8-12.7 docs/s band | one session's jitter; real spread is 1.63x |
+| 13.2 docs/s | unseeded sample, dead corpus, exceeds all later runs |
+
+What survives is a steady-state figure from a single clean run (9.5 docs/s)
+and the knowledge that the aggregate over 1,000 documents is dominated by a
+ramp plus whatever else the host is doing.
