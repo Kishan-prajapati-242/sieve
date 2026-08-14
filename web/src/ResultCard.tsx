@@ -23,7 +23,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { forwardRef } from "react";
 import { AddToCollection } from "./AddToCollection";
 import type { SearchResult } from "./api";
-import { DUR, EASE, rowVariants } from "./motion";
+import { DUR, EASE, rowMotionProps, rowVariants } from "./motion";
 import { ProvenanceChips } from "./ProvenanceChips";
 
 const MAX_AUTHORS = 10;
@@ -42,10 +42,8 @@ export const ResultCard = forwardRef<
   return (
     <motion.li
       ref={ref}
-      layout={reduce ? false : "position"}
-      custom={delay}
+      {...rowMotionProps(!!reduce, delay)}
       variants={rowVariants}
-      initial="initial"
       animate="animate"
       exit="exit"
       transition={{ layout: { duration: DUR.move, ease: EASE } }}

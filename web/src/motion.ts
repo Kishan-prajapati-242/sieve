@@ -63,6 +63,25 @@ export function arrivalDelay(
   return gate + fromBottom * step;
 }
 
+/** The full set of motion props for a result row, in one place.
+ *
+ *  Reduced motion has to suppress the ENTRANCE, not just `layout`. Disabling
+ *  layout alone still leaves `initial: { opacity: 0, y: 8 }` plus an arrival
+ *  delay of up to ~670ms, so a reader who asked for no motion still gets
+ *  rows fading up from nothing, staggered. `initial={false}` tells Motion to
+ *  mount at the animate state — no entrance at all — and the delay is
+ *  dropped with it.
+ *
+ *  This is a pure function so the reduced-motion branch is testable without
+ *  driving a browser. It is the primary path for a reviewer on a phone or
+ *  looking at a screenshot, and it is exactly the kind of thing a refactor
+ *  breaks in silence. */
+export function rowMotionProps(reduce: boolean, delay: number) {
+  return reduce
+    ? { layout: false as const, initial: false as const, custom: 0 }
+    : { layout: "position" as const, initial: "initial", custom: delay };
+}
+
 export const rowVariants = {
   initial: { opacity: 0, y: 8 },
   animate: (delay: number) => ({
