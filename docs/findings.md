@@ -2658,3 +2658,50 @@ every quantitative claim about one is withdrawn:**
 What survives is a steady-state figure from a single clean run (9.5 docs/s)
 and the knowledge that the aggregate over 1,000 documents is dominated by a
 ramp plus whatever else the host is doing.
+
+## 2026-08-14 — Two passes tuned a schedule against a cropped screenshot
+
+**Symptom.** Every frame set across three passes reported "3 rows visible"
+mid-transition, against 5 survivors and 0 exits. The discrepancy went
+unexamined through two rounds of choreography work.
+
+**How found.** Kishan refused the number: bm25 -> hybrid has five survivors,
+so three is unaccounted for, and he asked which two rows were missing by
+title rather than by count.
+
+**Root cause of the phantom: my own instrument.** All five survivors are at
+`opacity: 1.00`, correctly placed at hybrid ranks 1, 2, 3, 6, 8. Ranks 6 and
+8 sit at `top=891` and `top=1158`. The contact-sheet crop was
+`(0, 150, 780, 880)`. **The two "missing" rows were below the crop.** Two
+passes of choreography tuning were spent on a sparse page that was partly a
+cropping artifact.
+
+The lesson from the header entry — visual capture is a measurement
+instrument here — cuts both ways. An instrument needs its own validation. A
+crop is a filter, and a filter applied to every capture in a series is
+invisible precisely because it is consistent.
+
+**The real defect, which the same probe found.** At t=279 ms all fifteen
+arrivals sit at `opacity: 0, transform: translateY(8px)` — the untouched
+initial state, none started. Computed delays span 147-396 ms, so roughly
+seven should be mid-entrance. At t=455 ms only ranks 19 and 20 are partially
+in (0.27, 0.52), implying a start near 325-390 ms against a computed 147 ms.
+
+**The offset is approximately the move duration (420 ms), which points at
+`AnimatePresence` + `layout` deferring entrance animations until layout
+animations settle.** If that holds, every arrival schedule tuned so far —
+gated, then overlapped at 35% — was arithmetic on top of a delay the library
+imposes and ignores our number for. The gate/overlap distinction may never
+have reached the DOM.
+
+**Not yet fixed.** Recorded before the next pass so the next measurement
+tests the deferral hypothesis directly, rather than tuning a third schedule.
+
+**Method changes taken from this:**
+1. Row-level probes (`opacity`, `transform`, `position`, `top`, per title)
+   before contact sheets. The probe answered in one run what three rounds of
+   sheets could not.
+2. Identify rows by TITLE, never by count. A count cannot reveal that the
+   thing being counted is out of frame.
+3. Capture full-height, crop only for display, and state the crop next to
+   any frame series.
