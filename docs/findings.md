@@ -2319,3 +2319,44 @@ survivor and the loser carry decisions in the same collection —
 the pre-fix baseline, plus one per branch — same-decision collapses to one
 row on the survivor, different-decisions refuses and lands in
 `dedup_review`.
+
+## 2026-08-14 — A cosmetic label cost 47x on the mode it labelled
+
+**Symptom.** After adding the per-mode result total, vector search went from
+2.0 ms to 94.1 ms p50 and hybrid from 18.2 ms to 94.0 ms — on the same
+release that started DISPLAYING took_ms in the UI.
+
+**How found.** Not by a benchmark. The timings breakdown I had just built
+put `retrieve 77.6` on screen next to a number that used to read 2.
+
+**Root cause.** Two separate mistakes behind one symptom.
+1. `count(*) WHERE embedding IS NOT NULL` is a 78.6 ms index-only scan of
+   183,167 rows (measured in-VM, `perf_counter`), and with no year filter
+   its answer is a CONSTANT between ingests. I was re-deriving an unchanged
+   number on every keystroke.
+2. Hybrid did not need the corpus count at all. The fused pool is
+   `min(matches, depth) + min(corpus, depth) - overlap`, and the corpus is
+   three orders of magnitude above any depth we run, so the second term is
+   always just `depth`. Counting to 183,167 to learn "more than 200".
+
+**Fix.** Cap the hybrid count with `LIMIT depth` (78.6 ms -> 13.8 ms as a
+raw query, and it stops mattering once it is inside the fused path); cache
+the unfiltered corpus count for 60 s. Filtered counts are query-dependent
+and never cached.
+
+**Verified, warm p50 over 9 runs after an api restart:**
+
+| mode | before totals | totals, naive | totals, fixed |
+|---|---|---|---|
+| bm25 | 1.9 | 1.9 | 1.9 |
+| vector | ~2 retrieve | 77.6 retrieve | **1.9 retrieve** |
+| hybrid | 18.2 retrieve | 81.2 retrieve | **29.1 retrieve** |
+
+The residual ~11 ms on hybrid is the overlap query, which runs a real
+second vector search at ef=600 because it must count the same candidate
+set fusion built. That is a genuine cost for a genuine number and it stays.
+
+**Second-order lesson.** An intermediate reading of 67 ms came from a
+container still running pre-reload code. Restarting the service changed the
+answer by 4x. Any latency measured through the API gets an explicit restart
+first, the same way host durations get cross-checked in-VM.

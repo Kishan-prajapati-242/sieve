@@ -178,3 +178,26 @@ def test_request_id_is_echoed_or_minted(client: TestClient) -> None:
     assert resp.headers["x-request-id"] == "trace-42"
     resp = client.post("/api/search", json={"query": "x"})
     assert resp.headers["x-request-id"]  # minted when absent
+
+
+def test_total_counts_matches_not_returned_rows(client: TestClient) -> None:
+    """The total is a property of the QUERY, not of k.
+
+    "20 of 5" would be nonsense; the point of the number is telling the
+    reader how much they are not seeing. So it must not move when k does.
+    """
+    full = search(client, query="text simplification")
+    assert full["total"] == {"value": 3, "kind": "matches"}
+    assert len(full["results"]) == 3
+
+    capped = search(client, query="text simplification", k=1)
+    assert capped["total"] == {"value": 3, "kind": "matches"}  # unchanged by k
+    assert len(capped["results"]) == 1
+
+    # The filter narrows the match set, so it DOES move the total.
+    assert search(client, query="text simplification", year_from=2022)["total"]["value"] == 1
+    # No matches is an honest zero, not a missing field.
+    assert search(client, query="quantum chromodynamics")["total"] == {
+        "value": 0,
+        "kind": "matches",
+    }

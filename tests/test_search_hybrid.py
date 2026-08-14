@@ -153,3 +153,36 @@ def test_other_modes_report_no_breakdown(client: TestClient) -> None:
         r["bm25_rank"] is None and r["vector_rank"] is None and r["sources"] is None
         for r in data["results"]
     )
+
+
+def test_total_is_the_fused_pool_and_labels_itself_per_mode(client: TestClient) -> None:
+    """Three modes, three meanings, checked by hand against this corpus.
+
+    29 papers, all embedded. "quantum entanglement" matches 6 (3 study +
+    3 archive). At depth=10 the vector arm takes 10 and the bm25 arm takes
+    all 6, sharing exactly the 3 "both" docs — so the fused pool is
+    6 + 10 - 3 = 13. That is the same 200 + 5 - 3 = 202 arithmetic the demo
+    query runs, at a size that can be verified by counting rows.
+    """
+    data = hybrid(client, k=9, depth=10)
+    assert data["total"] == {"value": 13, "kind": "candidates"}
+    # The pool exceeds what was returned — that is the whole point of it.
+    assert data["total"]["value"] > len(data["results"])
+
+    # Depth is OUR tuning parameter, so it moves the pool. A label saying
+    # "results" would report our configuration as a property of the corpus.
+    deeper = hybrid(client, k=9, depth=29)
+    assert deeper["total"]["value"] == 6 + 29 - 6  # every match now inside both arms
+
+    # Same corpus, same query, other modes: different quantity, different label.
+    lex = client.post(
+        "/api/search", json={"query": "quantum entanglement", "mode": "bm25"}
+    ).json()
+    assert lex["total"] == {"value": 6, "kind": "matches"}
+
+    vec = client.post(
+        "/api/search", json={"query": "quantum entanglement", "mode": "vector"}
+    ).json()
+    # Every paper is a candidate under a vector scan, so the total is the
+    # embedded corpus and says nothing about the query.
+    assert vec["total"] == {"value": 29, "kind": "ranked"}

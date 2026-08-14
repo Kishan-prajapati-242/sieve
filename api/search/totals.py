@@ -23,6 +23,7 @@ So `kind` travels with the number and the UI must render the label; a bare
 integer is not offered.
 """
 
+import time
 from typing import Any, Literal
 
 import psycopg
@@ -44,14 +45,45 @@ WHERE embedding IS NOT NULL
 """
 
 
+VECTOR_CAPPED_SQL = """
+SELECT count(*) FROM (
+    SELECT 1 FROM papers
+    WHERE embedding IS NOT NULL
+      AND (%(year_from)s::smallint IS NULL OR year >= %(year_from)s)
+      AND (%(year_to)s::smallint IS NULL OR year <= %(year_to)s)
+    LIMIT %(depth)s
+) t
+"""
+
+
 def bm25_total(conn: psycopg.Connection, params: dict[str, Any]) -> tuple[int, Kind]:
     row = conn.execute(BM25_COUNT_SQL, params).fetchone()
     return (int(row[0]) if row else 0), "matches"
 
 
+# The unfiltered embedded-corpus count is a 76 ms index-only scan of 183,167
+# rows (measured 2026-08-14) whose answer is a CONSTANT between ingests. Paying
+# it per request took vector mode from 2.0 ms to 94.1 ms — a 47x regression to
+# display a number that had not changed, on the same screen that now shows the
+# latency. Cached with a short TTL: still a real count, just not re-counted
+# every keystroke. A year filter makes it query-dependent, so that path is
+# never cached.
+_CORPUS_TTL_S = 60.0
+_corpus_cache: tuple[float, int] | None = None
+
+
 def vector_total(conn: psycopg.Connection, params: dict[str, Any]) -> tuple[int, Kind]:
+    global _corpus_cache
+    filtered = params.get("year_from") is not None or params.get("year_to") is not None
+    if not filtered:
+        now = time.monotonic()
+        if _corpus_cache is not None and now - _corpus_cache[0] < _CORPUS_TTL_S:
+            return _corpus_cache[1], "ranked"
     row = conn.execute(VECTOR_COUNT_SQL, params).fetchone()
-    return (int(row[0]) if row else 0), "ranked"
+    value = int(row[0]) if row else 0
+    if not filtered:
+        _corpus_cache = (time.monotonic(), value)
+    return value, "ranked"
 
 
 def hybrid_total(
@@ -59,15 +91,20 @@ def hybrid_total(
 ) -> tuple[int, Kind]:
     """|bm25 candidates ∪ vector candidates| at the configured depth.
 
-    The bm25 arm contributes min(matches, depth); the vector arm always
-    contributes exactly depth (it ranks everything). The overlap cannot be
-    known without running the fusion, so this counts the union directly
-    rather than estimating it.
+    The bm25 arm contributes min(matches, depth); the vector arm contributes
+    min(corpus, depth), which is depth for any real corpus. The overlap cannot
+    be known without running the fusion, so this counts it directly rather
+    than estimating it.
     """
     matches, _ = bm25_total(conn, params)
-    corpus, _ = vector_total(conn, params)
+    # NOT vector_total(): hybrid needs min(corpus, depth), and the corpus is
+    # three orders of magnitude larger than any depth we run. Counting to the
+    # cap answers the same question and stops after `depth` rows instead of
+    # scanning 183,167 of them.
+    row = conn.execute(VECTOR_CAPPED_SQL, {**params, "depth": depth}).fetchone()
+    vec_side = int(row[0]) if row else 0
     overlap = _overlap(conn, params, depth, ef_search)
-    return min(matches, depth) + min(corpus, depth) - overlap, "candidates"
+    return min(matches, depth) + vec_side - overlap, "candidates"
 
 
 OVERLAP_SQL = """
