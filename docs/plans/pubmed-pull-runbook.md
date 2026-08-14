@@ -98,9 +98,21 @@ container, so capture it in the wrapper:
       ps -A -o %cpu | awk '{s+=$1} END {print "host cpu% total:", s}'; } \
       | tee -a pull-$(date +%F).log
 
-Run it before step 3 and again after. Power source matters most: on battery
-macOS caps sustained CPU, and a run that dropped to battery mid-encode would
-otherwise look like an unexplained dip.
+Before and after is not enough on a laptop. Dips appear IN the window curve,
+so a power switch that happened and reverted mid-run is invisible to two
+endpoint samples — and power source is the one host variable most likely to
+change unnoticed. Sample it alongside the encode instead:
+
+    ( while sleep 60; do printf '[power] %s %s\n' "$(date -u +%H:%M:%S)" \
+        "$(pmset -g batt | sed -n 2p)"; done ) >> pull-$(date +%F).log &
+    PWR=$!
+    # ... run step 3 ...
+    kill $PWR
+
+One line per minute interleaves with the ~3-minute rate windows, so any dip
+can be checked against the power state at that moment rather than inferred.
+On battery macOS caps sustained CPU, which would otherwise read as an
+unexplained throughput drop.
 
 **Where 21-45 min comes from — read this before quoting it.** It is a
 PROJECTION built from retired numbers, not a measured band:

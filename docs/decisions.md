@@ -227,17 +227,24 @@ fallback is MiniLM at 512 or bge-small at 256 — remeasure, don't assume.
 > 9.5 docs/s, against 4.1 h as recorded — worse, and in the direction of the
 > fallback.
 >
-> **It does not flip the decision, for three reasons, and they are worth
-> separating.** (1) The trigger cannot fire: the corpus is already fully
-> encoded at 183,167, so there is no full encode left to reconsider. (2) For
-> the only encode still ahead — ~16,800 PubMed documents, ~30 min — the
-> projection is nowhere near "beyond hours". (3) The clause said *remeasure,
-> don't assume*, and remeasuring is what retired the number.
+> **The clause is DORMANT, not dead.** It does not fire today: the corpus is
+> already encoded at 183,167, and the only encode ahead — ~16,800 PubMed
+> documents, ~30 min — is nowhere near "beyond hours". But the clause was
+> about encode cost AT CORPUS SCALE, and Phase 3's premise is more sources.
 >
-> **Recorded because a retired number that fed a decision needs its
-> consequence traced, not just its value struck.** If the corpus were still
-> unencoded this clause would now be live and bge-small at 256 would be back
-> on the table.
+> **Reactivation condition, name it so someone checks:** any work that
+> creates an unencoded corpus of roughly 50,000+ documents — a fourth
+> source, a PubMed expansion past the current four terms, a re-encode after
+> a model change — re-opens this clause at the REVISED projection of 5.4 h
+> per 183,167 documents, not the 4.1 h recorded above. At that scale
+> bge-small at 256 is back on the table and must be argued down rather than
+> assumed away. "Cannot fire" would have invited nobody to look again.
+>
+> **The clause has two independent legs and only one moved.** Peak RSS
+> reproduced at 1.97-2.06 GB on 2026-08-14, so the 4 GB VM fit is untouched
+> and was never a function of throughput. **A future trigger fires on cost,
+> not on memory** — which also means a fallback chosen for speed should not
+> be justified by memory headroom it does not need.
 
 ---
 

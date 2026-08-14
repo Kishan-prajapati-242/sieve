@@ -2599,6 +2599,23 @@ last-third decay ratio, then ran it five times.
 | A (seeded) | 7.4 | 11.7 8.2 8.3 7.6 7.6 8.9 **4.7** 6.5 6.9 7.3 | decays 1.37x | 6.9 |
 | B (seeded) | **9.5** | 9.5 10.1 10.4 10.7 8.7 9.5 9.0 8.5 9.4 9.9 | flat 1.08x | 9.3 |
 
+### The shape is the only encoder finding that has ever reproduced
+
+Worth stating plainly, because it inverts what this project normally
+weights. Encoder RATE has produced four retired numbers and one survivor at
+n=1. Encoder SHAPE — a cold-start ramp of roughly 300 documents — was
+**present in every run that started cold and absent in every run that
+started warm, five for five**. The qualitative finding is the reproducible
+one; the quantitative one is not.
+
+It also re-explains the disagreeing benchmarks. A 1,000-document run is
+barely longer than the ramp, so each run sampled a different point on it
+depending on how warm the VM already was. **They were never five noisy
+measurements of one quantity — they were five measurements of different
+quantities**, which is why averaging them would have been meaningless and
+why the spread never narrowed with more runs. A benchmark shorter than the
+transient it contains does not measure a rate at all.
+
 **Not thermal.** Three of five runs do not decay at all and two RISE. A
 fanless M1 under sustained load decays monotonically; this does not. Runs 1
 and 2 rise because the VM was cold and the 8-document warmup does not cover
