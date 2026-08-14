@@ -10,9 +10,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence } from "motion/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useReducedMotion } from "motion/react";
 import { search, type SearchMode, type SearchParams, type SearchResponse } from "./api";
 import { ResultCard } from "./ResultCard";
 import { arrivalDelay } from "./motion";
+import { headerCount, presentationSteps } from "./presentation";
 import { useDelayedFlag } from "./useDelayedFlag";
 
 // Long enough that a warm query (~30ms) never flashes, short enough that a
@@ -54,14 +56,50 @@ export function SearchPage() {
   // Which rows are ARRIVING versus surviving, so arrivals can be gated on
   // the survivors finishing their move. Held in a ref because this is a
   // comparison against the previously RENDERED list, not against state.
-  const prevIds = useRef<Set<number>>(new Set());
+  // The previous RENDERED result set, snapshotted during render rather than
+  // in an effect. An effect that mutates this ref races the effect that
+  // reads it — under StrictMode the scheduler re-ran after the ref was
+  // already updated, computed zero arrivals, and jumped the header straight
+  // to the final count (measured: header hit 20 at 109ms against a schedule
+  // that should have taken ~400ms). Deriving it here makes the diff a
+  // function of `data`, so both consumers see the same one.
+  const snap = useRef<{ key: SearchResponse | null; prev: number[] }>({ key: null, prev: [] });
   const shown = data?.results ?? [];
-  const arriving = shown.filter((r) => !prevIds.current.has(r.id)).map((r) => r.id);
-  const hasSurvivors = shown.some((r) => prevIds.current.has(r.id));
+  if (data && snap.current.key !== data) {
+    snap.current = { key: data, prev: snap.current.key?.results.map((r) => r.id) ?? [] };
+  }
+  const prevSet = new Set(snap.current.prev);
+  const arriving = shown.filter((r) => !prevSet.has(r.id)).map((r) => r.id);
+  const survivors = shown.filter((r) => prevSet.has(r.id)).map((r) => r.id);
+  const hasSurvivors = survivors.length > 0;
   const arrivalIndex = new Map(arriving.map((id, i) => [id, i]));
+  const finalOrder = shown.map((r) => r.id);
+
+  // ONE schedule drives both the rows and the header: each row's delay comes
+  // from arrivalDelay(), and the header steps through presentationSteps() on
+  // those same delays. The count therefore cannot describe rows that have
+  // not begun appearing — the defect frames caught and arithmetic could not,
+  // because a true count of the response contradicted no other number, only
+  // the moment (findings.md 2026-08-14).
+  const reduce = useReducedMotion();
+  const [presentedCount, setPresentedCount] = useState(0);
   useEffect(() => {
-    if (data) prevIds.current = new Set(data.results.map((r) => r.id));
-  }, [data]);
+    if (!data) return;
+    const steps = presentationSteps(survivors, arriving, finalOrder);
+    if (reduce || arriving.length === 0) {
+      setPresentedCount(finalOrder.length);
+      return;
+    }
+    setPresentedCount(steps[0] ? headerCount(steps[0]) : 0);
+    const timers = arriving.map((_id, i) =>
+      setTimeout(
+        () => setPresentedCount((n) => Math.min(n + 1, finalOrder.length)),
+        arrivalDelay(i, arriving.length, hasSurvivors) * 1000,
+      ),
+    );
+    return () => timers.forEach(clearTimeout);
+    // Keyed on `data` alone: the derived arrays are recomputed from it.
+  }, [data, reduce]);
 
   // isPlaceholderData is the precise signal: true exactly while the previous
   // mode's rows stand in for a result set still in flight. isFetching would
@@ -158,7 +196,10 @@ export function SearchPage() {
         <>
           <div className="flex flex-wrap items-baseline justify-between gap-2 py-1 text-sm">
             <p className="text-slate-600">
-              <span className="font-medium text-slate-900">{data.results.length}</span> shown of{" "}
+              <span className="font-medium text-slate-900">
+                {Math.min(presentedCount, data.results.length)}
+              </span>{" "}
+              shown of{" "}
               <span className="font-medium text-slate-900">
                 {data.total.value.toLocaleString()}
               </span>{" "}
