@@ -54,7 +54,15 @@ if you want a cheap undo:
 
     docker compose exec -T postgres pg_dump -U sieve sieve | gzip > pre-cascade.sql.gz
 
-## 3. Embed — 21-33 min. REVERSIBLE (recompute).
+## 3. Embed — 21-45 min. REVERSIBLE (recompute).
+
+**The band was widened 2026-08-14 and is a projection, not an estimate.**
+The old 21-33 min came from 8.8-12.7 docs/s, which is a single session's
+spread (the two resumability runs, same afternoon). Re-running the same
+instrument gave **8.1 docs/s vs 13.2 on 2026-07-30 — 1.63x apart, below the
+band's floor**. At 8.1, ~16,800 papers is ~35 min. Encoder throughput on
+this hardware varies more than the estimate assumed; do not treat an
+overrun here as a fault.
 
     docker compose run --rm ... test python -m api.embed.backfill
 

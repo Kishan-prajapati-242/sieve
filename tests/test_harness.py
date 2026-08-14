@@ -6,6 +6,7 @@ import pytest
 from bench.harness import (
     across_runs,
     carry_superseded,
+    contention_report,
     interleaved,
     method_record,
     paired_ratio,
@@ -191,3 +192,24 @@ def test_a_toggled_planner_guc_stops_taking_effect_once_the_plan_is_cached(
         pinned_plan = "\n".join(r[0] for r in pinned.execute("EXPLAIN EXECUTE p(42)"))
     assert "t_v_idx" not in pinned_plan
     assert "Seq Scan" in pinned_plan
+
+
+def test_contention_report_names_only_what_it_checks() -> None:
+    """The flag is about DATABASE users, and its name has to say so.
+
+    It was called `clean`, and a run on 2026-08-14 reported clean=true while
+    its third pass was 55% slower on every arm — host CPU contention produces
+    no Postgres transactions and is invisible here. A reader seeing
+    `clean: true` in a results file would have published those levels.
+    """
+    before = {"sieve": 100, "postgres": 5}
+    quiet = contention_report(before, {"sieve": 140, "postgres": 5}, own="sieve")
+    assert quiet["no_foreign_db_sessions"] is True
+    assert quiet["own_transactions"] == 40
+    assert "clean" not in quiet  # the overpromising name is gone
+    # And the caveat travels with the result, not just the commit message.
+    assert "DOES NOT MEAN THE RUN WAS CLEAN" in quiet["reads_as"]
+
+    intruder = contention_report(before, {"sieve": 140, "postgres": 9}, own="sieve")
+    assert intruder["no_foreign_db_sessions"] is False
+    assert intruder["foreign_databases"] == ["postgres"]

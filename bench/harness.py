@@ -281,6 +281,11 @@ def contention_report(before: dict[str, int], after: dict[str, int], *, own: str
 
     Scratch databases are the giveaway: the suite creates one per test, so
     foreign datnames with non-zero deltas name the intruder exactly.
+
+    What this CANNOT see is the host. It counts transactions against
+    Postgres; another process eating CPU on the Mac produces no transactions
+    and is invisible. The field is named for what it checks, not for the
+    conclusion a reader wants to draw from it.
     """
     foreign = {
         name: after.get(name, 0) - count
@@ -292,10 +297,20 @@ def contention_report(before: dict[str, int], after: dict[str, int], *, own: str
         "own_transactions": after.get(own, 0) - before.get(own, 0),
         "foreign_transactions": sum(foreign.values()) if foreign else 0,
         "foreign_databases": sorted(foreign) + new_dbs,
-        "clean": not foreign and not new_dbs,
-        "reads_as": "clean=false means something else used this server during "
-        "the run; treat absolute levels as contaminated and re-run before "
-        "publishing them",
+        # NOT named "clean". This counts transactions against the Postgres
+        # server, so it can only rule out another DATABASE user -- it is
+        # blind to a browser, a compile, or another container burning CPU on
+        # the same host. A run on 2026-08-14 reported clean=true while its
+        # third pass was 55% slower on every arm, and a reader would have
+        # concluded the levels were publishable. The label has to assert
+        # only what the instrument delivers (findings.md 2026-08-14).
+        "no_foreign_db_sessions": not foreign and not new_dbs,
+        "reads_as": "no_foreign_db_sessions=false means another client used "
+        "this Postgres server during the run. TRUE DOES NOT MEAN THE RUN WAS "
+        "CLEAN: host CPU contention is invisible here and hits a sequential "
+        "scan differently from an index probe. Check per-run spread as well "
+        "-- if the stability gate returned a range instead of a point "
+        "estimate, something moved regardless of what this flag says.",
     }
 
 

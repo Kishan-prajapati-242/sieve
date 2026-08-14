@@ -84,6 +84,30 @@ Paired speedup vs exact scan, with 2026-08-14 re-runs beside them:
 | e2e ef=600 | 2.9x [2.8, 3.0] | 2.9x [2.8, 3.0] | reproduces exactly |
 | e2e ef=40 | **7.1x [6.9, 7.3]** | **8.7x [8.4, 9.0]** | **CIs disjoint — see below** |
 
+> ### ⚠ RESUME-FACING: the 7.1x end-to-end figure
+>
+> **Kishan has 7.1x on his resume as the end-to-end number. It is now known
+> to be a joint measurement of retrieval AND the encoder, and 8.7x is the
+> same system on a different day.** Two options, his call:
+>
+> **(a) The embed level travels with the number.** "7.1x end-to-end at an
+> 8.0 ms query-embed cost." Honest, but it needs a clause every time it is
+> said, and the clause invites the follow-up in an interview.
+>
+> **(b) The claim moves to retrieval-only.** 24.1x [23.3, 25.0] at ef=40,
+> which re-ran to 23.0x [21.7, 24.3] — overlapping CIs, no encoder term, and
+> it is the number the index actually earns.
+>
+> **The gradient points the wrong way, and that is why this must be written
+> down rather than remembered.** e2e speedup = (embed + baseline) /
+> (embed + candidate). Both arms carry the same embed cost, so *making the
+> encoder SLOWER raises the reported speedup.* At embed 8.0 the figure is
+> 7.1x; at 6.1 it is 8.7x; a hypothetically awful 40 ms encoder would read
+> (40+70.4)/(40+3.0) = 2.6x — and a 2 ms one would read 12.0x. Nobody did
+> this and nobody would mean to. But any future e2e ratio has an incentive
+> pointing at a worse encoder, and an incentive that is not written next to
+> the number gets discovered by someone else later.
+
 The e2e ef=40 move is not a retrieval change. e2e adds the query-embed cost
 to BOTH arms, and a constant added to both arms of a ratio does not cancel —
 it pulls the ratio toward 1. Embed drifted 8.0 -> 6.1 ms between the runs,
@@ -418,7 +442,19 @@ inside the compose test container — the podman VM, not the host): 13.2
 docs/s fp32, **248 min projected for 196,893 papers**, peak RSS 2.05 GB
 in the 4 GB VM (no memory raise needed; `podman machine set --memory` is
 the knob if wanted). Sustained rates in real runs measured 8.8-12.7
-docs/s, so plan for ~4.5-6 h wall clock with throttling. (b) Live
+docs/s, so plan for ~4.5-6 h wall clock with throttling. **[SUPERSEDED
+2026-08-14: that band is ONE session — the two resumability runs, same
+afternoon — so its 44% width is within-session spread and bounds nothing
+across sessions. The same instrument re-run on 2026-08-14 gave 8.1 docs/s
+against 13.2 on 2026-07-30, 1.63x apart and below the band's floor. Treat
+encoder throughput as a quantity that varies 1.6x on this hardware, not as
+an estimate with a tight error bar. findings.md 2026-08-14.]** **[SUPERSEDED
+2026-08-14: that band is ONE session — the two resumability runs, same
+afternoon — so its 44% width is within-session spread and bounds nothing
+across sessions. The same instrument re-run on 2026-08-14 gave 8.1 docs/s
+against 13.2 on 2026-07-30, 1.63x apart and below the band's floor. Treat
+encoder throughput as a quantity that varies 1.6x on this hardware, not as
+an estimate with a tight error bar. findings.md 2026-08-14.]** (b) Live
 kill-proof: SIGKILL at 2,304 committed rows -> exactly 2,304 durable on a
 fresh connection; resume --limit 2696 -> exactly 5,000 total, 0 gaps
 below the high-water mark, all 2,304 pre-kill vectors byte-identical

@@ -2432,8 +2432,12 @@ so 3.8x and 24.1x never depended on it. Re-run to confirm:
 | e2e ef=600 | 2.9x [2.8, 3.0] | 2.9x [2.8, 3.0] | exact |
 | e2e ef=40 | 7.1x [6.9, 7.3] | **8.7x [8.4, 9.0]** | **disjoint** |
 
-**The real finding is that last row.** Every ARM of this re-run was
-contaminated — per-run p50s were exact [70.4, 72.5, 109.1], ef600 [20.2,
+**The real finding is that last row — and the frame for it is adversity,
+not design.** "We controlled for drift" is a claim about intent. What
+happened here is stronger: drift occurred, uninvited, across every arm, and
+three of four ratios came out inside their published intervals anyway.
+Pairing was not validated by its rationale. It was validated by a run that
+went wrong. Every ARM of this re-run was contaminated — per-run p50s were exact [70.4, 72.5, 109.1], ef600 [20.2,
 21.8, 35.5], all three levels failed the gate and reported null. The ratios
 survived anyway, because pairing cancels common-mode drift. That is pairing
 doing exactly its job and is the strongest evidence yet for DECISION-3d.
@@ -2480,8 +2484,22 @@ product rather than the measurement layer:
 
 All three are the same error: a number sampled from one source, displayed
 against another, with nothing enforcing that they refer to the same moment.
-The first two were caught by arithmetic that did not close. This one was
-caught by looking at frames.
+
+**But only two of them were catchable the same way, and that is the general
+lesson.** Arithmetic can only catch a number that contradicts ANOTHER
+number. The ground truth's ids contradicted the live corpus; the clock's
+3 h 55 m contradicted the in-VM elapsed time. The header's "20 shown"
+contradicted nothing — it is a true count of the response, rendered against
+a moment that had not arrived. Nothing it could be checked against was
+wrong.
+
+So it was invisible to every instrument in `bench/` and fell only to
+watching frames. **Visual capture is a measurement instrument on this
+project, not a design tool** — it is the only one that can observe a number
+describing the wrong moment rather than the wrong value. It belongs in the
+same toolbox as `EXPLAIN ANALYZE` and the paired harness, and any claim
+about what the product SHOWS needs it the way a latency claim needs the
+harness.
 
 ## 2026-08-14 — placeholderData traded a loading state for an animation
 
@@ -2523,3 +2541,42 @@ flag, a 201 ms one does, and the flag cannot latch on.
 
 **Progress is indeterminate on purpose.** The server reports its timings
 only once it answers, so there is no honest fraction to render.
+
+## 2026-08-14 — The encoder throughput band is one session, and it moved 1.63x
+
+**Question.** Single-query embed drifted 8.0 -> 6.1 ms across sessions
+(~30%). The PubMed cost model leans on 8.8-12.7 docs/s for batch encoding,
+which drives most of the estimate. Has that band ever been measured twice on
+the same hardware?
+
+**Answer from the record: no.** The 8.8-12.7 band comes from the 2026-07-30
+resumability runs — 2,304 rows then 2,696 rows, ~8 minutes each, one
+session, one afternoon. Two runs, but not two sessions. Its 44% width is
+WITHIN-session spread; cross-session variation was never measured, so
+nothing in the band's construction bounds it.
+
+**Answer from measurement: it does not reproduce.** Re-ran the same
+instrument, `bench/encode_throughput.py`, same hardware, same batch 32,
+same fp32, api and web stopped:
+
+| date | throughput | projection |
+|---|---|---|
+| 2026-07-30 | 13.2 docs/s | 248 min for 196,893 |
+| **2026-08-14** | **8.1 docs/s** | 376 min for 183,167 |
+
+**1.63x apart, and 8.1 sits BELOW the bottom of the 8.8-12.7 band** the cost
+model uses. Same box, same code, same sample size. Whatever the cause —
+thermal state, host background load, the VM's mood — encoder throughput on
+this hardware is not a stable quantity at the precision the estimate assumed.
+
+**Consequence for the pull.** Step 3 of the runbook says 21-33 min for
+~16,800 papers, derived from 12.7 and 8.8 docs/s. At today's 8.1 that step
+is ~35 min, outside the stated range. The runbook's band is widened to
+**21-45 min** and marked as a projection from a quantity that has now been
+observed to vary 1.63x, not as an estimate with a tight error bar.
+
+**The deeper point.** This is the same shape as the e2e speedup finding an
+hour earlier: a number that is a joint measurement of the encoder and
+something else, where the encoder was assumed constant and is not. Two
+independent estimates in this project rest on encoder throughput being
+stable. It is not, and neither of them said so.
