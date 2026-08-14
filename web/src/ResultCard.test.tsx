@@ -1,11 +1,16 @@
 // Pins the behaviors Kishan specified for the result card, not the styling:
 // every field renders, the DOI link resolves, the abstract starts collapsed,
 // and the retraction banner appears exactly when is_retracted says so.
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { SearchResult } from "./api";
 import { ResultCard } from "./ResultCard";
+import { renderWith } from "./testutils";
+
+// ResultCard now renders the "Add to…" control, which needs the query client
+// and the router. renderWith supplies both; the assertions below are
+// unchanged and still behaviour-only.
 
 function makeResult(overrides: Partial<SearchResult> = {}): SearchResult {
   return {
@@ -29,7 +34,7 @@ function makeResult(overrides: Partial<SearchResult> = {}): SearchResult {
 
 describe("ResultCard", () => {
   it("renders every field the spec lists", () => {
-    render(<ResultCard result={makeResult()} />);
+    renderWith(<ResultCard result={makeResult()} />);
     expect(screen.getByText("Clinical text simplification with transformers")).toBeInTheDocument();
     expect(screen.getByText("Ada Lovelace, Grace Hopper")).toBeInTheDocument();
     expect(screen.getByText(/#3 · score 0\.4321/)).toBeInTheDocument();
@@ -41,14 +46,14 @@ describe("ResultCard", () => {
   });
 
   it("collapses the abstract until opened", async () => {
-    render(<ResultCard result={makeResult()} />);
+    renderWith(<ResultCard result={makeResult()} />);
     expect(screen.getByText("We simplify EHR notes.")).not.toBeVisible();
     await userEvent.click(screen.getByText("Abstract"));
     expect(screen.getByText("We simplify EHR notes.")).toBeVisible();
   });
 
   it("warns on retracted papers and only on them", () => {
-    const { rerender } = render(<ResultCard result={makeResult({ is_retracted: true })} />);
+    const { rerender } = renderWith(<ResultCard result={makeResult({ is_retracted: true })} />);
     expect(screen.getByRole("alert")).toHaveTextContent(/retracted/i);
     rerender(<ResultCard result={makeResult()} />);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -56,13 +61,13 @@ describe("ResultCard", () => {
 
   it("truncates long author lists instead of flooding the card", () => {
     const authors = Array.from({ length: 13 }, (_, i) => `Author ${i + 1}`);
-    render(<ResultCard result={makeResult({ authors })} />);
+    renderWith(<ResultCard result={makeResult({ authors })} />);
     expect(screen.getByText(/Author 10, \+3 more$/)).toBeInTheDocument();
     expect(screen.queryByText(/Author 11/)).not.toBeInTheDocument();
   });
 
   it("shows the fusion breakdown when the result carries one", () => {
-    render(
+    renderWith(
       <ResultCard
         result={makeResult({ bm25_rank: 4, vector_rank: 1, sources: ["bm25", "vector"] })}
       />,
@@ -70,17 +75,17 @@ describe("ResultCard", () => {
     expect(screen.getByText(/keyword #4/)).toBeInTheDocument();
     expect(screen.getByText(/semantic #1/)).toBeInTheDocument();
     // A ranker that missed the paper renders a dash, not a fake rank.
-    render(<ResultCard result={makeResult({ bm25_rank: 7, vector_rank: null, sources: ["bm25"] })} />);
+    renderWith(<ResultCard result={makeResult({ bm25_rank: 7, vector_rank: null, sources: ["bm25"] })} />);
     expect(screen.getByText(/semantic —/)).toBeInTheDocument();
   });
 
   it("shows no breakdown for non-hybrid results", () => {
-    render(<ResultCard result={makeResult()} />);
+    renderWith(<ResultCard result={makeResult()} />);
     expect(screen.queryByText(/keyword #/)).not.toBeInTheDocument();
   });
 
   it("omits optional fields without leaving artifacts", () => {
-    render(
+    renderWith(
       <ResultCard
         result={makeResult({ authors: null, abstract: null, doi: null, venue: null, year: null })}
       />,
