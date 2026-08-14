@@ -7,7 +7,7 @@ import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { createCollection, listCollections } from "./api";
 import { CountBadge } from "./CountBadge";
-import { DUR, EASE, rowVariants, staggerFor } from "./motion";
+import { DUR, EASE, rowVariants } from "./motion";
 
 export function CollectionsPage() {
   const [name, setName] = useState("");
@@ -90,11 +90,11 @@ export function CollectionsPage() {
 
       <ul className="space-y-3">
         <AnimatePresence initial={false} mode="popLayout">
-          {data?.map((c, i) => (
+          {data?.map((c) => (
             <motion.li
               key={c.id}
               layout="position"
-              custom={staggerFor(i, false)}
+              custom={0}
               variants={rowVariants}
               initial="initial"
               animate="animate"

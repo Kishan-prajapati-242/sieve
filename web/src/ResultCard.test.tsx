@@ -37,12 +37,19 @@ describe("ResultCard", () => {
     renderWith(<ResultCard result={makeResult()} />);
     expect(screen.getByText("Clinical text simplification with transformers")).toBeInTheDocument();
     expect(screen.getByText("Ada Lovelace, Grace Hopper")).toBeInTheDocument();
-    expect(screen.getByText(/#3 · score 0\.4321/)).toBeInTheDocument();
-    expect(screen.getByText(/2023 · Proceedings of ACL 2023 · 40 citations/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "DOI" })).toHaveAttribute(
-      "href",
-      "https://doi.org/10.18653/v1/2023.acl-long.1",
-    );
+    // Anatomy changed 2026-08-14: rank sits in its own gutter and score
+    // moved onto the provenance line. Both are still displayed.
+    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(screen.getByText(/score 0\.4321/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/2023 · Proceedings of ACL 2023 · 40 citations/),
+    ).toBeInTheDocument();
+    // The TITLE is the link now, not a separate "DOI" affordance — that is
+    // what every product surveyed does (visual-sheet.html §1). The contract
+    // that matters is unchanged: the row resolves to the DOI.
+    expect(
+      screen.getByRole("link", { name: "Clinical text simplification with transformers" }),
+    ).toHaveAttribute("href", "https://doi.org/10.18653/v1/2023.acl-long.1");
   });
 
   it("collapses the abstract until opened", async () => {
@@ -72,11 +79,20 @@ describe("ResultCard", () => {
         result={makeResult({ bm25_rank: 4, vector_rank: 1, sources: ["bm25", "vector"] })}
       />,
     );
-    expect(screen.getByText(/keyword #4/)).toBeInTheDocument();
-    expect(screen.getByText(/semantic #1/)).toBeInTheDocument();
+    // The chips carry an arm hue and hold the rank in a child span, so the
+    // text is no longer contiguous. Assert via the accessible title, which
+    // is what a screen reader gets and what a still has to convey.
+    expect(screen.getByTitle("keyword rank 4")).toBeInTheDocument();
+    expect(screen.getByTitle("semantic rank 1")).toBeInTheDocument();
     // A ranker that missed the paper renders a dash, not a fake rank.
-    renderWith(<ResultCard result={makeResult({ bm25_rank: 7, vector_rank: null, sources: ["bm25"] })} />);
-    expect(screen.getByText(/semantic —/)).toBeInTheDocument();
+    renderWith(
+      <ResultCard result={makeResult({ bm25_rank: 7, vector_rank: null, sources: ["bm25"] })} />,
+    );
+    // A ranker that missed the paper renders a MUTED chip with an em-dash,
+    // not an omission: absence has to be as visible as presence in a still,
+    // or a one-armed row just looks like a short row.
+    expect(screen.getByTitle("not found by semantic")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
   });
 
   it("shows no breakdown for non-hybrid results", () => {
@@ -91,7 +107,7 @@ describe("ResultCard", () => {
       />,
     );
     expect(screen.getByText(/year unknown · 40 citations/)).toBeInTheDocument();
-    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument(); // no DOI -> plain text title
     expect(screen.queryByText("Abstract")).not.toBeInTheDocument();
   });
 });

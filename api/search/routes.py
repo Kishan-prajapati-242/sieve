@@ -20,6 +20,7 @@ from api.db.pool import get_pool
 from api.embed.runtime import embed_query
 from api.search.bm25 import search_bm25
 from api.search.fusion import HYBRID_DEFAULT_EF_SEARCH, search_hybrid
+from api.search.totals import bm25_total, hybrid_total, vector_total
 from api.search.vector import DEFAULT_EF_SEARCH, search_vector
 
 logger = logging.getLogger("sieve.search")
@@ -81,6 +82,19 @@ class SearchTimings(BaseModel):
     serialize_ms: float
 
 
+class Total(BaseModel):
+    """How many papers the query reached, WITH what the number means.
+
+    `kind` is not decoration: bm25's value is a match count, vector's is the
+    whole embedded corpus, and hybrid's is the fused candidate pool at the
+    configured depth. Rendering the integer without the kind would report
+    three different quantities under one label (api/search/totals.py).
+    """
+
+    value: int
+    kind: str  # "matches" | "ranked" | "candidates"
+
+
 class SearchResponse(BaseModel):
     query: str
     mode: str
@@ -89,7 +103,21 @@ class SearchResponse(BaseModel):
     # The ef_search actually used — recorded per query so a latency or
     # recall observation is reproducible. Null for bm25.
     ef_search: int | None
+    total: Total
     results: list[SearchResult]
+
+
+def count_params(req: "SearchRequest", query_vec: list[float] | None) -> dict[str, object]:
+    """Shared parameter bag for the total queries — the year bounds must
+    match the search exactly or the count describes a different question."""
+    from api.search.vector import vector_literal
+
+    return {
+        "query": req.query,
+        "year_from": req.year_from,
+        "year_to": req.year_to,
+        "qv": vector_literal(query_vec) if query_vec else None,
+    }
 
 
 @router.post("/search")
@@ -122,6 +150,9 @@ def search(req: SearchRequest) -> SearchResponse:
                 for row in rows:
                     rank_pairs = (("bm25", row["bm25_rank"]), ("vector", row["vector_rank"]))
                     row["sources"] = [name for name, rank in rank_pairs if rank is not None]
+                total_value, total_kind = hybrid_total(
+                    conn, count_params(req, query_vec), req.depth, ef_search
+                )
             else:
                 ef_search = DEFAULT_EF_SEARCH if req.ef_search is None else req.ef_search
                 rows = search_vector(
@@ -132,12 +163,14 @@ def search(req: SearchRequest) -> SearchResponse:
                     year_to=req.year_to,
                     ef_search=ef_search,
                 )
+                total_value, total_kind = vector_total(conn, count_params(req, query_vec))
         retrieve_ms = round((time.perf_counter() - embed_done) * 1000, 1)
     else:
         with get_pool().connection() as conn:
             rows = search_bm25(
                 conn, query=req.query, k=req.k, year_from=req.year_from, year_to=req.year_to
             )
+            total_value, total_kind = bm25_total(conn, count_params(req, None))
         retrieve_ms = round((time.perf_counter() - start) * 1000, 1)
 
     retrieve_done = time.perf_counter()
@@ -158,6 +191,8 @@ def search(req: SearchRequest) -> SearchResponse:
                 "query": req.query,
                 "k": req.k,
                 "results": len(rows),
+                "total": total_value,
+                "total_kind": total_kind,
                 "took_ms": took_ms,
                 "embed_ms": timings.embed_ms,
                 "retrieve_ms": timings.retrieve_ms,
@@ -173,5 +208,6 @@ def search(req: SearchRequest) -> SearchResponse:
         took_ms=took_ms,
         timings=timings,
         ef_search=ef_search,
+        total=Total(value=total_value, kind=total_kind),
         results=results,
     )

@@ -1,23 +1,33 @@
-// The motion vocabulary, in one place so the timings stay consistent and a
-// reviewer can read the whole choreography without opening five components.
+// The motion vocabulary, in one place so the timings stay consistent.
 //
-// Decisions this encodes (Kishan, 2026-08-13):
+// CHOREOGRAPHY, re-derived 2026-08-14 at the real k=20 rather than the
+// top-8 slice the app never performs. Measured transitions on the demo
+// query:
 //
-//   Reorder is SIMULTANEOUS. The mode toggle's claim is that hybrid FUSES two
-//   rankings — one operation, not a sequence — so staging exits, then moves,
-//   then arrivals narrates list mechanics instead. Measured support: the
-//   sequential variant produced a second delta peak mid-transition, i.e. two
-//   events for the eye to track (.design-review/choreography-proof.html).
+//   bm25   -> hybrid:  0 leaving,  5 staying, 15 ARRIVING
+//   hybrid -> bm25  : 15 leaving,  5 staying,  0 arriving
+//   bm25   -> vector:  5 leaving,  0 staying, 20 ARRIVING   (total replacement)
+//   vector -> hybrid:  5 leaving, 15 staying,  5 arriving
 //
-//   EXCEPT arriving into an EMPTY list, which is staggered per index. Eight
-//   rows landing at once after "No papers matched." reads as a dump rather
-//   than a reveal, and that case is on the demo path: the jargon query returns
-//   zero under bm25 and eight under vector.
+// So the question was never exit-vs-enter — bm25 -> hybrid has no
+// departures. It is whether the 5 survivors finish moving before the 15
+// arrivals land. Both earlier variants failed it: "simultaneous" was
+// picked assuming 3 arrivals, and "sequential" still began arrivals at 55%
+// of the move, so the demo row's climb from #5 to #1 competed with fifteen
+// rows appearing around it.
 //
-//   Hover is CSS-only. Spotlight effects need a mousemove listener per card,
-//   and both the results list and the screening queue run to hundreds of rows
-//   — the same restraint-inside-long-lists argument that shaped everything
-//   else here.
+// The mechanism: survivors move ALONE, arrivals are GATED on the move
+// completing, and arrivals fill from the BOTTOM UP so the top of the list
+// stays quiet while the tail populates — a row landing at position 2 would
+// pull the eye straight off the row that just arrived at 1.
+//
+// Cost, stated rather than buried: the transition goes from ~420 ms to
+// ~800 ms. That is slower, and correct here, because the transition IS the
+// demo.
+//
+// When there are no survivors (bm25 -> vector), the gate collapses to zero
+// and it becomes a pure staggered entrance. That falls out of the rule
+// rather than needing a special case.
 
 export const EASE = [0.2, 0.8, 0.2, 1] as const;
 
@@ -29,29 +39,41 @@ export const DUR = {
   badge: 0.3,
 } as const;
 
-/** Per-row variants. `stagger` is the index delay, applied only when the
- *  previous list was empty; every other transition passes 0. */
+/** Total time the arrival stagger may span, however many rows arrive. At
+ *  15 arrivals a flat 25ms step would run 375ms on its own. */
+export const STAGGER_SPAN = 0.25;
+
+/**
+ * Delay for one arriving row.
+ *
+ * @param indexAmongArrivals 0 = topmost arrival
+ * @param arrivalCount       how many rows are arriving
+ * @param hasSurvivors       whether any row is moving (gates the arrivals)
+ */
+export function arrivalDelay(
+  indexAmongArrivals: number,
+  arrivalCount: number,
+  hasSurvivors: boolean,
+): number {
+  const gate = hasSurvivors ? DUR.move : 0;
+  if (arrivalCount <= 1) return gate;
+  const step = Math.min(0.025, STAGGER_SPAN / (arrivalCount - 1));
+  // Bottom-up: the LAST arrival in list order goes first, the topmost waits.
+  const fromBottom = arrivalCount - 1 - indexAmongArrivals;
+  return gate + fromBottom * step;
+}
+
 export const rowVariants = {
   initial: { opacity: 0, y: 8 },
-  animate: (stagger: number) => ({
+  animate: (delay: number) => ({
     opacity: 1,
     y: 0,
-    transition: { duration: DUR.enter, ease: EASE, delay: stagger },
+    transition: { duration: DUR.enter, ease: EASE, delay },
   }),
   exit: { opacity: 0, x: -12, transition: { duration: DUR.exit, ease: EASE } },
 };
 
-/** Cap the stagger so a long arrival does not turn into a slow cascade. */
-export const STAGGER_STEP = 0.035;
-export const STAGGER_MAX = 10;
-
-export function staggerFor(index: number, fromEmpty: boolean): number {
-  if (!fromEmpty) return 0;
-  return Math.min(index, STAGGER_MAX) * STAGGER_STEP;
-}
-
-/** Route transitions: crossfade plus a small y-offset. Card -> detail expand
- *  is deferred on cost (docs/plans/ui-assembly-plan.md). */
+/** Route transitions: crossfade plus a small y-offset. */
 export const routeVariants = {
   initial: { opacity: 0, y: 6 },
   animate: { opacity: 1, y: 0, transition: { duration: DUR.route, ease: EASE } },

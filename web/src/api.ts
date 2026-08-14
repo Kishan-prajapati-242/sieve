@@ -27,12 +27,23 @@ export interface SearchTimings {
   serialize_ms: number;
 }
 
+/** How many papers the query reached, and what that number MEANS. The kind
+ *  is not optional decoration: bm25's value is a match count, vector's is
+ *  the whole embedded corpus, hybrid's is the fused candidate pool at the
+ *  configured depth. Rendering the integer without its label would report
+ *  three different quantities under one word. */
+export interface Total {
+  value: number;
+  kind: "matches" | "ranked" | "candidates";
+}
+
 export interface SearchResponse {
   query: string;
   mode: string;
   took_ms: number;
   timings: SearchTimings;
   ef_search: number | null;
+  total: Total;
   results: SearchResult[];
 }
 

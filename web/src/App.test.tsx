@@ -26,6 +26,7 @@ function stubSearch(response: Partial<SearchResponse>) {
     took_ms: 12.3,
     timings: { embed_ms: null, retrieve_ms: 12.0, serialize_ms: 0.3 },
     ef_search: null,
+    total: { value: 0, kind: "matches" as const },
     results: [],
     ...response,
   };
@@ -59,7 +60,10 @@ describe("App", () => {
       k: 20,
       year_from: 2020,
     });
-    expect(await screen.findByText(/0 results · 12\.3 ms/)).toBeInTheDocument();
+    // The results line now names WHAT the total counts, per mode, and the
+    // timings moved to their own breakdown (2026-08-14).
+    expect(await screen.findByText(/shown of/)).toBeInTheDocument();
+    expect(screen.getByText(/12\.3 ms/)).toBeInTheDocument();
     expect(screen.getByText("No papers matched.")).toBeInTheDocument();
   });
 
@@ -90,7 +94,8 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: "Search" }));
 
     expect(await screen.findByText("A found paper")).toBeInTheDocument();
-    expect(screen.getByText(/1 results · 58\.1 ms/)).toBeInTheDocument();
+    expect(screen.getByText(/58\.1 ms/)).toBeInTheDocument();
+    expect(screen.getByText(/keyword matches/)).toBeInTheDocument();
   });
 
   it("posts the mode chosen in the toggle", async () => {
