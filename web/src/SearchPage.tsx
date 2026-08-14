@@ -13,6 +13,11 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { search, type SearchMode, type SearchParams, type SearchResponse } from "./api";
 import { ResultCard } from "./ResultCard";
 import { arrivalDelay } from "./motion";
+import { useDelayedFlag } from "./useDelayedFlag";
+
+// Long enough that a warm query (~30ms) never flashes, short enough that a
+// cold one (1,611ms measured) does not read as a frozen page.
+const STALE_AFTER_MS = 200;
 
 const MODES: SearchMode[] = ["bm25", "vector", "hybrid"];
 
@@ -31,7 +36,7 @@ export function SearchPage() {
   const [mode, setMode] = useState<SearchMode>("hybrid");
   const [params, setParams] = useState<SearchParams | null>(null);
 
-  const { data, error, isFetching } = useQuery({
+  const { data, error, isFetching, isPlaceholderData } = useQuery({
     queryKey: ["search", params],
     queryFn: () => search(params!),
     enabled: params !== null,
@@ -57,6 +62,11 @@ export function SearchPage() {
   useEffect(() => {
     if (data) prevIds.current = new Set(data.results.map((r) => r.id));
   }, [data]);
+
+  // isPlaceholderData is the precise signal: true exactly while the previous
+  // mode's rows stand in for a result set still in flight. isFetching would
+  // also fire on a background refetch of data already on screen.
+  const stale = useDelayedFlag(isPlaceholderData, STALE_AFTER_MS);
 
   function submit(next: Partial<SearchParams>) {
     if (!draftQuery.trim()) return;
@@ -134,6 +144,11 @@ export function SearchPage() {
       </form>
 
       {isFetching && !data && <p className="text-sm text-slate-500">Searching…</p>}
+      {/* Indeterminate: the server reports its timings only once it answers,
+          so there is no honest progress fraction to show. */}
+      <div className="h-0.5 overflow-hidden" aria-hidden="true">
+        {stale && <div className="h-full w-full animate-pulse bg-blue-500/60" />}
+      </div>
       {error && (
         <p role="alert" className="text-sm text-rose-700">
           Search failed: {(error as Error).message}
@@ -148,6 +163,7 @@ export function SearchPage() {
                 {data.total.value.toLocaleString()}
               </span>{" "}
               {totalLabel(data.total.kind)}
+              {stale && <span className="ml-2 text-slate-400">· searching…</span>}
             </p>
             {/* The measurement work, in the product rather than only in bench/. */}
             <p className="tabular-nums text-xs text-slate-400" title="server-side timings">
@@ -161,7 +177,16 @@ export function SearchPage() {
             </p>
           </div>
           {data.results.length === 0 && <p className="text-slate-500">No papers matched.</p>}
-          <ul className="divide-y divide-slate-100 border-t border-slate-100">
+          <ul
+            aria-busy={stale}
+            className={
+              "divide-y divide-slate-100 border-t border-slate-100 transition-opacity" +
+              // The rows stay MOUNTED while dimmed — unmounting them is what
+              // broke the layout animation in the first place. This only
+              // says "these are the previous results".
+              (stale ? " opacity-40" : " opacity-100")
+            }
+          >
             <AnimatePresence initial={false} mode="popLayout">
               {data.results.map((r) => (
                 <ResultCard

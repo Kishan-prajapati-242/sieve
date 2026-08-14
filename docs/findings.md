@@ -2482,3 +2482,44 @@ All three are the same error: a number sampled from one source, displayed
 against another, with nothing enforcing that they refer to the same moment.
 The first two were caught by arithmetic that did not close. This one was
 caught by looking at frames.
+
+## 2026-08-14 — placeholderData traded a loading state for an animation
+
+**Symptom.** A cold hybrid query took 1,611 ms during which the page showed
+the previous mode's results, at full contrast, completely unchanged. A fetch
+in flight and a finished one were pixel-identical.
+
+**How found.** Capturing frames of the mode toggle to judge the
+choreography. Every frame from 0 to 815 ms was the old list; the whole
+transition happened after the capture window. The choreography could not be
+evaluated because a slow fetch and a finished one look the same on screen.
+
+**Root cause.** The unmount fix. `placeholderData: (previous) => previous`
+keeps the previous rows mounted so `layout` has DOM to move — that is what
+made the animation fire at all. But the old render also gated on
+`!isFetching`, so removing that gate removed the only loading signal the
+page had. "Searching…" now renders only when there is no data whatsoever,
+which is the first query and never again.
+
+**Why it matters more in Phase 4 than locally.** 1,611 ms is a cold query on
+this laptop. Render's free tier is slower and pays ONNX model load for the
+query embedding on top. A reviewer's first click is the cold case.
+
+**Fix.** `isPlaceholderData` — true exactly while the previous mode's rows
+stand in for a result set in flight, and unlike `isFetching` it does not
+fire on a background refetch of data already on screen. It drives a dim to
+40% opacity plus `aria-busy` and an inline "searching…", **with the rows
+still mounted**, so the animation keeps its DOM.
+
+Gated behind a 200 ms delay, because the two failure modes pull opposite
+ways: show it immediately and a warm ~30 ms toggle flashes a spinner every
+time, which reads as instability; never show it and a cold query looks
+frozen. Nothing under the threshold, feedback over it.
+
+**Verified.** Frames with the response held 1,600 ms show the dimmed list,
+the indicator, and every previous row still in the DOM. The no-flash half is
+pinned with fake timers rather than frames: a 30 ms fetch never sets the
+flag, a 201 ms one does, and the flag cannot latch on.
+
+**Progress is indeterminate on purpose.** The server reports its timings
+only once it answers, so there is no honest fraction to render.
