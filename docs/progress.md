@@ -126,8 +126,15 @@ or hurts under the FIRST has never been tested — DECISION-2 sorts specialty
 mass into "on-topic mass" (welcomed) and "not random hard negatives" (cut
 in half), and nothing places PubMed's terms on either side. It is an
 argument, not a measurement.
-*Trigger: Phase 4's nDCG evaluation. If hybrid beats BM25 by less than
-expected on the post-PubMed corpus, this is the first thing to look at.*
+*Trigger, now SHARPER (Kishan, 2026-08-13): the post-pull re-run of
+`bench/demo_queries.py`. The three demo queries were chosen on a corpus with
+a coverage gap that PubMed fills precisely — de-identification of clinical
+records and lay-language health communication are both PubMed-indexed. So
+hybrid's win on the de-identification query depends on few papers matching
+BOTH "BERT" and "de-identification" well, and bm25's zero on the jargon
+query IS the gap. Report per query which arm's uniques hybrid adopted before
+and after, and whether the margin narrowed. If hybrid stops clearly winning
+anywhere, that is evidence here, not a demo to re-pick.*
 
 **P2. The order-dependent cap.** A group's cap binds on its ATTRIBUTED
 strategy — the earliest contributing strategy in ORDER — and abstract_hash

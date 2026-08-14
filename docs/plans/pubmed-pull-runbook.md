@@ -1,7 +1,17 @@
 # PubMed pull runbook — staged, not run
 
-Branch A, full ~23,000-record pool as a coverage decision under
-DECISION-2f. Every step is a checkpoint. **Wrap the entire session in
+**Composition DECIDED (Kishan, 2026-08-13): take the full ~23,000 pool** as
+a coverage decision under DECISION-2f's standard, recording the realized
+composition as the composition. There is no weighting to honour — the
+0.40/0.25/0.20/0.15 appears in no decision record. Taking 9,700 would leave
+a one-way door, since a later top-up re-pays the full cascade against that
+same precedent.
+
+**Queued behind the UI. Kishan has NOT committed to the labeling session** —
+that is his time and it can lag the pull, with the precision number carrying
+a labelled gap until it happens.
+
+Every step is a checkpoint. **Wrap the entire session in
 `caffeinate -dimsu`** (CLAUDE.md standing rule) and capture stdout.
 
     caffeinate -dimsu bash -c '<the whole sequence>' 2>&1 | tee pull-$(date +%F).log
@@ -83,6 +93,31 @@ automatically.
 
 Serially, nothing else touching the machine — `method.contention.clean`
 must be true or the levels are not publishable.
+
+## 6b. Re-run the demo queries — this is a MEASUREMENT, not housekeeping
+
+    python -m bench.demo_queries
+
+**It is the parked two-shares question firing** (progress.md, P1), not a
+demo refresh. The three demo queries were selected on a corpus with a
+coverage gap and PubMed fills exactly that gap:
+
+* **de-identification** — hybrid wins because BM25 finds de-identification
+  papers without BERT and vector finds BERT papers without de-identification.
+  That only holds while few papers match BOTH terms well. De-identification
+  of clinical records is core clinical NLP and PubMed is where it lives.
+* **medical jargon** — BM25 returning zero IS a coverage gap in lay-language
+  health communication, which is PubMed-indexed.
+
+**Report, per query, before and after:** which arm's uniques hybrid adopted
+(`hybrid_from_bm25_only`, `hybrid_from_vector_only`), and whether hybrid's
+margin narrowed. **If hybrid stops clearly winning anywhere, say so plainly.**
+That is a Phase 4 nDCG finding arriving early and evidence on a parked
+question — not a demo problem to work around by picking friendlier queries.
+
+The ANIMATION code is corpus-independent (nothing references a paper id,
+query or corpus size; rows key on whatever `r.id` the API returns), so only
+the query SELECTION needs redoing.
 
 ## 7. Labeling draw — see post-pubmed-labeling-draw.md
 
