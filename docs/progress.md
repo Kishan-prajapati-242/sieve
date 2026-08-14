@@ -71,19 +71,38 @@ cross-run ratios in `results_speedups.json` are retired in place.
 | bm25 sql | 1.0 | 25.2 | 47.2 |
 | vector sql (ef=40) | 2.0 | 3.0 | 3.7 |
 | vector e2e | 8.6 | 15.0 | 21.7 |
-| hybrid sql (200/600) | 18.2 | [53.4, 84.7] | [161.7, 249.3] |
+| hybrid sql (200/600) | ~~18.2~~ WITHDRAWN | [53.4, 84.7] | [161.7, 249.3] |
 | hybrid e2e | 25.5 | [61.4, 100.0] | [172.4, 253.3] |
 | exact scan warm | 60.9 | 111.5 | [164.7, 251.2] |
 
-Paired speedup vs exact scan: **24.1x [23.3, 25.0]** retrieval-only and
-**7.1x [6.9, 7.3]** end-to-end at ef=40; **3.8x [3.6, 3.9]** and **2.9x
-[2.8, 3.0]** at the ef=600 hybrid default. Vector recall@200 at shipped
+Paired speedup vs exact scan, with 2026-08-14 re-runs beside them:
+
+| | published | re-run 08-14 | verdict |
+|---|---|---|---|
+| retrieval-only ef=40 | 24.1x [23.3, 25.0] | 23.0x [21.7, 24.3] | holds, CIs overlap |
+| retrieval-only ef=600 | 3.8x [3.6, 3.9] | 3.5x [3.4, 3.6] | holds at the edge |
+| e2e ef=600 | 2.9x [2.8, 3.0] | 2.9x [2.8, 3.0] | reproduces exactly |
+| e2e ef=40 | **7.1x [6.9, 7.3]** | **8.7x [8.4, 9.0]** | **CIs disjoint — see below** |
+
+The e2e ef=40 move is not a retrieval change. e2e adds the query-embed cost
+to BOTH arms, and a constant added to both arms of a ratio does not cancel —
+it pulls the ratio toward 1. Embed drifted 8.0 -> 6.1 ms between the runs,
+and (6.1+70.4)/(6.1+3.1) = 8.3 against (8.0+70.4)/(8.0+3.0) = 7.1. The
+arithmetic closes. **e2e ratios are a function of a component that is not
+the thing being compared;** the retrieval-only ratios are the robust ones. Vector recall@200 at shipped
 defaults: 0.9861 (se 0.0010).
 
-**Open, not smoothed:** hybrid sql p50 has drifted 13.6 → 15.8 → 15.3 →
-18.2 across four sessions. The last step happened while bm25 and vector
-both improved and every percentile became stable, so it is probably not
-environmental. Not isolated. The paired treatment needs extending to
+**RESOLVED 2026-08-14 — 18.2 is withdrawn.** The drift was 13.6 → 15.8 →
+15.3 → 18.2, and a clean re-run (api/web/worker stopped) produced per-run
+p50s of [18.9, 14.7, 14.3]. Max/min is 1.32, so the stability gate refuses a
+point estimate and there is no replacement figure. But two of three runs sit
+BELOW 18.2 and none reproduce it, so the standalone hybrid p50 now has
+evidence against it and none for it. It was never the paired ratios'
+baseline arm — those pair `exact` against `search_vector` at ef=600, not
+hybrid — so nothing downstream depends on it. Withdrawn rather than
+replaced; hybrid sql p50 is unpublished until a run passes the gate.
+
+**Still open:** the paired treatment needs extending to
 `search_hybrid()` before any hybrid before/after claim is published.
 
 

@@ -2405,3 +2405,80 @@ returns 202.
 psycopg placeholder. "~60% of latency" in the comment above the window
 column raised `incomplete placeholder: '%'` on every hybrid request. Caught
 by the test suite on the first run after the edit.
+
+## 2026-08-14 — 18.2 withdrawn; and e2e speedups move when embed moves
+
+**Symptom.** A clean latency re-run would not reproduce hybrid's published
+18.2 ms sql p50: per-run p50s [18.9, 14.7, 14.3].
+
+**How found.** Declining to publish a NEW number, then being asked why that
+only applies forward. 18.2 was already in progress.md and was the figure the
+hybrid drift note was built on.
+
+**Root cause of the withdrawal.** Nothing exotic — the earlier runs had
+`api` and `web` containers live. Re-running with them stopped moved two of
+three runs below 18.2. Max/min is 1.32 so the gate refuses a point estimate;
+there is no replacement. **Evidence against, none for, so it is withdrawn
+rather than restated.** Marked struck-through in place.
+
+**What it did NOT touch.** The paired ratios pair `exact` against
+`search_vector` at ef=600. The hybrid figure was never their baseline arm,
+so 3.8x and 24.1x never depended on it. Re-run to confirm:
+
+| | published | re-run | verdict |
+|---|---|---|---|
+| retrieval-only ef=40 | 24.1x [23.3, 25.0] | 23.0x [21.7, 24.3] | overlap |
+| retrieval-only ef=600 | 3.8x [3.6, 3.9] | 3.5x [3.4, 3.6] | edge overlap |
+| e2e ef=600 | 2.9x [2.8, 3.0] | 2.9x [2.8, 3.0] | exact |
+| e2e ef=40 | 7.1x [6.9, 7.3] | **8.7x [8.4, 9.0]** | **disjoint** |
+
+**The real finding is that last row.** Every ARM of this re-run was
+contaminated — per-run p50s were exact [70.4, 72.5, 109.1], ef600 [20.2,
+21.8, 35.5], all three levels failed the gate and reported null. The ratios
+survived anyway, because pairing cancels common-mode drift. That is pairing
+doing exactly its job and is the strongest evidence yet for DECISION-3d.
+
+But e2e ef=40 still moved, and not because retrieval changed. **e2e adds the
+query-embed cost to both arms, and a constant added to both arms of a ratio
+does not cancel — it pulls the ratio toward 1.** Embed drifted 8.0 -> 6.1 ms
+between runs:
+
+    published:  (8.0 + 70.4) / (8.0 + 3.0) = 7.13   (published 7.1)
+    re-run:     (6.1 + 70.4) / (6.1 + 3.1) = 8.32   (measured 8.7)
+
+The arithmetic closes. So an e2e speedup is partly a measurement of the
+encoder, which is not the thing being compared, and the effect is largest
+where the candidate arm is fastest (ef=40). **Retrieval-only ratios are the
+robust ones; e2e ratios must be quoted with the embed level they assume.**
+
+**Also.** `contention.clean` was `true` for a run whose third pass was 55%
+slower on every arm. The check counts foreign transactions against the
+Postgres server — it cannot see host-side CPU contention. It rules out
+another database user, not another process on the Mac.
+
+## 2026-08-14 — Third time a number described a state that did not exist
+
+The results header renders "20 shown of 202 fused candidates" about 84 ms
+after a mode toggle, while **three rows** are on screen; the remaining
+seventeen arrive over the next ~600 ms.
+
+**This is by construction, not by ordering.** The count comes from a scalar
+in the response and is rendered the moment the response lands. The rows are
+gated on animation state. Two different clocks drive the number and the
+thing it counts, so no amount of reordering fixes it — the count has to be
+derived from the same state that drives the rows. The shape generalizes to
+anywhere a count leads its content.
+
+**Third instance of this pattern in the project**, and the first in the
+product rather than the measurement layer:
+
+1. **Ground truth** described a corpus that no longer existed — 8.2% of its
+   ids had been deleted by dedup.
+2. **The clock** reported 3 h 55 m for a 10-minute cascade, describing host
+   wall time during a period the VM was suspended.
+3. **The header** reports a result count for a list that is not yet rendered.
+
+All three are the same error: a number sampled from one source, displayed
+against another, with nothing enforcing that they refer to the same moment.
+The first two were caught by arithmetic that did not close. This one was
+caught by looking at frames.
