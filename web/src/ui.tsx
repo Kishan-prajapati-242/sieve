@@ -18,6 +18,55 @@ export function Container({ className = "", children }: { className?: string; ch
 
 /** A page section with the hairline rule that separates every band.
  *  Structure on near-black comes from 1px lines, not from shadows. */
+/** A heading whose words rise in sequence. Used once per page band, never
+ *  twice in the same viewport — the effect works because it is rare. */
+export function RevealWords({
+  text,
+  className = "",
+  accent,
+}: {
+  text: string;
+  className?: string;
+  accent?: string;
+}) {
+  const reduce = useReducedMotion();
+  const words = text.split(" ");
+  if (reduce) {
+    return (
+      <span className={className}>
+        {text} {accent && <span className="text-fusion">{accent}</span>}
+      </span>
+    );
+  }
+  return (
+    <span className={className}>
+      {words.map((w, i) => (
+        <motion.span
+          key={i}
+          className="inline-block"
+          initial={{ opacity: 0, y: "0.35em" }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.55, delay: i * 0.045, ease: [0.2, 0.8, 0.2, 1] }}
+        >
+          {w}&nbsp;
+        </motion.span>
+      ))}
+      {accent && (
+        <motion.span
+          className="text-fusion inline-block"
+          initial={{ opacity: 0, y: "0.35em" }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.55, delay: words.length * 0.045, ease: [0.2, 0.8, 0.2, 1] }}
+        >
+          {accent}
+        </motion.span>
+      )}
+    </span>
+  );
+}
+
 export function Section({
   className = "",
   children,
@@ -118,7 +167,12 @@ export function Card({
     <div
       className={`hairline rounded-card border bg-ink-880 ${
         interactive
-          ? "transition-colors duration-200 ease-[var(--ease-out-soft)] hover:bg-ink-850 hover:hairline-strong"
+          ? // Three things move together on hover — surface, border, and a
+            // 1px lift. Any one alone reads as a bug; all three read as the
+            // card responding. Kishan's calibration: a good amount of horn.
+            "transition-[background-color,border-color,transform,box-shadow] duration-200 " +
+            "ease-[var(--ease-out-soft)] hover:-translate-y-px hover:bg-ink-850 " +
+            "hover:hairline-strong hover:shadow-[0_8px_28px_-12px_rgba(0,0,0,0.7)]"
           : ""
       } ${className}`}
     >

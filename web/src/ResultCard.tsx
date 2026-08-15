@@ -51,9 +51,18 @@ export const ResultCard = forwardRef<
       animate="animate"
       exit="exit"
       transition={{ layout: { duration: DUR.move, ease: EASE } }}
-      className="group relative px-3 py-3.5
-                 transition-colors duration-150 hover:bg-white/[0.025]"
+      className="group relative px-3 py-3.5 transition-colors duration-200
+                 ease-[var(--ease-out-soft)] hover:bg-white/[0.03]"
     >
+      {/* A fusion-colored rail that grows from the row's centre on hover.
+          Scale rather than width so it is a compositor-only animation and
+          cannot cause layout work on a 20-row list. */}
+      <span
+        aria-hidden="true"
+        className="absolute left-0 top-1/2 h-0 w-[2px] -translate-y-1/2 rounded-full bg-fusion
+                   opacity-0 transition-all duration-300 ease-[var(--ease-out-soft)]
+                   group-hover:h-[70%] group-hover:opacity-100"
+      />
       <div className="flex items-start gap-3">
         <span className="w-6 shrink-0 pt-0.5 text-right text-xs tabular-nums text-ink-500">
           {result.rank}

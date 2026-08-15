@@ -63,7 +63,7 @@ export function CollectionPage() {
         </div>
         <a
           href={exportUrl(cid, filter === "all" ? "include" : filter)}
-          className="rounded-lg border hairline border px-3 py-2 text-sm font-medium
+          className="rounded-lg hairline border px-3 py-2 text-sm font-medium
                      text-ink-200 transition-colors hover:border-slate-400 hover:bg-ink-850"
         >
           Export .bib
@@ -80,7 +80,7 @@ export function CollectionPage() {
             className={`rounded-lg px-3 py-1.5 text-sm capitalize transition-colors ${
               filter === f
                 ? "bg-ink-50 text-ink-950"
-                : "border hairline border text-ink-200 hover:bg-ink-850"
+                : "hairline border text-ink-200 hover:bg-ink-850"
             }`}
           >
             {f}
@@ -105,10 +105,10 @@ export function CollectionPage() {
               animate="animate"
               exit="exit"
               transition={{ layout: { duration: DUR.move, ease: EASE } }}
-              className="rounded-xl border hairline border bg-ink-880 p-4 
-                         transition-[background-color,border-color,box-,transform]
-                         duration-200 hover:-translate-y-0.5 hover:hairline border
-                         hover:bg-ink-850 hover:-md"
+              className="rounded-xl hairline border bg-ink-880 p-4 
+                         transition-[background-color,border-color,box-shadow,transform]
+                         duration-200 hover:-translate-y-0.5 hover:hairline-strong
+                         hover:bg-ink-850 hover:shadow-[0_8px_28px_-12px_rgba(0,0,0,0.7)]"
             >
               <h2 className="font-semibold text-ink-50">{p.title}</h2>
               <p className="text-sm text-ink-400">

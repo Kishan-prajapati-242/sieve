@@ -86,6 +86,12 @@ describe("slow search feedback", () => {
             headers: { "content-type": "application/json" },
           });
         }
+        if (String(url).includes("/api/auth/config")) {
+          return new Response(JSON.stringify({ google: false, email_transport: "console" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
         if (String(url).includes("/api/auth/me")) {
           return new Response(JSON.stringify({ id: 1, email: "r@e.com" }), {
             status: 200,

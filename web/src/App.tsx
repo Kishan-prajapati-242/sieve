@@ -10,6 +10,7 @@
 import { AnimatePresence, motion, useReducedMotion, useScroll, useTransform } from "motion/react";
 import { BrowserRouter, Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { AuthPage, RequireAuth } from "./AuthPage";
+import { VerifyBanner } from "./VerifyBanner";
 import { useAuth } from "./auth";
 import { CollectionPage } from "./CollectionPage";
 import { CollectionsPage } from "./CollectionsPage";
@@ -97,6 +98,7 @@ function Shell() {
   return (
     <div className="flex min-h-screen flex-col">
       <Nav />
+      <VerifyBanner />
       <main className="flex-1">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div

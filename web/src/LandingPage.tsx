@@ -15,6 +15,7 @@ import {
   CountUp,
   Eyebrow,
   Reveal,
+  RevealWords,
   Section,
   Stat,
   useCorpusSize,
@@ -79,9 +80,9 @@ export function LandingPage() {
 
           <Reveal delay={0.06}>
             <h1 className="mt-7 max-w-3xl text-h1 font-semibold text-ink-50 sm:text-display">
-              Two rankers disagree.
+              <RevealWords text="Two rankers disagree." />
               <br />
-              <span className="text-fusion">Sieve settles it.</span>
+              <RevealWords text="Sieve" accent="settles it." />
             </h1>
           </Reveal>
 
@@ -144,7 +145,7 @@ export function LandingPage() {
           <Reveal>
             <Eyebrow>The mechanism</Eyebrow>
             <h2 className="mt-6 max-w-2xl text-h1 font-semibold text-ink-50">
-              Neither arm is enough on its own.
+              <RevealWords text="Neither arm is enough on its own." />
             </h2>
           </Reveal>
 
@@ -207,7 +208,7 @@ export function LandingPage() {
           <Reveal>
             <Eyebrow>What runs behind it</Eyebrow>
             <h2 className="mt-6 max-w-2xl text-h1 font-semibold text-ink-50">
-              The retrieval is the easy half.
+              <RevealWords text="The retrieval is the easy half." />
             </h2>
             <p className="mt-5 max-w-xl leading-relaxed text-ink-400">
               Getting <span className="font-mono text-ink-200">{corpus.text}</span> clean,
@@ -219,8 +220,16 @@ export function LandingPage() {
           <div className="mt-14 grid gap-px overflow-hidden rounded-card sm:grid-cols-2 lg:grid-cols-3">
             {PIPELINE.map((s, i) => (
               <Reveal key={s.k} delay={i * 0.05} className="h-full">
-                <div className="hairline h-full border bg-ink-880 p-7 transition-colors duration-200 hover:bg-ink-850">
-                  <span className="font-mono text-eyebrow text-ink-500">{s.k}</span>
+                <div
+                  className="hairline group h-full border bg-ink-880 p-7 transition-colors
+                             duration-200 ease-[var(--ease-out-soft)] hover:bg-ink-850"
+                >
+                  <span
+                    className="font-mono text-eyebrow text-ink-500 transition-colors
+                               duration-200 group-hover:text-keyword-400"
+                  >
+                    {s.k}
+                  </span>
                   <h3 className="mt-4 text-h3 font-medium text-ink-50">{s.t}</h3>
                   <p className="mt-3 text-sm leading-relaxed text-ink-400">{s.d}</p>
                 </div>

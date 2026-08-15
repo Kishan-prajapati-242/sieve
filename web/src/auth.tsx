@@ -11,6 +11,12 @@ import { createContext, useContext, type ReactNode } from "react";
 export interface User {
   id: number;
   email: string;
+  email_verified: boolean;
+}
+
+export interface AuthConfig {
+  google: boolean;
+  email_transport: string;
 }
 
 async function fetchMe(): Promise<User | null> {
@@ -39,7 +45,10 @@ async function post(path: string, body?: unknown): Promise<Response> {
 
 interface AuthValue {
   user: User | null;
+  config: AuthConfig | null;
   isLoading: boolean;
+  verify: (code: string) => Promise<void>;
+  resend: () => Promise<void>;
   signup: (email: string, password: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -54,6 +63,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryFn: fetchMe,
     retry: false,
     staleTime: 60_000,
+  });
+  // Which sign-in methods this deployment supports. Asked rather than
+  // assumed: a clone without Google credentials must HIDE the button, not
+  // show one that fails on click.
+  const { data: config } = useQuery({
+    queryKey: ["auth-config"],
+    queryFn: async (): Promise<AuthConfig> => {
+      const r = await fetch("/api/auth/config", { credentials: "include" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    },
+    staleTime: Infinity,
+    retry: false,
   });
 
   // Every auth transition clears the whole cache, not just ["me"]. Collections
@@ -79,11 +101,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
 
+  const verifyM = useMutation({
+    mutationFn: (code: string) => post("/api/auth/verify", { code }),
+    onSuccess: reset,
+  });
+
   return (
     <AuthContext.Provider
       value={{
         user: data ?? null,
+        config: config ?? null,
         isLoading,
+        verify: async (code) => void (await verifyM.mutateAsync(code)),
+        resend: async () => void (await post("/api/auth/verify/resend")),
         signup: async (email, password) => void (await signupM.mutateAsync({ email, password })),
         login: async (email, password) => void (await loginM.mutateAsync({ email, password })),
         logout: async () => void (await logoutM.mutateAsync()),

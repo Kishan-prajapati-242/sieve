@@ -33,12 +33,23 @@ const COPY = {
 
 export function AuthPage({ mode }: { mode: "login" | "signup" }) {
   const copy = COPY[mode];
-  const { user, login, signup, isLoading } = useAuth();
+  const { user, login, signup, isLoading, config } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  // The OAuth callback cannot render an error, so it redirects here with a
+  // reason. Mapped to plain language rather than shown raw.
+  const oauthError = new URLSearchParams(location.search).get("error");
+  const [error, setError] = useState<string | null>(
+    oauthError === "state"
+      ? "That sign-in link expired or did not match. Please try again."
+      : oauthError === "denied"
+        ? "Google sign-in was cancelled."
+        : oauthError === "exchange"
+          ? "Google sign-in failed. Please try again."
+          : null,
+  );
   const [busy, setBusy] = useState(false);
 
   // Where the user was headed before being bounced here.
@@ -72,7 +83,28 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
           <h1 className="text-h2 font-semibold text-ink-50">{copy.title}</h1>
           <p className="mt-2 text-sm text-ink-400">{copy.sub}</p>
 
-          <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-4">
+          {config?.google && (
+            <>
+              <a
+                href="/api/auth/google/start"
+                className="hairline mt-8 flex h-11 items-center justify-center gap-3 rounded-lg
+                           border bg-ink-850/60 text-sm font-medium text-ink-100
+                           transition-all duration-150 hover:bg-ink-800 active:scale-[0.98]"
+              >
+                <GoogleMark />
+                Continue with Google
+              </a>
+              <div className="my-6 flex items-center gap-4">
+                <span className="hairline h-px flex-1 border-t" />
+                <span className="font-mono text-[10px] uppercase tracking-widest text-ink-600">
+                  or
+                </span>
+                <span className="hairline h-px flex-1 border-t" />
+              </div>
+            </>
+          )}
+
+          <form onSubmit={onSubmit} className={`flex flex-col gap-4 ${config?.google ? "" : "mt-8"}`}>
             <label className="flex flex-col gap-2">
               <span className="font-mono text-eyebrow uppercase text-ink-400">Email</span>
               <input
@@ -151,3 +183,25 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   return <>{children}</>;
 }
+
+
+function GoogleMark() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-4" aria-hidden="true">
+      <path
+        fill="#4285F4"
+        d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5a5.6 5.6 0 0 1-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.8Z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.9-3c-1.1.7-2.4 1.2-4 1.2-3.1 0-5.7-2.1-6.6-4.9H1.4v3.1A12 12 0 0 0 12 24Z"
+      />
+      <path fill="#FBBC05" d="M5.4 14.4a7.2 7.2 0 0 1 0-4.6V6.7H1.4a12 12 0 0 0 0 10.8l4-3.1Z" />
+      <path
+        fill="#EA4335"
+        d="M12 4.8c1.8 0 3.3.6 4.5 1.8l3.4-3.4A12 12 0 0 0 1.4 6.7l4 3.1C6.3 6.9 8.9 4.8 12 4.8Z"
+      />
+    </svg>
+  );
+}
+

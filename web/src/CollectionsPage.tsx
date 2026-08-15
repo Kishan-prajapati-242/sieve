@@ -38,7 +38,7 @@ export function CollectionsPage() {
     <div className="space-y-5">
       <form
         onSubmit={onSubmit}
-        className="flex flex-wrap items-end gap-2 rounded-xl border hairline border bg-ink-880 p-4"
+        className="flex flex-wrap items-end gap-2 rounded-xl hairline border bg-ink-880 p-4"
       >
         <label className="text-sm">
           <span className="block text-ink-300">Name</span>
@@ -47,7 +47,7 @@ export function CollectionsPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Clinical text simplification"
-            className="mt-1 w-64 rounded-lg border hairline border px-3 py-2"
+            className="mt-1 w-64 rounded-lg hairline border bg-ink-880 px-3 py-2 text-ink-50 focus:border-semantic-400 focus:outline-none"
           />
         </label>
         <label className="flex-1 text-sm">
@@ -57,7 +57,7 @@ export function CollectionsPage() {
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="Which methods simplify discharge summaries?"
-            className="mt-1 w-full rounded-lg border hairline border px-3 py-2"
+            className="mt-1 w-full rounded-lg hairline border bg-ink-880 px-3 py-2 text-ink-50 focus:border-semantic-400 focus:outline-none"
           />
         </label>
         <button
@@ -100,10 +100,11 @@ export function CollectionsPage() {
               animate="animate"
               exit="exit"
               transition={{ layout: { duration: DUR.move, ease: EASE } }}
-              className="rounded-xl border hairline border bg-ink-880 p-4 
-                         transition-[background-color,border-color,box-,transform]
-                         duration-200 hover:-translate-y-0.5 hover:hairline border
-                         hover:bg-ink-850 hover:-md"
+              className="hairline rounded-xl border bg-ink-880 p-4
+                         transition-[background-color,border-color,box-shadow,transform]
+                         duration-200 ease-[var(--ease-out-soft)] hover:-translate-y-px
+                         hover:hairline-strong hover:bg-ink-850
+                         hover:shadow-[0_8px_28px_-12px_rgba(0,0,0,0.7)]"
             >
               <Link to={`/collections/${c.id}`} className="block">
                 <h2 className="font-semibold text-ink-50">{c.name}</h2>
