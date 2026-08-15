@@ -1,5 +1,46 @@
 # Progress
 
+### 2026-08-15 — Sieve became a product, not a results list
+
+**The brief changed.** Nine turns had gone into one toggle's choreography
+while the app had no color system, no type scale, no landing page, and no
+users — collections belonged to nobody. Kishan's reference was composio.dev.
+Captured it and linear/resend/clerk full-page, read them, and built:
+
+**Visual identity** (`web/src/index.css`, `ui.tsx`). Near-black ground,
+hairline grids rather than shadows, monospace ALL-CAPS eyebrows, tight
+display type. The identity is the mechanism: amber keyword + violet semantic
+were already the arm colors, so the brand is their fusion and the ground is
+dark specifically so those two stay the only saturated things on screen. The
+mono/sans split is a rule — if it is a measurement, it is monospace.
+
+**Landing page** (`LandingPage.tsx`, `FusionDiagram.tsx`). Hero is a diagram
+of the operation: two ranked columns converging, top rows two-armed, tail
+single-armed. Every figure on the page is measured and carries its
+provenance; hybrid p50 is absent because its gate refused a point estimate.
+
+**Accounts** (migration 0014, `api/auth/`). argon2id, server-side sessions,
+HttpOnly+SameSite cookie, collections scoped by a WHERE predicate with 404
+rather than 403 on a miss. 12 tests pin the security properties, including
+one user being unable to read, list, screen, unscreen or export another's
+collection, and legacy ownerless rows being invisible.
+
+**Shell** — landing at `/`, search at `/search`, collections behind
+RequireAuth, segmented mode control with a sliding layoutId pill.
+
+254 tests green (214 backend, 40 frontend).
+
+**Deferred from the old handover, still valid:** the four capture re-runs
+(Luxe, Kokonut, Aceternity card-hover, the card-hover category), the
+`AnimatePresence` deferral probe, and the "seven academic products" universal
+negative — all in `docs/plans/next-session-handover.md`. The choreography
+hole at positions 4-5 is unfixed and now much less visible against a dark
+list.
+
+**Not started:** the PubMed pull. Corpus stays at 183,167.
+
+---
+
 Phase: 3 IN PROGRESS. Dedup work is COMPLETE and MEASURED. The UI is built
 and the four visual steers are landed; the functional list and the PubMed
 pull are what remain.
