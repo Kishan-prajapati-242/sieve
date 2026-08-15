@@ -6,9 +6,11 @@
 // The app does not need a component library, it needs the six shapes it
 // actually repeats. Adding a seventh should require noticing it three times
 // first.
-import { motion, useReducedMotion } from "motion/react";
-import type { ComponentProps, ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { animate, motion, useInView, useReducedMotion } from "motion/react";
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { fetchStats } from "./api";
 
 export function Container({ className = "", children }: { className?: string; children: ReactNode }) {
   return <div className={`mx-auto w-full max-w-6xl px-6 ${className}`}>{children}</div>;
@@ -173,4 +175,48 @@ export function Reveal({
       {children}
     </motion.div>
   );
+}
+
+
+/** The live corpus size, from the API rather than typed in.
+ *
+ *  Renders an em-dash while loading or on failure: a placeholder that looks
+ *  like a number is worse than one that obviously is not.
+ */
+export function useCorpusSize(): { value: number | null; text: string } {
+  const { data } = useQuery({
+    queryKey: ["stats"],
+    queryFn: fetchStats,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  // Guard on the FIELD, not on the response. A 200 with an unexpected shape
+  // is the case that actually happens (a proxy, a stale deploy, a stubbed
+  // fetch in a test), and it should render the em-dash rather than throw
+  // inside a hero.
+  const n = typeof data?.papers === "number" ? data.papers : null;
+  return { value: n, text: n === null ? "—" : n.toLocaleString() };
+}
+
+/** Counts up to a number when it scrolls into view.
+ *
+ *  The one effect here that draws attention to itself, so it is used only on
+ *  the measured stats and only once. Reduced motion renders the final value
+ *  immediately rather than a fast version of the animation.
+ */
+export function CountUp({ to, format }: { to: number; format?: (n: number) => string }) {
+  const reduce = useReducedMotion();
+  const ref = useRef<HTMLSpanElement>(null);
+  const inView = useInView(ref, { once: true, margin: "-60px" });
+  const [n, setN] = useState(reduce ? to : 0);
+  useEffect(() => {
+    if (reduce || !inView) return;
+    const controls = animate(0, to, {
+      duration: 1.1,
+      ease: [0.2, 0.8, 0.2, 1],
+      onUpdate: (v) => setN(Math.round(v)),
+    });
+    return () => controls.stop();
+  }, [inView, to, reduce]);
+  return <span ref={ref}>{(format ?? ((x: number) => x.toLocaleString()))(n)}</span>;
 }

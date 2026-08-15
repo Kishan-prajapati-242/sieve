@@ -43,7 +43,12 @@ function stubSearch(response: Partial<SearchResponse>) {
   // answers both routes and the assertions below filter to /api/search
   // rather than counting every call.
   const spy = vi.fn(async (url: string, _init?: RequestInit) =>
-    String(url).includes("/api/auth/me")
+    String(url).includes("/api/stats")
+      ? new Response(JSON.stringify({ papers: 183167, retracted_papers: 0, source_records: 0 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      : String(url).includes("/api/auth/me")
       ? new Response(JSON.stringify({ id: 1, email: "reviewer@example.com" }), {
           status: 200,
           headers: { "content-type": "application/json" },

@@ -9,11 +9,15 @@ being served over plain HTTP locally.
 from __future__ import annotations
 
 import os
+import secrets
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
+from api.auth import codes, google
+from api.auth.mailer import send_code, transport
 from api.auth.service import (
     SESSION_COOKIE,
     SESSION_TTL,
@@ -22,7 +26,9 @@ from api.auth.service import (
     create_session,
     create_user,
     destroy_session,
+    link_or_create_google_user,
     user_for_session,
+    user_for_session_by_id,
 )
 from api.db.pool import get_pool
 
@@ -40,6 +46,22 @@ class Credentials(BaseModel):
 class UserOut(BaseModel):
     id: int
     email: str
+    email_verified: bool = False
+
+
+class VerifyBody(BaseModel):
+    code: str = Field(min_length=4, max_length=12)
+
+
+class AuthConfig(BaseModel):
+    """What sign-in methods this deployment actually supports.
+
+    The frontend asks rather than assuming: a clone without Google
+    credentials must hide the button, not show one that 500s.
+    """
+
+    google: bool
+    email_transport: str
 
 
 def _set_cookie(response: Response, token: str) -> None:
@@ -89,7 +111,11 @@ def signup(body: Credentials, response: Response) -> UserOut:
             user_id = create_user(conn, body.email, body.password)
         except AuthError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        code = codes.issue(conn, user_id)
         token = create_session(conn, user_id)
+    # Sent after the transaction so a delivery failure cannot roll back a
+    # created account — the user can always request another code.
+    send_code(body.email.strip().lower(), code)
     _set_cookie(response, token)
     return UserOut(id=user_id, email=body.email.strip().lower())
 
@@ -120,3 +146,90 @@ def logout(
 @router.get("/me")
 def me(user: CurrentUser) -> UserOut:
     return UserOut(**user)
+
+
+@router.get("/config")
+def config() -> AuthConfig:
+    return AuthConfig(google=google.configured(), email_transport=transport())
+
+
+@router.post("/verify")
+def verify_email(body: VerifyBody, user: CurrentUser) -> UserOut:
+    with get_pool().connection() as conn:
+        try:
+            codes.verify(conn, user["id"], body.code.strip())
+        except codes.CodeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        fresh = user_for_session_by_id(conn, user["id"])
+    return UserOut(**fresh)
+
+
+@router.post("/verify/resend", status_code=202)
+def resend_code(user: CurrentUser) -> dict[str, str]:
+    with get_pool().connection() as conn:
+        if user.get("email_verified"):
+            raise HTTPException(status_code=400, detail="Already verified")
+        code = codes.issue(conn, user["id"])
+    send_code(user["email"], code)
+    return {"status": "sent", "transport": transport()}
+
+
+# ---------------------------------------------------------------- Google ---
+
+
+@router.get("/google/start")
+def google_start() -> RedirectResponse:
+    if not google.configured():
+        raise HTTPException(status_code=404, detail="Google sign-in is not configured")
+    state = google.new_state()
+    resp = RedirectResponse(google.authorize_url(state), status_code=307)
+    # Short-lived, HttpOnly: this is the CSRF token for the callback and the
+    # browser must not be able to read or script it.
+    resp.set_cookie(
+        google.STATE_COOKIE,
+        state,
+        max_age=600,
+        httponly=True,
+        samesite="lax",
+        secure=COOKIE_SECURE,
+        path="/",
+    )
+    return resp
+
+
+@router.get("/google/callback")
+async def google_callback(request: Request) -> RedirectResponse:
+    if not google.configured():
+        raise HTTPException(status_code=404, detail="Google sign-in is not configured")
+
+    expected = request.cookies.get(google.STATE_COOKIE)
+    state = request.query_params.get("state")
+    code = request.query_params.get("code")
+    # Both must be present AND equal. A missing cookie is a failure, not a
+    # reason to skip the check — that shortcut is the whole vulnerability.
+    if not expected or not state or not secrets.compare_digest(expected, state):
+        return RedirectResponse(f"{google.APP_ORIGIN}/login?error=state", status_code=307)
+    if not code:
+        return RedirectResponse(f"{google.APP_ORIGIN}/login?error=denied", status_code=307)
+
+    try:
+        identity = await google.exchange(code)
+    except Exception:
+        return RedirectResponse(f"{google.APP_ORIGIN}/login?error=exchange", status_code=307)
+
+    with get_pool().connection() as conn:
+        user_id = link_or_create_google_user(conn, identity["sub"], identity["email"])
+        token = create_session(conn, user_id)
+
+    resp = RedirectResponse(f"{google.APP_ORIGIN}/collections", status_code=307)
+    resp.set_cookie(
+        SESSION_COOKIE,
+        token,
+        max_age=int(SESSION_TTL.total_seconds()),
+        httponly=True,
+        samesite="lax",
+        secure=COOKIE_SECURE,
+        path="/",
+    )
+    resp.delete_cookie(google.STATE_COOKIE, path="/")
+    return resp

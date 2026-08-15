@@ -174,3 +174,123 @@ class TestCollectionIsolation:
             conn.execute("INSERT INTO collections (name) VALUES ('legacy')")
         signup(client, "ada@example.com")
         assert client.get("/api/collections").json() == []
+
+
+class TestEmailVerification:
+    """OTP is a real round trip, so the properties that make it worth having
+    are the ones under attack: guessability, expiry, and attempt limits."""
+
+    def _code(self, dsn: str) -> str:
+        # The plaintext is never stored, so tests read it the same way the
+        # console transport emits it — by issuing a known one.
+        with psycopg.connect(dsn, autocommit=True) as conn:
+            from api.auth import codes
+
+            uid = conn.execute("SELECT id FROM users ORDER BY id DESC LIMIT 1").fetchone()
+            assert uid is not None
+            return codes.issue(conn, int(uid[0]))
+
+    def test_signup_starts_unverified(self, client: TestClient) -> None:
+        resp = signup(client, "ada@example.com")
+        assert resp.json()["email_verified"] is False
+
+    def test_the_code_is_not_stored_in_plaintext(
+        self, client: TestClient, scratch_db: str
+    ) -> None:
+        signup(client, "ada@example.com")
+        code = self._code(scratch_db)
+        with psycopg.connect(scratch_db) as conn:
+            stored = conn.execute(
+                "SELECT code_hash FROM email_codes WHERE consumed_at IS NULL"
+            ).fetchone()
+        assert stored is not None
+        assert code not in stored[0]
+        assert len(stored[0]) == 64  # sha256 hex
+
+    def test_correct_code_verifies(self, client: TestClient, scratch_db: str) -> None:
+        signup(client, "ada@example.com")
+        code = self._code(scratch_db)
+        resp = client.post("/api/auth/verify", json={"code": code})
+        assert resp.status_code == 200
+        assert resp.json()["email_verified"] is True
+        assert client.get("/api/auth/me").json()["email_verified"] is True
+
+    def test_wrong_code_is_refused_and_burns_an_attempt(
+        self, client: TestClient, scratch_db: str
+    ) -> None:
+        signup(client, "ada@example.com")
+        self._code(scratch_db)
+        assert client.post("/api/auth/verify", json={"code": "000000"}).status_code == 400
+        with psycopg.connect(scratch_db) as conn:
+            row = conn.execute(
+                "SELECT attempts FROM email_codes WHERE consumed_at IS NULL"
+            ).fetchone()
+        assert row is not None and row[0] == 1
+
+    def test_attempts_are_capped_so_a_six_digit_code_cannot_be_enumerated(
+        self, client: TestClient, scratch_db: str
+    ) -> None:
+        signup(client, "ada@example.com")
+        code = self._code(scratch_db)
+        for _ in range(6):
+            client.post("/api/auth/verify", json={"code": "000000"})
+        # Even the RIGHT code fails now: the exhausted code is burned rather
+        # than left guessable, so waiting does not restore it.
+        assert client.post("/api/auth/verify", json={"code": code}).status_code == 400
+        assert client.get("/api/auth/me").json()["email_verified"] is False
+
+    def test_expired_code_is_refused(self, client: TestClient, scratch_db: str) -> None:
+        signup(client, "ada@example.com")
+        code = self._code(scratch_db)
+        with psycopg.connect(scratch_db, autocommit=True) as conn:
+            conn.execute("UPDATE email_codes SET expires_at = now() - interval '1 second'")
+        assert client.post("/api/auth/verify", json={"code": code}).status_code == 400
+
+    def test_resend_supersedes_the_previous_code(
+        self, client: TestClient, scratch_db: str
+    ) -> None:
+        signup(client, "ada@example.com")
+        first = self._code(scratch_db)
+        client.post("/api/auth/verify/resend")
+        # The old code must die, or "resend" would double an attacker's
+        # guessing surface instead of resetting it.
+        assert client.post("/api/auth/verify", json={"code": first}).status_code == 400
+
+
+class TestGoogleLinking:
+    """The federated-takeover boundary, tested without touching Google."""
+
+    def test_google_never_links_onto_a_password_account(
+        self, client: TestClient, scratch_db: str
+    ) -> None:
+        from api.auth.service import AuthError, link_or_create_google_user
+
+        signup(client, "ada@example.com")  # a real password account
+        with psycopg.connect(scratch_db, autocommit=True) as conn, pytest.raises(AuthError):
+            link_or_create_google_user(conn, "google-sub-1", "ada@example.com")
+
+    def test_google_identity_is_keyed_on_subject_not_email(self, scratch_db: str) -> None:
+        from api.auth.service import link_or_create_google_user
+
+        migrate(scratch_db)
+        with psycopg.connect(scratch_db, autocommit=True) as conn:
+            uid = link_or_create_google_user(conn, "sub-abc", "grace@example.com")
+            # Same person, address changed at Google: same account.
+            assert link_or_create_google_user(conn, "sub-abc", "grace2@example.com") == uid
+            # A different Google subject presenting the OLD address is the
+            # recycled-address case. It must NOT resolve to the first account:
+            # matching on email there is exactly how takeover happens. It also
+            # cannot silently create a second account, because the address is
+            # unique — so the only safe answer is an explicit refusal.
+            from api.auth.service import AuthError
+
+            with pytest.raises(AuthError, match="different Google account"):
+                link_or_create_google_user(conn, "sub-xyz", "grace@example.com")
+
+    def test_google_accounts_start_verified(self, scratch_db: str) -> None:
+        from api.auth.service import link_or_create_google_user, user_for_session_by_id
+
+        migrate(scratch_db)
+        with psycopg.connect(scratch_db, autocommit=True) as conn:
+            uid = link_or_create_google_user(conn, "sub-1", "who@example.com")
+            assert user_for_session_by_id(conn, uid)["email_verified"] is True

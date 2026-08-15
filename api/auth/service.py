@@ -121,13 +121,15 @@ def user_for_session(conn: psycopg.Connection, token: str | None) -> dict[str, A
         return None
     row = conn.execute(
         """
-        SELECT u.id, u.email
+        SELECT u.id, u.email, u.email_verified_at IS NOT NULL
         FROM sessions s JOIN users u ON u.id = s.user_id
         WHERE s.token = %s AND s.expires_at > now()
         """,
         (token,),
     ).fetchone()
-    return {"id": int(row[0]), "email": row[1]} if row else None
+    if row is None:
+        return None
+    return {"id": int(row[0]), "email": row[1], "email_verified": bool(row[2])}
 
 
 def destroy_session(conn: psycopg.Connection, token: str | None) -> None:
@@ -139,3 +141,85 @@ def purge_expired(conn: psycopg.Connection) -> int:
     """Housekeeping. Expired rows are already unusable — this reclaims space."""
     cur = conn.execute("DELETE FROM sessions WHERE expires_at <= now()")
     return cur.rowcount
+
+
+def user_for_session_by_id(conn: psycopg.Connection, user_id: int) -> dict[str, Any]:
+    row = conn.execute(
+        "SELECT id, email, email_verified_at IS NOT NULL FROM users WHERE id = %s", (user_id,)
+    ).fetchone()
+    assert row is not None
+    return {"id": int(row[0]), "email": row[1], "email_verified": bool(row[2])}
+
+
+def link_or_create_google_user(conn: psycopg.Connection, subject: str, email: str) -> int:
+    """Resolve a Google identity to a local user id.
+
+    Three cases, in order, and the order is the security decision:
+
+      1. this `sub` is already linked  -> that user. The only stable key.
+      2. an account exists with this email AND has no password credential
+         -> link it. That account can only have come from a previous Google
+         sign-in whose link was lost, so no password is being bypassed.
+      3. otherwise -> create a fresh account.
+
+    Case 2 deliberately refuses to link when the local account HAS a password.
+    Auto-linking there would let anyone who can obtain a Google token for an
+    address take over a password account registered to it, which is the
+    classic federated-takeover bug. Those users must sign in with their
+    password and link deliberately.
+
+    Google has already verified the address, so the account is created
+    verified — sending our own code to an address Google just confirmed would
+    be theatre.
+    """
+    row = conn.execute(
+        "SELECT user_id FROM oauth_identities WHERE provider = 'google' AND subject = %s",
+        (subject,),
+    ).fetchone()
+    if row is not None:
+        return int(row[0])
+
+    existing = conn.execute(
+        """
+        SELECT u.id, u.password_hash, EXISTS (
+            SELECT 1 FROM oauth_identities o WHERE o.user_id = u.id
+        )
+        FROM users u WHERE lower(u.email) = lower(%s)
+        """,
+        (email,),
+    ).fetchone()
+    # The `NOT already-linked` clause is load-bearing and was missing: without
+    # it, a passwordless account already tied to Google subject A was matched
+    # by email and handed to subject B — precisely the recycled-address
+    # takeover this function claims to prevent. Caught by a test 2026-08-15.
+    if existing is not None and existing[1] is None and not existing[2]:
+        user_id = int(existing[0])
+    elif existing is not None and existing[1] is not None:
+        # A password account owns this address. Do not link silently.
+        raise AuthError("An account with that email already exists. Sign in with your password.")
+    elif existing is not None:
+        # A passwordless account holds this address but is linked to a
+        # DIFFERENT Google subject — the recycled-address case. Linking would
+        # hand one person another's collections; creating would collide on the
+        # unique email index. Refuse and say so, rather than guess.
+        raise AuthError(
+            "That email is already linked to a different Google account. "
+            "Sign in with the original account, or contact support."
+        )
+    else:
+        # Either no account for this address, or one that belongs to a
+        # DIFFERENT Google subject. Both mean: this is a new person.
+        created = conn.execute(
+            "INSERT INTO users (email, password_hash, email_verified_at)"
+            " VALUES (%s, NULL, now()) RETURNING id",
+            (normalize_email(email),),
+        ).fetchone()
+        assert created is not None
+        user_id = int(created[0])
+
+    conn.execute(
+        "INSERT INTO oauth_identities (provider, subject, user_id) VALUES ('google', %s, %s)"
+        " ON CONFLICT DO NOTHING",
+        (subject, user_id),
+    )
+    return user_id

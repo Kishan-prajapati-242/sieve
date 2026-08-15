@@ -181,3 +181,23 @@ export async function unscreen(collectionId: number, paperId: number): Promise<v
 export function exportUrl(collectionId: number, decision: Decision = "include"): string {
   return `/api/collections/${collectionId}/export.bib?decision=${decision}`;
 }
+
+
+export interface CorpusStats {
+  papers: number;
+  retracted_papers: number;
+  source_records: number;
+}
+
+/** The live corpus size.
+ *
+ *  Typed into the hero, "183,167" becomes wrong the moment the PubMed pull
+ *  lands and takes it to ~200,000 — a number in a headline describing a
+ *  corpus that no longer exists is the same defect this project has spent
+ *  weeks chasing, on its most visible surface. So the page asks the API.
+ */
+export async function fetchStats(): Promise<CorpusStats> {
+  const res = await fetch("/api/stats", { credentials: "include" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}

@@ -36,13 +36,17 @@ function authorLine(authors: string[] | null): string {
 
 export const ResultCard = forwardRef<
   HTMLLIElement,
-  { result: SearchResult; delay?: number; showAddTo?: boolean }
->(function ResultCard({ result, delay = 0, showAddTo = true }, ref) {
+  { result: SearchResult; delay?: number; showAddTo?: boolean; dimmed?: boolean }
+>(function ResultCard({ result, delay = 0, showAddTo = true, dimmed = false }, ref) {
   const reduce = useReducedMotion();
   return (
     <motion.li
       ref={ref}
       {...rowMotionProps(!!reduce, delay)}
+      // Faded, not hidden: the row keeps its space so the list does not
+      // reflow under the pointer, and the reader can see WHICH results the
+      // other arm contributed rather than just how many.
+      style={{ opacity: dimmed ? 0.22 : 1 }}
       variants={rowVariants}
       animate="animate"
       exit="exit"

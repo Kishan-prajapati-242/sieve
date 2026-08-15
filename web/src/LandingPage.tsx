@@ -7,16 +7,38 @@
 // unpublished, it is absent rather than estimated: hybrid p50 is not on this
 // page because its stability gate refused a point estimate.
 import { FusionDiagram } from "./FusionDiagram";
-import { Button, ButtonLink, Card, Container, Eyebrow, Reveal, Section, Stat } from "./ui";
+import {
+  Button,
+  ButtonLink,
+  Card,
+  Container,
+  CountUp,
+  Eyebrow,
+  Reveal,
+  Section,
+  Stat,
+  useCorpusSize,
+} from "./ui";
 
 /** Measured figures, each with where it came from. Kept as data so the
- *  provenance travels with the value instead of living in a comment. */
-const STATS = [
-  { value: "183,167", label: "papers indexed", note: "live corpus count" },
-  { value: "0.9782", label: "recall@20 vs exact scan", note: "ef=160 · DECISION-4b" },
-  { value: "7.7×", label: "faster than exact scan", note: "paired, CI [7.5, 8.0]" },
-  { value: "0", label: "external services", note: "no redis · no ES · no vector db" },
-];
+ *  provenance travels with the value instead of living in a comment.
+ *
+ *  The corpus size is a PARAMETER, not a literal: the PubMed pull takes it
+ *  to ~200,000 and a typed number would then describe a corpus that no
+ *  longer exists — on the most visible surface the project has.
+ */
+function stats(corpus: number | null) {
+  return [
+    {
+      value: corpus === null ? "—" : <CountUp to={corpus} />,
+      label: "papers indexed",
+      note: "live, from /api/stats",
+    },
+    { value: "0.9782", label: "recall@20 vs exact scan", note: "ef=160 · DECISION-4b" },
+    { value: "7.7×", label: "faster than exact scan", note: "paired, CI [7.5, 8.0]" },
+    { value: "0", label: "external services", note: "no redis · no ES · no vector db" },
+  ];
+}
 
 const ARMS = [
   {
@@ -44,6 +66,7 @@ const PIPELINE = [
 ];
 
 export function LandingPage() {
+  const corpus = useCorpusSize();
   return (
     <div className="relative">
       {/* ---------------- HERO ---------------- */}
@@ -65,8 +88,9 @@ export function LandingPage() {
           <Reveal delay={0.12}>
             <p className="mt-6 max-w-xl text-[17px] leading-relaxed text-ink-300">
               Keyword search finds the papers that use your words. Vector search finds the
-              ones that mean them. Sieve runs both against 183,167 papers and fuses the
-              rankings, so the paper neither arm ranked first can still come first.
+              ones that mean them. Sieve runs both against{" "}
+              <span className="font-mono text-ink-100">{corpus.text}</span> papers and fuses
+              the rankings, so the paper neither arm ranked first can still come first.
             </p>
           </Reveal>
 
@@ -96,7 +120,7 @@ export function LandingPage() {
       <Section>
         <Container>
           <div className="grid grid-cols-2 gap-10 lg:grid-cols-4">
-            {STATS.map((s, i) => (
+            {stats(corpus.value).map((s, i) => (
               <Reveal key={s.label} delay={i * 0.06}>
                 <Stat {...s} />
               </Reveal>
@@ -186,8 +210,8 @@ export function LandingPage() {
               The retrieval is the easy half.
             </h2>
             <p className="mt-5 max-w-xl leading-relaxed text-ink-400">
-              Getting 183,167 clean, deduplicated, embedded papers into Postgres is where the
-              engineering is. No Redis, no Elasticsearch, no vector database — every one of
+              Getting <span className="font-mono text-ink-200">{corpus.text}</span> clean,
+              deduplicated, embedded papers into Postgres is where the engineering is. No Redis, no Elasticsearch, no vector database — every one of
               those was considered and rejected in writing.
             </p>
           </Reveal>

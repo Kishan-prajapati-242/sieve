@@ -16,12 +16,26 @@ import { ResultCard } from "./ResultCard";
 import { arrivalDelay } from "./motion";
 import { headerCount, presentationSteps } from "./presentation";
 import { useDelayedFlag } from "./useDelayedFlag";
+import { useCorpusSize } from "./ui";
 
 // Long enough that a warm query (~30ms) never flashes, short enough that a
 // cold one (1,611ms measured) does not read as a frozen page.
 const STALE_AFTER_MS = 200;
 
 const MODES: SearchMode[] = ["bm25", "vector", "hybrid"];
+
+/** What each mode does, in one line, AT THE CONTROL.
+ *
+ *  The moment a reader does not know what "bm25" means is the moment they
+ *  are looking at three toggle options — not while reading the landing page.
+ *  So the explanation lives here, and changes to describe whichever mode the
+ *  pointer is over, falling back to the active one.
+ */
+const MODE_HELP: Record<SearchMode, string> = {
+  bm25: "Keyword only. Postgres full-text ranking — finds papers that use your words.",
+  vector: "Semantic only. Embedding nearest-neighbours — finds papers that mean your words.",
+  hybrid: "Both arms, fused by reciprocal rank. A paper both found beats one either found alone.",
+};
 
 /** One label per meaning. A bare "of N" would be the unlabeled-number
  *  failure on the most visible surface in the app. */
@@ -105,6 +119,23 @@ export function SearchPage() {
   // mode's rows stand in for a result set still in flight. isFetching would
   // also fire on a background refetch of data already on screen.
   const stale = useDelayedFlag(isPlaceholderData, STALE_AFTER_MS);
+  const corpus = useCorpusSize();
+
+  // Hovering a mode PREVIEWS it rather than describing it. The rows already
+  // carry which arm found them, so pointing at "bm25" can fade the results
+  // keyword search would have missed — teaching the distinction by showing
+  // the reader their own result list minus one arm. Only meaningful on fused
+  // results, where both ranks exist; in single-arm modes there is nothing to
+  // subtract and the preview stays off.
+  const [hoveredMode, setHoveredMode] = useState<SearchMode | null>(null);
+  const previewArm = data?.mode === "hybrid" ? hoveredMode : null;
+  const dimsFor = (r: { bm25_rank: number | null; vector_rank: number | null }) =>
+    previewArm === "bm25"
+      ? r.bm25_rank === null
+      : previewArm === "vector"
+        ? r.vector_rank === null
+        : false;
+  const droppedCount = previewArm ? shown.filter(dimsFor).length : 0;
 
   function submit(next: Partial<SearchParams>) {
     if (!draftQuery.trim()) return;
@@ -142,7 +173,7 @@ export function SearchPage() {
               type="text"
               value={draftQuery}
               onChange={(e) => setDraftQuery(e.target.value)}
-              placeholder="Search 183,167 papers…"
+              placeholder={`Search ${corpus.text} papers…`}
               className="hairline h-12 w-full rounded-xl border bg-ink-880 px-4 text-[15px]
                          text-ink-50 transition-colors placeholder:text-ink-600
                          focus:border-semantic-400 focus:outline-none"
@@ -175,6 +206,10 @@ export function SearchPage() {
                 aria-label={m}
                 aria-checked={mode === m}
                 onClick={() => pickMode(m)}
+                onMouseEnter={() => setHoveredMode(m)}
+                onMouseLeave={() => setHoveredMode(null)}
+                onFocus={() => setHoveredMode(m)}
+                onBlur={() => setHoveredMode(null)}
                 className={`relative z-10 rounded-md px-3.5 py-1.5 font-mono text-[11px]
                             uppercase tracking-wider transition-colors ${
                               mode === m ? "text-ink-950" : "text-ink-400 hover:text-ink-100"
@@ -222,6 +257,28 @@ export function SearchPage() {
               />
             </label>
           </div>
+        </div>
+
+        {/* One line, swapped on hover. AnimatePresence so it crossfades
+            rather than snapping between three different sentences. */}
+        <div className="min-h-[20px]">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.p
+              key={hoveredMode ?? mode}
+              initial={{ opacity: 0, y: -3 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 3 }}
+              transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}
+              className="text-xs text-ink-400"
+            >
+              {MODE_HELP[hoveredMode ?? mode]}
+              {previewArm && droppedCount > 0 && (
+                <span className="ml-2 font-mono text-ink-500">
+                  · {droppedCount} of {shown.length} shown would be lost
+                </span>
+              )}
+            </motion.p>
+          </AnimatePresence>
         </div>
       </form>
 
@@ -277,6 +334,7 @@ export function SearchPage() {
                 <ResultCard
                   key={r.id}
                   result={r}
+                  dimmed={dimsFor(r)}
                   delay={
                     arrivalIndex.has(r.id)
                       ? arrivalDelay(arrivalIndex.get(r.id)!, arriving.length, hasSurvivors)

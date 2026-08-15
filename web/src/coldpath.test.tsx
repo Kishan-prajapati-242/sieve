@@ -80,6 +80,12 @@ describe("slow search feedback", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockImplementation(async (url: string) => {
+        if (String(url).includes("/api/stats")) {
+          return new Response(JSON.stringify({ papers: 183167 }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
         if (String(url).includes("/api/auth/me")) {
           return new Response(JSON.stringify({ id: 1, email: "r@e.com" }), {
             status: 200,
