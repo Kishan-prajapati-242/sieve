@@ -2773,3 +2773,37 @@ asserts the target's bounding box is inside the captured region before
 measuring. An instrument needs its own calibration before its readings
 count — the entry two hours earlier arguing visual capture IS a measurement
 instrument here is exactly why this one needed validating and did not get it.
+
+### Addendum — the blind region is not only below the fold
+
+The category is wider than "below the fold". With **zero** element-targeted
+captures and 2 of 19 scripts scrolling, the instrument only ever saw
+**initial static viewports** — so content behind a click, a menu, or a hover
+is invisible by exactly the same mechanism. Interaction-gated UI reads as
+absent.
+
+That puts one more claim back in play, and it is the most exposed one:
+
+> **"Not one of the seven academic products explains its ranking."**
+
+I called that the most defensible line on the visual sheet. It is a
+**universal negative assembled from static screenshots of initial
+viewports**. A "why this result" affordance behind a click or a hover would
+not have appeared. Marked UNVERIFIED and added to the re-run list; it must
+not be repeated in the README or an interview until each of the seven has
+been clicked, opened, and hovered.
+
+**The general form, which is the durable lesson:**
+
+> **A blind instrument supports "I saw X". It cannot support "nobody does
+> X."**
+
+Positive observations survive a blind region, because the thing was seen:
+cards, hairline dividers, title-first anatomy, the density number. Universal
+negatives do not survive it, because absence of evidence is exactly what the
+blindness manufactures. **Any claim of the form "none of them" or "nobody"
+needs an instrument proven able to see the thing it says is missing** — and
+that proof is a separate step from making the observation.
+
+This is the same asymmetry as the false-negative argument one level up, but
+sharper: it says which SENTENCES are at risk, not just which measurements.
