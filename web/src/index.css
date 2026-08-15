@@ -106,6 +106,16 @@
   [class*="tabular"] {
     font-variant-numeric: tabular-nums;
   }
+  /* Ligatures OFF for monospace. JetBrains Mono renders `<=>` as a single
+     arrow glyph, which silently rewrote pgvector's cosine-distance operator
+     on the landing page — a code sample that does not say what it means is
+     worse than no code sample. */
+  .font-mono,
+  code,
+  pre {
+    font-variant-ligatures: none;
+    font-feature-settings: "calt" 0, "liga" 0;
+  }
   ::selection {
     background: var(--color-semantic-500);
     color: white;
@@ -155,16 +165,16 @@
     height: 70vh;
     background:
       radial-gradient(
-        42% 46% at 22% 30%,
-        color-mix(in oklab, var(--color-keyword-400) 26%, transparent),
-        transparent 70%
+        44% 48% at 18% 28%,
+        color-mix(in oklab, var(--color-keyword-400) 42%, transparent),
+        transparent 68%
       ),
       radial-gradient(
-        46% 50% at 72% 22%,
-        color-mix(in oklab, var(--color-semantic-500) 30%, transparent),
-        transparent 70%
+        48% 52% at 74% 18%,
+        color-mix(in oklab, var(--color-semantic-500) 48%, transparent),
+        transparent 68%
       );
-    filter: blur(72px);
+    filter: blur(84px);
     pointer-events: none;
     z-index: 0;
   }

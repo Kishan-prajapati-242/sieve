@@ -58,6 +58,7 @@ export interface SearchParams {
 
 export async function search(params: SearchParams): Promise<SearchResponse> {
   const res = await fetch("/api/search", {
+    credentials: "include",
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ ...params, k: 20 }),
@@ -126,7 +127,7 @@ async function json<T>(res: Response): Promise<T> {
 }
 
 export async function listCollections(): Promise<CollectionSummary[]> {
-  return json(await fetch("/api/collections"));
+  return json(await fetch("/api/collections", { credentials: "include" }));
 }
 
 export async function createCollection(
@@ -135,7 +136,8 @@ export async function createCollection(
 ): Promise<CollectionSummary> {
   return json(
     await fetch("/api/collections", {
-      method: "POST",
+    credentials: "include",
+    method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name, question: question || null }),
     }),
@@ -147,7 +149,7 @@ export async function getCollection(
   decision?: Decision,
 ): Promise<CollectionDetail> {
   const qs = decision ? `?decision=${decision}` : "";
-  return json(await fetch(`/api/collections/${id}${qs}`));
+  return json(await fetch(`/api/collections/${id}${qs}`, { credentials: "include" }));
 }
 
 export async function screen(
@@ -158,7 +160,8 @@ export async function screen(
 ): Promise<void> {
   await json(
     await fetch(`/api/collections/${collectionId}/screenings/${paperId}`, {
-      method: "PUT",
+    credentials: "include",
+    method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ decision, note: note || null }),
     }),
@@ -167,6 +170,7 @@ export async function screen(
 
 export async function unscreen(collectionId: number, paperId: number): Promise<void> {
   const res = await fetch(`/api/collections/${collectionId}/screenings/${paperId}`, {
+    credentials: "include",
     method: "DELETE",
   });
   if (!res.ok && res.status !== 404) throw new Error(`${res.status} ${res.statusText}`);

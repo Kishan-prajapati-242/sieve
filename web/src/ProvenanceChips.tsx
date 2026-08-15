@@ -41,9 +41,9 @@ function Chip({
 }) {
   const on =
     tone === "amber"
-      ? "bg-amber-50 text-amber-800 ring-amber-200"
-      : "bg-violet-50 text-violet-800 ring-violet-200";
-  const off = "bg-slate-50 text-slate-400 ring-slate-200";
+      ? "bg-keyword-950 text-amber-800 ring-amber-200"
+      : "bg-semantic-950 text-violet-800 ring-violet-200";
+  const off = "bg-ink-850 text-ink-500 ring-slate-200";
   return (
     <span
       className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ring-1 ring-inset ${

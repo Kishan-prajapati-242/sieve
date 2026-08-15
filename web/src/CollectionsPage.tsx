@@ -38,52 +38,52 @@ export function CollectionsPage() {
     <div className="space-y-5">
       <form
         onSubmit={onSubmit}
-        className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-4"
+        className="flex flex-wrap items-end gap-2 rounded-xl border hairline border bg-ink-880 p-4"
       >
         <label className="text-sm">
-          <span className="block text-slate-600">Name</span>
+          <span className="block text-ink-300">Name</span>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Clinical text simplification"
-            className="mt-1 w-64 rounded-lg border border-slate-300 px-3 py-2"
+            className="mt-1 w-64 rounded-lg border hairline border px-3 py-2"
           />
         </label>
         <label className="flex-1 text-sm">
-          <span className="block text-slate-600">Question (optional)</span>
+          <span className="block text-ink-300">Question (optional)</span>
           <input
             type="text"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="Which methods simplify discharge summaries?"
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+            className="mt-1 w-full rounded-lg border hairline border px-3 py-2"
           />
         </label>
         <button
           type="submit"
           disabled={create.isPending}
-          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white
-                     transition-colors hover:bg-slate-700 disabled:opacity-60"
+          className="rounded-lg bg-ink-50 px-4 py-2 text-sm font-medium text-ink-950
+                     transition-colors hover:bg-white disabled:opacity-60"
         >
           New collection
         </button>
       </form>
 
       {create.error && (
-        <p role="alert" className="text-sm text-rose-700">
+        <p role="alert" className="text-sm text-danger-400">
           Could not create: {(create.error as Error).message}
         </p>
       )}
       {error && (
-        <p role="alert" className="text-sm text-rose-700">
+        <p role="alert" className="text-sm text-danger-400">
           Could not load collections: {(error as Error).message}
         </p>
       )}
-      {isLoading && <p className="text-sm text-slate-500">Loading…</p>}
+      {isLoading && <p className="text-sm text-ink-400">Loading…</p>}
 
       {data && data.length === 0 && (
-        <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-500">
+        <p className="rounded-xl border border-dashed hairline border p-8 text-center text-ink-400">
           No collections yet. A collection is one literature question.
         </p>
       )}
@@ -100,14 +100,14 @@ export function CollectionsPage() {
               animate="animate"
               exit="exit"
               transition={{ layout: { duration: DUR.move, ease: EASE } }}
-              className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm
-                         transition-[background-color,border-color,box-shadow,transform]
-                         duration-200 hover:-translate-y-0.5 hover:border-slate-300
-                         hover:bg-slate-50 hover:shadow-md"
+              className="rounded-xl border hairline border bg-ink-880 p-4 
+                         transition-[background-color,border-color,box-,transform]
+                         duration-200 hover:-translate-y-0.5 hover:hairline border
+                         hover:bg-ink-850 hover:-md"
             >
               <Link to={`/collections/${c.id}`} className="block">
-                <h2 className="font-semibold text-slate-900">{c.name}</h2>
-                {c.question && <p className="text-sm text-slate-600">{c.question}</p>}
+                <h2 className="font-semibold text-ink-50">{c.name}</h2>
+                {c.question && <p className="text-sm text-ink-300">{c.question}</p>}
                 <div className="mt-2 flex flex-wrap gap-4">
                   <CountBadge value={c.screened} label="screened" />
                   <CountBadge value={c.included} label="include" />

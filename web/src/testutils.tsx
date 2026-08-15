@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
+import { AuthProvider } from "./auth";
 import { vi } from "vitest";
 
 export function renderWith(ui: ReactElement, route = "/") {
@@ -14,12 +15,19 @@ export function renderWith(ui: ReactElement, route = "/") {
   function Providers({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={[route]}>{children}</MemoryRouter>
+        <AuthProvider>
+          <MemoryRouter initialEntries={[route]}>{children}</MemoryRouter>
+        </AuthProvider>
       </QueryClientProvider>
     );
   }
   return render(ui, { wrapper: Providers });
 }
+
+/** A signed-in user for /api/auth/me, so views under AuthProvider render
+ *  their real content instead of the signed-out branch. Tests that care about
+ *  the auth boundary itself stub this route explicitly. */
+export const SIGNED_IN = { "GET /api/auth/me": { id: 1, email: "reviewer@example.com" } };
 
 /** Route fetch by URL+method so a test can stub several endpoints at once —
  *  the collection views hit three. */

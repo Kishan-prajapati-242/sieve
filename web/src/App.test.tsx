@@ -6,15 +6,24 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SearchResponse } from "./api";
-import { App } from "./App";
+import { SearchPage } from "./SearchPage";
+import { AuthProvider } from "./auth";
+import { MemoryRouter } from "react-router-dom";
 
+// The search UI moved to /search when the landing page took the root, so
+// these render the route directly rather than the whole App shell — they are
+// about the search page's behaviour, not about routing.
 function renderApp() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <App />
+      <AuthProvider>
+        <MemoryRouter initialEntries={["/search"]}>
+          <SearchPage />
+        </MemoryRouter>
+      </AuthProvider>
     </QueryClientProvider>,
   );
 }
@@ -30,11 +39,19 @@ function stubSearch(response: Partial<SearchResponse>) {
     results: [],
     ...response,
   };
-  const spy = vi.fn().mockResolvedValue(
-    new Response(JSON.stringify(full), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    }),
+  // AuthProvider asks who the caller is through this same stub, so the mock
+  // answers both routes and the assertions below filter to /api/search
+  // rather than counting every call.
+  const spy = vi.fn(async (url: string, _init?: RequestInit) =>
+    String(url).includes("/api/auth/me")
+      ? new Response(JSON.stringify({ id: 1, email: "reviewer@example.com" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      : new Response(JSON.stringify(full), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
   );
   vi.stubGlobal("fetch", spy);
   return spy;
@@ -52,8 +69,9 @@ describe("App", () => {
     await userEvent.type(screen.getByLabelText("Year from"), "2020");
     await userEvent.click(screen.getByRole("button", { name: "Search" }));
 
-    expect(spy).toHaveBeenCalledOnce();
-    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    const searches = spy.mock.calls.filter((c) => String(c[0]).includes("/api/search"));
+    expect(searches).toHaveLength(1);
+    const body = JSON.parse((searches[0][1] as RequestInit).body as string);
     expect(body).toEqual({
       query: "text simplification",
       mode: "hybrid", // the UI default
@@ -104,7 +122,8 @@ describe("App", () => {
     await userEvent.type(screen.getByLabelText("Query"), "anything");
     await userEvent.click(screen.getByRole("radio", { name: "bm25" }));
     await userEvent.click(screen.getByRole("button", { name: "Search" }));
-    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    const searches = spy.mock.calls.filter((c) => String(c[0]).includes("/api/search"));
+    const body = JSON.parse((searches[0][1] as RequestInit).body as string);
     expect(body.mode).toBe("bm25");
   });
 
@@ -112,7 +131,7 @@ describe("App", () => {
     const spy = stubSearch({});
     renderApp();
     await userEvent.type(screen.getByLabelText("Query"), "slow fingers");
-    expect(spy).not.toHaveBeenCalled();
+    expect(spy.mock.calls.filter((c) => String(c[0]).includes("/api/search"))).toHaveLength(0);
   });
 
   it("surfaces API failures instead of an empty page", async () => {

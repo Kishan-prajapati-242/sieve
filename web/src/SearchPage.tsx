@@ -8,7 +8,7 @@
 // than describing it. On the de-identification query, the paper neither arm
 // ranks first rises to #1 under hybrid.
 import { useQuery } from "@tanstack/react-query";
-import { AnimatePresence } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useReducedMotion } from "motion/react";
 import { search, type SearchMode, type SearchParams, type SearchResponse } from "./api";
@@ -130,84 +130,128 @@ export function SearchPage() {
 
   return (
     <div className="space-y-4">
-      <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-2">
-        <label className="flex-1 text-sm">
-          <span className="block text-slate-600">Query</span>
-          <input
-            type="text"
-            value={draftQuery}
-            onChange={(e) => setDraftQuery(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2
-                       focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-          />
-        </label>
-        <label className="text-sm">
-          <span className="block text-slate-600">Year from</span>
-          <input
-            type="text"
-            value={draftYearFrom}
-            onChange={(e) => setDraftYearFrom(e.target.value)}
-            className="mt-1 w-24 rounded-lg border border-slate-300 px-3 py-2"
-          />
-        </label>
-        <label className="text-sm">
-          <span className="block text-slate-600">Year to</span>
-          <input
-            type="text"
-            value={draftYearTo}
-            onChange={(e) => setDraftYearTo(e.target.value)}
-            className="mt-1 w-24 rounded-lg border border-slate-300 px-3 py-2"
-          />
-        </label>
-        <div className="flex items-center gap-3">
-          {MODES.map((m) => (
-            <label key={m} className="flex items-center gap-1 text-sm text-slate-700">
-              <input
-                type="radio"
-                name="mode"
-                checked={mode === m}
-                onChange={() => pickMode(m)}
-              />
-              {m}
-            </label>
-          ))}
+      {/* Query on its own row, filters and the mode toggle beneath it. The
+          previous layout crowded three inputs, three radios and a button onto
+          one line, so the primary field — the query — had no more visual
+          weight than a year box. */}
+      <form onSubmit={onSubmit} className="flex flex-col gap-3">
+        <div className="flex gap-2">
+          <label className="relative flex-1">
+            <span className="sr-only">Query</span>
+            <input
+              type="text"
+              value={draftQuery}
+              onChange={(e) => setDraftQuery(e.target.value)}
+              placeholder="Search 183,167 papers…"
+              className="hairline h-12 w-full rounded-xl border bg-ink-880 px-4 text-[15px]
+                         text-ink-50 transition-colors placeholder:text-ink-600
+                         focus:border-semantic-400 focus:outline-none"
+            />
+          </label>
+          <button
+            type="submit"
+            className="h-12 shrink-0 rounded-xl bg-ink-50 px-6 text-sm font-medium text-ink-950
+                       transition-all duration-150 hover:bg-white active:scale-[0.98]"
+          >
+            Search
+          </button>
         </div>
-        <button
-          type="submit"
-          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white
-                     transition-colors hover:bg-slate-700"
-        >
-          Search
-        </button>
+
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+          {/* Segmented control rather than three loose radios. The active
+              pill is a shared layoutId, so switching mode slides it across
+              instead of blinking — the toggle is the marquee interaction and
+              should feel like one control, not three. */}
+          <div
+            role="radiogroup"
+            aria-label="Search mode"
+            className="hairline relative flex rounded-lg border bg-ink-900 p-1"
+          >
+            {MODES.map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-label={m}
+                aria-checked={mode === m}
+                onClick={() => pickMode(m)}
+                className={`relative z-10 rounded-md px-3.5 py-1.5 font-mono text-[11px]
+                            uppercase tracking-wider transition-colors ${
+                              mode === m ? "text-ink-950" : "text-ink-400 hover:text-ink-100"
+                            }`}
+              >
+                {mode === m && (
+                  <motion.span
+                    layoutId="mode-pill"
+                    className="absolute inset-0 -z-10 rounded-md bg-ink-50"
+                    transition={{ duration: 0.28, ease: [0.2, 0.8, 0.2, 1] }}
+                  />
+                )}
+                {m}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-eyebrow uppercase text-ink-500">Years</span>
+            <label>
+              <span className="sr-only">Year from</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={draftYearFrom}
+                onChange={(e) => setDraftYearFrom(e.target.value)}
+                placeholder="from"
+                className="hairline h-9 w-20 rounded-lg border bg-ink-880 px-2.5 text-center
+                           font-mono text-xs text-ink-100 placeholder:text-ink-600
+                           focus:border-semantic-400 focus:outline-none"
+              />
+            </label>
+            <span className="text-ink-600">–</span>
+            <label>
+              <span className="sr-only">Year to</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={draftYearTo}
+                onChange={(e) => setDraftYearTo(e.target.value)}
+                placeholder="to"
+                className="hairline h-9 w-20 rounded-lg border bg-ink-880 px-2.5 text-center
+                           font-mono text-xs text-ink-100 placeholder:text-ink-600
+                           focus:border-semantic-400 focus:outline-none"
+              />
+            </label>
+          </div>
+        </div>
       </form>
 
-      {isFetching && !data && <p className="text-sm text-slate-500">Searching…</p>}
+      {isFetching && !data && <p className="text-sm text-ink-400">Searching…</p>}
       {/* Indeterminate: the server reports its timings only once it answers,
           so there is no honest progress fraction to show. */}
       <div className="h-0.5 overflow-hidden" aria-hidden="true">
-        {stale && <div className="h-full w-full animate-pulse bg-blue-500/60" />}
+        {stale && <div className="h-full w-full animate-pulse bg-fusion" />}
       </div>
       {error && (
-        <p role="alert" className="text-sm text-rose-700">
+        <p role="alert" className="rounded-lg border border-danger-400/30 bg-danger-400/10 px-3 py-2 text-sm text-danger-400">
           Search failed: {(error as Error).message}
         </p>
       )}
       {data && (
         <>
           <div className="flex flex-wrap items-baseline justify-between gap-2 py-1 text-sm">
-            <p className="text-slate-600">
-              <span className="font-medium text-slate-900">
+            <p className="text-ink-400">
+              <span className="font-mono font-medium text-ink-50">
                 {Math.min(presentedCount, data.results.length)}
               </span>{" "}
               shown of{" "}
-              <span className="font-medium text-slate-900">
+              <span className="font-mono font-medium text-ink-50">
                 {data.total.value.toLocaleString()}
               </span>{" "}
               {totalLabel(data.total.kind)}
-              {stale && <span className="ml-2 text-slate-400">· searching…</span>}
+              {stale && <span className="ml-2 text-ink-500">· searching…</span>}
             </p>
             {/* The measurement work, in the product rather than only in bench/. */}
-            <p className="tabular-nums text-xs text-slate-400" title="server-side timings">
+            <p className="font-mono text-[11px] text-ink-500" title="server-side timings">
               {data.took_ms} ms
               {data.timings.embed_ms !== null && <> · embed {data.timings.embed_ms}</>}
               {" · retrieve "}
@@ -217,11 +261,11 @@ export function SearchPage() {
               {data.ef_search !== null && <> · ef {data.ef_search}</>}
             </p>
           </div>
-          {data.results.length === 0 && <p className="text-slate-500">No papers matched.</p>}
+          {data.results.length === 0 && <p className="text-ink-400">No papers matched.</p>}
           <ul
             aria-busy={stale}
             className={
-              "divide-y divide-slate-100 border-t border-slate-100 transition-opacity" +
+              "hairline divide-y divide-white/5 border-t transition-opacity" +
               // The rows stay MOUNTED while dimmed — unmounting them is what
               // broke the layout animation in the first place. This only
               // says "these are the previous results".

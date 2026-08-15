@@ -83,7 +83,7 @@ export function LandingPage() {
 
           <Reveal delay={0.24} className="mt-20">
             <Card className="overflow-hidden p-8 sm:p-10">
-              <FusionDiagram className="h-[240px] w-full" />
+              <FusionDiagram className="mx-auto h-[260px] w-full max-w-3xl" />
               <p className="hairline mt-8 border-t pt-5 font-mono text-[11px] uppercase tracking-wider text-ink-500">
                 Reciprocal rank fusion · k=60 · depth 200 per arm
               </p>
@@ -209,7 +209,7 @@ export function LandingPage() {
                   code that produced them.
                 </p>
                 <span className="mt-6 font-mono text-eyebrow uppercase text-ink-500">
-                  240 tests · forward-only migrations
+                  254 tests · forward-only migrations
                 </span>
               </div>
             </Reveal>

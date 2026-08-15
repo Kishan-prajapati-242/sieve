@@ -47,17 +47,17 @@ export const ResultCard = forwardRef<
       animate="animate"
       exit="exit"
       transition={{ layout: { duration: DUR.move, ease: EASE } }}
-      className="group relative border-b border-slate-100 px-3 py-3
-                 transition-colors duration-150 hover:bg-slate-50"
+      className="group relative px-3 py-3.5
+                 transition-colors duration-150 hover:bg-white/[0.025]"
     >
       <div className="flex items-start gap-3">
-        <span className="w-6 shrink-0 pt-0.5 text-right text-xs tabular-nums text-slate-400">
+        <span className="w-6 shrink-0 pt-0.5 text-right text-xs tabular-nums text-ink-500">
           {result.rank}
         </span>
 
         <div className="min-w-0 flex-1">
           {/* Title leads. The only coloured, link-weight text on the row. */}
-          <h2 className="text-[15px] font-medium leading-snug text-blue-900">
+          <h2 className="text-[15px] font-medium leading-snug text-ink-50">
             {result.doi ? (
               <a
                 href={`https://doi.org/${result.doi}`}
@@ -74,7 +74,7 @@ export const ResultCard = forwardRef<
               <span
                 role="alert"
                 className="ml-2 align-middle rounded bg-rose-100 px-1.5 py-0.5 text-[11px]
-                           font-semibold text-rose-700"
+                           font-semibold text-danger-400"
               >
                 RETRACTED
               </span>
@@ -82,12 +82,12 @@ export const ResultCard = forwardRef<
           </h2>
 
           {result.authors && (
-            <p className="mt-0.5 truncate text-[13px] text-slate-600">
+            <p className="mt-0.5 truncate text-[13px] text-ink-400">
               {authorLine(result.authors)}
             </p>
           )}
 
-          <p className="mt-0.5 text-xs text-slate-500">
+          <p className="mt-0.5 font-mono text-[11px] text-ink-500">
             {result.year ?? "year unknown"}
             {result.venue && <> · {result.venue}</>}
             {" · "}
@@ -99,14 +99,14 @@ export const ResultCard = forwardRef<
               row rather than on hover, because a screenshot has no hover. */}
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <ProvenanceChips bm25Rank={result.bm25_rank} vectorRank={result.vector_rank} />
-            <span className="text-[11px] tabular-nums text-slate-400">
+            <span className="text-[11px] tabular-nums text-ink-500">
               score {result.score.toFixed(4)}
             </span>
           </div>
 
           {result.abstract && (
-            <details className="mt-1.5 text-[13px] text-slate-700">
-              <summary className="cursor-pointer text-xs text-slate-500 hover:text-slate-700">
+            <details className="mt-1.5 text-[13px] text-ink-300">
+              <summary className="cursor-pointer font-mono text-[11px] text-ink-500 hover:text-ink-300">
                 Abstract
               </summary>
               <p className="mt-1 leading-relaxed">{result.abstract}</p>

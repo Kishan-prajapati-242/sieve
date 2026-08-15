@@ -42,10 +42,10 @@ export function CollectionPage() {
     onSuccess: invalidate,
   });
 
-  if (isLoading) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (isLoading) return <p className="text-sm text-ink-400">Loading…</p>;
   if (error)
     return (
-      <p role="alert" className="text-sm text-rose-700">
+      <p role="alert" className="text-sm text-danger-400">
         Could not load: {(error as Error).message}
       </p>
     );
@@ -58,13 +58,13 @@ export function CollectionPage() {
           <Link to="/collections" className="text-sm text-blue-600 hover:underline">
             ← All collections
           </Link>
-          <h1 className="mt-1 text-xl font-bold text-slate-900">{data.name}</h1>
-          {data.question && <p className="text-slate-600">{data.question}</p>}
+          <h1 className="mt-1 text-xl font-bold text-ink-50">{data.name}</h1>
+          {data.question && <p className="text-ink-300">{data.question}</p>}
         </div>
         <a
           href={exportUrl(cid, filter === "all" ? "include" : filter)}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium
-                     text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-50"
+          className="rounded-lg border hairline border px-3 py-2 text-sm font-medium
+                     text-ink-200 transition-colors hover:border-slate-400 hover:bg-ink-850"
         >
           Export .bib
         </a>
@@ -79,8 +79,8 @@ export function CollectionPage() {
             aria-pressed={filter === f}
             className={`rounded-lg px-3 py-1.5 text-sm capitalize transition-colors ${
               filter === f
-                ? "bg-slate-900 text-white"
-                : "border border-slate-300 text-slate-700 hover:bg-slate-50"
+                ? "bg-ink-50 text-ink-950"
+                : "border hairline border text-ink-200 hover:bg-ink-850"
             }`}
           >
             {f}
@@ -89,7 +89,7 @@ export function CollectionPage() {
       </div>
 
       {data.papers.length === 0 && (
-        <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-500">
+        <p className="rounded-xl border border-dashed hairline border p-8 text-center text-ink-400">
           Nothing screened into this collection yet. Search, then add papers from the results.
         </p>
       )}
@@ -105,13 +105,13 @@ export function CollectionPage() {
               animate="animate"
               exit="exit"
               transition={{ layout: { duration: DUR.move, ease: EASE } }}
-              className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm
-                         transition-[background-color,border-color,box-shadow,transform]
-                         duration-200 hover:-translate-y-0.5 hover:border-slate-300
-                         hover:bg-slate-50 hover:shadow-md"
+              className="rounded-xl border hairline border bg-ink-880 p-4 
+                         transition-[background-color,border-color,box-,transform]
+                         duration-200 hover:-translate-y-0.5 hover:hairline border
+                         hover:bg-ink-850 hover:-md"
             >
-              <h2 className="font-semibold text-slate-900">{p.title}</h2>
-              <p className="text-sm text-slate-500">
+              <h2 className="font-semibold text-ink-50">{p.title}</h2>
+              <p className="text-sm text-ink-400">
                 {p.year ?? "year unknown"}
                 {p.venue && <> · {p.venue}</>}
                 {p.doi && (
@@ -128,7 +128,7 @@ export function CollectionPage() {
                   </>
                 )}
               </p>
-              {p.note && <p className="mt-1 text-sm italic text-slate-600">{p.note}</p>}
+              {p.note && <p className="mt-1 text-sm italic text-ink-300">{p.note}</p>}
               <div className="mt-3 flex items-center gap-3">
                 <DecisionBar
                   value={p.decision}
@@ -140,7 +140,7 @@ export function CollectionPage() {
                   type="button"
                   onClick={() => remove.mutate(p.id)}
                   aria-label={`Remove ${p.title}`}
-                  className="text-sm text-slate-400 transition-colors hover:text-rose-600"
+                  className="text-sm text-ink-500 transition-colors hover:text-rose-600"
                 >
                   ✕
                 </button>

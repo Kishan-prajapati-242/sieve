@@ -6,9 +6,9 @@ import type { Decision } from "./api";
 import { DUR, EASE } from "./motion";
 
 const OPTIONS: { value: Decision; label: string; tone: string }[] = [
-  { value: "include", label: "Include", tone: "bg-emerald-500" },
+  { value: "include", label: "Include", tone: "bg-signal-400/100" },
   { value: "maybe", label: "Maybe", tone: "bg-amber-500" },
-  { value: "exclude", label: "Exclude", tone: "bg-rose-500" },
+  { value: "exclude", label: "Exclude", tone: "bg-danger-400/100" },
 ];
 
 export function DecisionBar({
@@ -23,7 +23,7 @@ export function DecisionBar({
   busy?: boolean;
 }) {
   return (
-    <div className="inline-flex rounded-lg bg-slate-100 p-1" role="group" aria-label="Decision">
+    <div className="inline-flex rounded-lg bg-ink-800 p-1" role="group" aria-label="Decision">
       {OPTIONS.map((o) => {
         const active = value === o.value;
         return (
@@ -45,7 +45,7 @@ export function DecisionBar({
                 transition={{ duration: DUR.move * 0.6, ease: EASE }}
               />
             )}
-            <span className={`relative ${active ? "text-white" : "text-slate-600"}`}>
+            <span className={`relative ${active ? "text-ink-950" : "text-ink-300"}`}>
               {o.label}
             </span>
           </button>

@@ -21,7 +21,7 @@ export function CountBadge({ value, label }: { value: number; label: string }) {
   }, [value]);
 
   return (
-    <span className="inline-flex items-baseline gap-1 text-sm text-slate-600">
+    <span className="inline-flex items-baseline gap-1 text-sm text-ink-300">
       <motion.span
         // key on the value so a change mounts a new node: that is what makes
         // the tick a transition rather than a re-render.
@@ -29,7 +29,7 @@ export function CountBadge({ value, label }: { value: number; label: string }) {
         initial={reduce || !bumped ? false : { y: -6, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: DUR.badge, ease: EASE }}
-        className="font-semibold tabular-nums text-slate-900"
+        className="font-semibold tabular-nums text-ink-50"
       >
         {value}
       </motion.span>

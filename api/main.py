@@ -6,11 +6,13 @@ middleware, and router registration. Endpoint logic lives with its module
 surface.
 """
 
+import os
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 
 from api.auth.routes import router as auth_router
 from api.collections.routes import router as collections_router
@@ -36,6 +38,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="sieve", lifespan=lifespan)
+
+# CORS with credentials. In production the frontend is on Cloudflare Pages and
+# the API on Render — different origins — so the session cookie only travels
+# if both allow_credentials and an EXPLICIT origin list are set. The wildcard
+# "*" is not merely discouraged here, it is refused by browsers whenever
+# credentials are included, so an origin list is mandatory rather than
+# cautious. Read from the environment so no deployment URL is hardcoded.
+_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+if _origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["content-type", "x-request-id"],
+    )
 app.include_router(auth_router)
 app.include_router(search_router)
 app.include_router(stats_router)

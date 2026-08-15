@@ -7,7 +7,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { App } from "./App";
+import { MemoryRouter } from "react-router-dom";
+import { AuthProvider } from "./auth";
+import { SearchPage } from "./SearchPage";
 import { useDelayedFlag } from "./useDelayedFlag";
 import { renderHook } from "@testing-library/react";
 
@@ -77,7 +79,13 @@ describe("slow search feedback", () => {
     let call = 0;
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockImplementation(async () => {
+      vi.fn().mockImplementation(async (url: string) => {
+        if (String(url).includes("/api/auth/me")) {
+          return new Response(JSON.stringify({ id: 1, email: "r@e.com" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
         call += 1;
         if (call > 1) {
           // The second query never resolves during the test: that IS the
@@ -94,7 +102,11 @@ describe("slow search feedback", () => {
     const user = userEvent.setup();
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <App />
+        <AuthProvider>
+          <MemoryRouter initialEntries={["/search"]}>
+            <SearchPage />
+          </MemoryRouter>
+        </AuthProvider>
       </QueryClientProvider>,
     );
     await user.type(screen.getByLabelText("Query"), "anything");

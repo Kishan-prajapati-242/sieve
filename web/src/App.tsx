@@ -1,59 +1,149 @@
-// The shell: nav, routes, and the route transition. Three routes — search,
-// collections, one collection — so transitions are the connective tissue.
+// The shell: nav, routes, route transition.
 //
-// Crossfade plus a small y-offset (Kishan, 2026-08-13). Card -> detail expand
-// is deferred on cost, not dismissed: it is the only genuinely spatial
-// transition in the app and is scheduled for after View B
-// (docs/plans/ui-assembly-plan.md).
-import { AnimatePresence, motion } from "motion/react";
-import {
-  BrowserRouter,
-  Link,
-  Route,
-  Routes,
-  useLocation,
-} from "react-router-dom";
+// The landing page is the root now and the search moved to /search, because
+// an unauthenticated visitor arriving at a bare search box has no idea what
+// this is. Collections sit behind RequireAuth since they belong to a user.
+//
+// Route transition is a crossfade plus a small y-offset with mode="wait" —
+// with only a crossfade, overlapping the outgoing and incoming routes muddies
+// both.
+import { AnimatePresence, motion, useReducedMotion, useScroll, useTransform } from "motion/react";
+import { BrowserRouter, Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { AuthPage, RequireAuth } from "./AuthPage";
+import { useAuth } from "./auth";
 import { CollectionPage } from "./CollectionPage";
 import { CollectionsPage } from "./CollectionsPage";
+import { Footer, LandingPage } from "./LandingPage";
 import { routeVariants } from "./motion";
 import { SearchPage } from "./SearchPage";
+import { Button, ButtonLink, Container } from "./ui";
+
+function Wordmark() {
+  return (
+    <Link to="/" className="group flex items-center gap-2.5">
+      {/* The mark is the mechanism: two bars, one per arm, fusing. */}
+      <span className="flex h-5 w-5 flex-col justify-center gap-[3px]" aria-hidden="true">
+        <span className="h-[3px] w-full rounded-full bg-keyword-400 transition-all duration-300 group-hover:w-3/4" />
+        <span className="h-[3px] w-3/4 rounded-full bg-fusion transition-all duration-300 group-hover:w-full" />
+        <span className="h-[3px] w-1/2 rounded-full bg-semantic-400 transition-all duration-300 group-hover:w-3/4" />
+      </span>
+      <span className="text-[15px] font-semibold tracking-tight text-ink-50">Sieve</span>
+    </Link>
+  );
+}
+
+function navClass({ isActive }: { isActive: boolean }) {
+  return `relative text-sm transition-colors ${
+    isActive ? "text-ink-50" : "text-ink-400 hover:text-ink-100"
+  }`;
+}
+
+function Nav() {
+  const { user, logout } = useAuth();
+  const { scrollY } = useScroll();
+  const reduce = useReducedMotion();
+  // The nav gains its border and blur only once the page has scrolled, so the
+  // hero meets the top of the window without a line across it.
+  const border = useTransform(scrollY, [0, 60], ["rgba(255,255,255,0)", "rgba(255,255,255,0.09)"]);
+  const bg = useTransform(scrollY, [0, 60], ["rgba(8,8,10,0)", "rgba(8,8,10,0.72)"]);
+
+  return (
+    <motion.header
+      style={reduce ? undefined : { borderBottomColor: border, backgroundColor: bg }}
+      className="sticky top-0 z-50 border-b border-transparent backdrop-blur-xl"
+    >
+      <Container className="flex h-14 items-center justify-between gap-6">
+        <div className="flex items-center gap-7">
+          <Wordmark />
+          <nav className="flex items-center gap-5">
+            <NavLink to="/search" className={navClass}>
+              Search
+            </NavLink>
+            <NavLink to="/collections" className={navClass}>
+              Collections
+            </NavLink>
+          </nav>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {user ? (
+            <>
+              <span className="hidden font-mono text-[11px] text-ink-500 sm:inline">
+                {user.email}
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => void logout()}>
+                Sign out
+              </Button>
+            </>
+          ) : (
+            <>
+              <ButtonLink to="/login" variant="ghost" size="sm">
+                Sign in
+              </ButtonLink>
+              <ButtonLink to="/signup" size="sm">
+                Get started
+              </ButtonLink>
+            </>
+          )}
+        </div>
+      </Container>
+    </motion.header>
+  );
+}
 
 function Shell() {
   const location = useLocation();
+  const isLanding = location.pathname === "/";
   return (
-    <main className="mx-auto max-w-4xl p-6">
-      <header className="mb-6 flex items-baseline gap-5">
-        <Link to="/" className="text-xl font-bold text-slate-900">
-          Sieve
-        </Link>
-        <nav className="flex gap-4 text-sm">
-          <Link to="/" className="text-slate-600 hover:text-slate-900">
-            Search
-          </Link>
-          <Link to="/collections" className="text-slate-600 hover:text-slate-900">
-            Collections
-          </Link>
-        </nav>
-      </header>
-
-      {/* mode="wait" so the outgoing route clears before the incoming one
-          lands — with only a crossfade, overlapping them muddies both. */}
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={location.pathname}
-          variants={routeVariants}
-          initial="initial"
-          animate="animate"
-          exit="exit"
-        >
-          <Routes location={location}>
-            <Route path="/" element={<SearchPage />} />
-            <Route path="/collections" element={<CollectionsPage />} />
-            <Route path="/collections/:id" element={<CollectionPage />} />
-          </Routes>
-        </motion.div>
-      </AnimatePresence>
-    </main>
+    <div className="flex min-h-screen flex-col">
+      <Nav />
+      <main className="flex-1">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={location.pathname}
+            variants={routeVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+          >
+            <Routes location={location}>
+              <Route path="/" element={<LandingPage />} />
+              <Route
+                path="/search"
+                element={
+                  <Container className="py-10">
+                    <SearchPage />
+                  </Container>
+                }
+              />
+              <Route path="/login" element={<AuthPage mode="login" />} />
+              <Route path="/signup" element={<AuthPage mode="signup" />} />
+              <Route
+                path="/collections"
+                element={
+                  <RequireAuth>
+                    <Container className="py-10">
+                      <CollectionsPage />
+                    </Container>
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/collections/:id"
+                element={
+                  <RequireAuth>
+                    <Container className="py-10">
+                      <CollectionPage />
+                    </Container>
+                  </RequireAuth>
+                }
+              />
+            </Routes>
+          </motion.div>
+        </AnimatePresence>
+      </main>
+      {isLanding && <Footer />}
+    </div>
   );
 }
 
