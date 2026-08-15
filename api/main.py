@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 
+from api.auth.routes import router as auth_router
 from api.collections.routes import router as collections_router
 from api.db.pool import close_pool, get_pool
 from api.logs import request_id_var, setup_logging
@@ -35,6 +36,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="sieve", lifespan=lifespan)
+app.include_router(auth_router)
 app.include_router(search_router)
 app.include_router(stats_router)
 app.include_router(collections_router)

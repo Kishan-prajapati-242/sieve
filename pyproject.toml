@@ -16,6 +16,12 @@ dependencies = [
     "onnxruntime>=1.20",
     "tokenizers>=0.20",
     "numpy>=1.26",
+    # Password hashing for accounts (0014). argon2id is the current OWASP
+    # recommendation and argon2-cffi is its reference binding; writing this
+    # by hand is how projects ship unsalted SHA-256. Chosen over bcrypt for
+    # memory-hardness and over passlib because passlib is unmaintained and
+    # would be a wrapper around this same library.
+    "argon2-cffi>=23.1",
 ]
 
 [project.optional-dependencies]
@@ -48,6 +54,19 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+# B008 forbids function calls in argument defaults, which is exactly how
+# FastAPI declares dependencies and cookie params — `Depends(...)` in a
+# default is the framework's documented idiom, not a mutable-default bug.
+# Narrow exemption rather than disabling B008, so the real cases still fail.
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Cookie",
+    "fastapi.Header",
+    "fastapi.Path",
+]
 
 [tool.mypy]
 python_version = "3.12"

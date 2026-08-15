@@ -23,6 +23,14 @@ def client(scratch_db: str, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     from api.main import app
 
     with TestClient(app) as c:
+        # Collections belong to a user (migration 0014), so every one of these
+        # routes now requires a session. Signing in here keeps each test about
+        # collection behaviour; the ownership boundary itself is tested in
+        # test_auth.py::TestCollectionIsolation.
+        c.post(
+            "/api/auth/signup",
+            json={"email": "reviewer@example.com", "password": "a-long-test-password"},
+        ).raise_for_status()
         yield c
     pool.close_pool()
 

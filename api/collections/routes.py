@@ -26,6 +26,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
+from api.auth.routes import CurrentUser
 from api.collections.bibtex import to_bibtex
 from api.db.pool import get_pool
 
@@ -46,6 +47,7 @@ SELECT c.id, c.name, c.question, c.created_at,
        count(*) FILTER (WHERE s.decision = 'maybe')               AS maybe
 FROM collections c
 LEFT JOIN screenings s ON s.collection_id = c.id
+WHERE c.user_id = %s
 GROUP BY c.id
 ORDER BY c.created_at DESC, c.id DESC
 """
@@ -92,21 +94,23 @@ class CollectionSummary(BaseModel):
 
 
 @router.post("", status_code=201)
-def create_collection(body: CollectionCreate) -> CollectionSummary:
+def create_collection(
+    body: CollectionCreate, user: CurrentUser
+) -> CollectionSummary:
     with get_pool().connection() as conn:
         row = conn.execute(
-            "INSERT INTO collections (name, question) VALUES (%s, %s)"
+            "INSERT INTO collections (name, question, user_id) VALUES (%s, %s, %s)"
             " RETURNING id, name, question, created_at",
-            (body.name, body.question),
+            (body.name, body.question, user["id"]),
         ).fetchone()
     assert row is not None
     return CollectionSummary(id=row[0], name=row[1], question=row[2], created_at=row[3])
 
 
 @router.get("")
-def list_collections() -> list[CollectionSummary]:
+def list_collections(user: CurrentUser) -> list[CollectionSummary]:
     with get_pool().connection() as conn:
-        rows = conn.execute(LIST_SQL).fetchall()
+        rows = conn.execute(LIST_SQL, (user["id"],)).fetchall()
     return [
         CollectionSummary(
             id=r[0],
@@ -129,9 +133,18 @@ def _fetch_papers(conn: Any, collection_id: int, decision: str | None) -> list[d
         return rows
 
 
-def _require_collection(conn: Any, collection_id: int) -> tuple[Any, ...]:
+def _require_collection(conn: Any, collection_id: int, user_id: int) -> tuple[Any, ...]:
+    """Fetch a collection the caller owns.
+
+    The ownership predicate is in the WHERE clause, not an `if` after the
+    fetch: a row the caller does not own must never be loaded, and a 404 (not
+    a 403) is returned so the API does not confirm that someone else's
+    collection id exists. Legacy rows with user_id IS NULL match no caller.
+    """
     row = conn.execute(
-        "SELECT id, name, question, created_at FROM collections WHERE id = %s", (collection_id,)
+        "SELECT id, name, question, created_at FROM collections"
+        " WHERE id = %s AND user_id = %s",
+        (collection_id, user_id),
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail=f"no collection {collection_id}")
@@ -139,9 +152,13 @@ def _require_collection(conn: Any, collection_id: int) -> tuple[Any, ...]:
 
 
 @router.get("/{collection_id}")
-def get_collection(collection_id: int, decision: DecisionFilter = None) -> dict[str, Any]:
+def get_collection(
+    collection_id: int,
+    user: CurrentUser,
+    decision: DecisionFilter = None,
+) -> dict[str, Any]:
     with get_pool().connection() as conn:
-        row = _require_collection(conn, collection_id)
+        row = _require_collection(conn, collection_id, user["id"])
         papers = _fetch_papers(conn, collection_id, decision)
     return {
         "id": row[0],
@@ -153,11 +170,16 @@ def get_collection(collection_id: int, decision: DecisionFilter = None) -> dict[
 
 
 @router.put("/{collection_id}/screenings/{paper_id}")
-def screen(collection_id: int, paper_id: int, body: ScreeningDecision) -> dict[str, Any]:
+def screen(
+    collection_id: int,
+    paper_id: int,
+    body: ScreeningDecision,
+    user: CurrentUser,
+) -> dict[str, Any]:
     """Record or change a decision. Idempotent: the same PUT twice leaves
     one row, and a different decision replaces the old one in place."""
     with get_pool().connection() as conn:
-        _require_collection(conn, collection_id)
+        _require_collection(conn, collection_id, user["id"])
         if conn.execute("SELECT 1 FROM papers WHERE id = %s", (paper_id,)).fetchone() is None:
             raise HTTPException(status_code=404, detail=f"no paper {paper_id}")
         row = conn.execute(
@@ -180,8 +202,15 @@ def screen(collection_id: int, paper_id: int, body: ScreeningDecision) -> dict[s
 
 
 @router.delete("/{collection_id}/screenings/{paper_id}", status_code=204)
-def unscreen(collection_id: int, paper_id: int) -> Response:
+def unscreen(
+    collection_id: int,
+    paper_id: int,
+    user: CurrentUser,
+) -> Response:
     with get_pool().connection() as conn:
+        # Ownership first: without it, any signed-in user could delete any
+        # screening by guessing a collection id.
+        _require_collection(conn, collection_id, user["id"])
         deleted = conn.execute(
             "DELETE FROM screenings WHERE collection_id = %s AND paper_id = %s RETURNING paper_id",
             (collection_id, paper_id),
@@ -192,11 +221,15 @@ def unscreen(collection_id: int, paper_id: int) -> Response:
 
 
 @router.get("/{collection_id}/export.bib")
-def export_bibtex(collection_id: int, decision: DecisionFilter = "include") -> Response:
+def export_bibtex(
+    collection_id: int,
+    user: CurrentUser,
+    decision: DecisionFilter = "include",
+) -> Response:
     """BibTeX for the collection. Defaults to the included papers, because
     that is what "export my collection" means to a reviewer."""
     with get_pool().connection() as conn:
-        row = _require_collection(conn, collection_id)
+        row = _require_collection(conn, collection_id, user["id"])
         papers = _fetch_papers(conn, collection_id, decision)
     name = str(row[1]).replace('"', "")
     return Response(

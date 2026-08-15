@@ -1,1 +1,192 @@
+/* Sieve design system.
+ *
+ * The identity is not decoration bolted on — it is the product's mechanism.
+ * Sieve fuses two rankers, and the app has already used amber for the keyword
+ * arm and violet for the semantic arm since the provenance chips shipped. So
+ * the brand IS that fusion: amber and violet as the two primaries, their
+ * gradient as the signature, and everything else a near-black ground that
+ * lets those two colors be the only saturated things on screen.
+ *
+ * Ground is near-black rather than white because the arms have to stay
+ * legible as the ONLY chromatic elements, and on white they compete with
+ * every link and button. On near-black a 1px hairline is enough structure,
+ * which is why the reference set (composio, linear, resend) all build from
+ * hairline grids rather than shadows.
+ *
+ * Tailwind v4: tokens live in @theme and become utilities automatically
+ * (bg-ink-900, text-keyword-400, font-mono, ...).
+ */
 @import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+
+@theme {
+  /* ---- Ground. A 9-step near-black ramp, cool-shifted so the warm
+     keyword amber reads as warm against it. ---- */
+  --color-ink-950: #08080a;
+  --color-ink-900: #0b0b0e;
+  --color-ink-880: #101014;
+  --color-ink-850: #141419;
+  --color-ink-800: #1a1a20;
+  --color-ink-700: #24242c;
+  --color-ink-600: #33333d;
+  --color-ink-500: #4b4b57;
+  --color-ink-400: #6e6e7d;
+  --color-ink-300: #9a9aa8;
+  --color-ink-200: #c4c4ce;
+  --color-ink-100: #e6e6ea;
+  --color-ink-50: #f6f6f8;
+
+  /* ---- The two arms. These are load-bearing, not brand paint: a reader
+     has to tell at a glance which ranker found a paper. ---- */
+  --color-keyword-300: #fcd34d;
+  --color-keyword-400: #f7b955;
+  --color-keyword-500: #eb9a2e;
+  --color-keyword-950: #2a1c07;
+
+  --color-semantic-300: #c4b5fd;
+  --color-semantic-400: #a78bfa;
+  --color-semantic-500: #8b5cf6;
+  --color-semantic-950: #1c1533;
+
+  /* Fusion: what the product does, as one value. */
+  --color-fusion-from: #f7b955;
+  --color-fusion-to: #a78bfa;
+
+  --color-signal-400: #34d399; /* success / live */
+  --color-danger-400: #f87171; /* retraction, errors */
+
+  /* ---- Type. Inter for prose, JetBrains Mono for anything that is a
+     value: ranks, scores, ids, timings, eyebrow labels. The split is the
+     rule — if it is a measurement, it is monospace. ---- */
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", monospace;
+
+  --text-display: 4.25rem;
+  --text-display--line-height: 1.02;
+  --text-display--letter-spacing: -0.035em;
+  --text-h1: 2.75rem;
+  --text-h1--line-height: 1.08;
+  --text-h1--letter-spacing: -0.03em;
+  --text-h2: 1.875rem;
+  --text-h2--line-height: 1.15;
+  --text-h2--letter-spacing: -0.022em;
+  --text-h3: 1.25rem;
+  --text-h3--line-height: 1.3;
+  --text-h3--letter-spacing: -0.015em;
+  --text-eyebrow: 0.6875rem;
+  --text-eyebrow--line-height: 1;
+  --text-eyebrow--letter-spacing: 0.14em;
+
+  --radius-card: 0.75rem;
+
+  /* ---- Motion. Shared with motion.ts so CSS and JS animations cannot
+     drift apart in feel. ---- */
+  --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --duration-fast: 150ms;
+  --duration-base: 260ms;
+}
+
+@layer base {
+  html {
+    background-color: var(--color-ink-950);
+    color-scheme: dark;
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: var(--color-ink-950);
+    color: var(--color-ink-200);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  /* Every number in this app is a measurement. Tabular figures stop them
+     jittering when they update mid-animation. */
+  .font-mono,
+  [class*="tabular"] {
+    font-variant-numeric: tabular-nums;
+  }
+  ::selection {
+    background: var(--color-semantic-500);
+    color: white;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-semantic-400);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+@layer utilities {
+  /* The signature. Used for the wordmark and for one word per heading —
+     never more, or it stops meaning "this is the fused thing". */
+  .text-fusion {
+    background-image: linear-gradient(
+      100deg,
+      var(--color-fusion-from),
+      var(--color-fusion-to)
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .bg-fusion {
+    background-image: linear-gradient(
+      100deg,
+      var(--color-fusion-from),
+      var(--color-fusion-to)
+    );
+  }
+  /* Hairline grid. Structure comes from 1px lines on near-black, not from
+     shadows — shadows need a light ground to read against. */
+  .hairline {
+    border-color: color-mix(in oklab, var(--color-ink-100) 9%, transparent);
+  }
+  .hairline-strong {
+    border-color: color-mix(in oklab, var(--color-ink-100) 16%, transparent);
+  }
+  /* The ambient field behind the hero: two blurred color pools, one per
+     arm, overlapping where they fuse. Pure CSS, no image, no canvas —
+     it must cost nothing on a free-tier deploy. */
+  .field-glow::before {
+    content: "";
+    position: absolute;
+    inset: -30% -10% auto -10%;
+    height: 70vh;
+    background:
+      radial-gradient(
+        42% 46% at 22% 30%,
+        color-mix(in oklab, var(--color-keyword-400) 26%, transparent),
+        transparent 70%
+      ),
+      radial-gradient(
+        46% 50% at 72% 22%,
+        color-mix(in oklab, var(--color-semantic-500) 30%, transparent),
+        transparent 70%
+      );
+    filter: blur(72px);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .grid-lines {
+    background-image:
+      linear-gradient(
+        to right,
+        color-mix(in oklab, var(--color-ink-100) 5%, transparent) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        to bottom,
+        color-mix(in oklab, var(--color-ink-100) 5%, transparent) 1px,
+        transparent 1px
+      );
+    background-size: 64px 64px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
