@@ -2705,3 +2705,71 @@ tests the deferral hypothesis directly, rather than tuning a third schedule.
    thing being counted is out of frame.
 3. Capture full-height, crop only for display, and state the crop next to
    any frame series.
+
+## 2026-08-14 — Audit: the visual instrument had a blind region below the fold
+
+Traced back through everything the instrument produced, the way the clock
+bug was traced to the encode's "10+ hours".
+
+**The defect.** `page.screenshot()` is viewport-only unless `fullPage=True`.
+**`fullPage` was never set in any of the 19 capture scripts.** Only 2 of 19
+scroll at all (`gaps.py`, `motion_finalists.py`); **zero** used
+element-targeted screenshots. Viewport heights ranged 620-1000 px.
+
+**Correcting my own account of the choreography case.** I called it "my
+crop". It was two filters, and the more important one was not mine:
+
+| survivor | top | inside 1000px screenshot? | inside my y<880 montage crop? |
+|---|---|---|---|
+| rank 6 "Automated redaction…" | 891 | yes, partially | **no** |
+| rank 8 "Clinical de-identification…" | 1158 | **no** | no |
+
+Rank 8 was lost to the Playwright default, not to a crop anyone chose —
+which is exactly why it was perfectly consistent across every capture and
+therefore invisible. Both rows were mounted, `position: relative`,
+`opacity: 1.00`, mid-move at 279 ms and settled by 455 ms. Nothing was ever
+wrong with them.
+
+**The asymmetry makes this one-directional.** A blind region can only
+produce FALSE NEGATIVES: motion it cannot see reads as no motion. Nothing
+was wrongly ACCEPTED on its evidence, so the entire risk sits in what was
+DISCARDED.
+
+### Back in play — the blind region could have hidden the measured thing
+
+| conclusion | measured by | scrolls? | why at risk |
+|---|---|---|---|
+| Luxe "zero twice" | catalogue.py, shortlist.py | **no** | card grids sit below the hero by convention |
+| Kokonut "zero twice" | catalogue.py, shortlist.py | **no** | same |
+| Aceternity card-hover 0.11 then flat x3 | catalogue.py, shortlist.py | **no** | effect demonstrably exists |
+| card-hover category "unresolvable" | rests on the three above | — | a category closed on possibly-blind evidence |
+
+### Survives
+
+- **Eldora.** Rejected on framing, not on a measurement. A protocol error in
+  the instrument has nothing to do with a judgement about framing.
+- **The result-row-anatomy finding and the 37 screenshots behind it.** These
+  are search products, where the results list begins near the top of the
+  page — the region the instrument DID see. The finding (title leads and is
+  the link, hairline dividers, three type levels) is legible in the first
+  rows and never depended on rows further down.
+- **The density measurement** (4 -> 6 results per 1000 px). It is defined
+  over a fixed viewport, so a viewport-only capture is the correct
+  instrument for it rather than a limitation.
+- **Everything the instrument ACCEPTED**, by the asymmetry above.
+
+### Re-run scope
+
+Only the four rows in the first table, with `fullPage=True` plus an explicit
+scroll to the card grid. **Not the whole funnel** — re-running conclusions
+the blind region could not have affected would spend the budget without
+being able to change an answer.
+
+### Method change
+
+`fullPage=True` or an element-targeted screenshot in every capture script,
+and any pixel-delta measurement scrolls its target into view first and
+asserts the target's bounding box is inside the captured region before
+measuring. An instrument needs its own calibration before its readings
+count — the entry two hours earlier arguing visual capture IS a measurement
+instrument here is exactly why this one needed validating and did not get it.
