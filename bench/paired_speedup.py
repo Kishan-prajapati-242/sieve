@@ -19,7 +19,7 @@ Protocol:
   passed harness.speedup() one hand-written window string for both,
   which satisfied the guard without the windows actually matching.
 
-  Three variants are timed back to back inside each query's slot —
+  Four variants are timed back to back inside each query's slot —
   exact, HNSW at ef=40 (vector-mode default), HNSW at ef=600 (hybrid
   default) — with the order ROTATED by query index, so no variant
   systematically benefits from being second on a warm buffer.
@@ -61,12 +61,25 @@ from bench.harness import (
 )
 
 K = 20
-EF_VECTOR = 40  # vector-mode shipped default
+EF_VECTOR = 160  # vector-mode shipped default (DECISION-4b, was 40)
+# ef=40 is kept as a MEASURED-BUT-NOT-SHIPPED arm. Dropping it would silently
+# orphan the 24.1x figure that is still quoted in the docs; keeping it side by
+# side is what makes "that number describes a configuration we no longer run"
+# checkable rather than asserted.
+EF_LEGACY = 40
 EF_HYBRID = 600  # DECISION-2e hybrid default
 N_RUNS = 3
 WARMUP_RUNS = 1
 
-VARIANTS = ("exact", "hnsw_ef40", "hnsw_ef600")
+# The interleaving NEIGHBOURHOOD is part of the measurement, not scenery.
+# Adding hnsw_ef160 as a fourth arm moved hnsw_ef40 from 3.0ms to 1.6ms on an
+# unchanged code path, because rotation changes which variant precedes which
+# and therefore what is in cache. Pairing controls for drift BETWEEN runs; it
+# does not control for who your neighbour is WITHIN one. So the arm set is a
+# parameter (findings.md 2026-08-15).
+VARIANTS = tuple(
+    os.environ.get("PAIRED_VARIANTS", "exact,hnsw_ef160,hnsw_ef40,hnsw_ef600").split(",")
+)
 
 
 EXACT_GUCS = {"enable_indexscan": "off", "enable_bitmapscan": "off"}
@@ -95,7 +108,7 @@ def verify_plans(
 
 def time_variant(conn: psycopg.Connection, variant: str, vec: list[float]) -> float:
     """One timed call on a connection whose plan is already pinned."""
-    ef = EF_HYBRID if variant == "hnsw_ef600" else EF_VECTOR
+    ef = {"hnsw_ef600": EF_HYBRID, "hnsw_ef40": EF_LEGACY}.get(variant, EF_VECTOR)
     t0 = time.perf_counter()
     search_vector(conn, query_vec=vec, k=K, ef_search=ef)
     return (time.perf_counter() - t0) * 1000
@@ -155,10 +168,15 @@ def main() -> None:
             "differs only by enable_indexscan/bitmapscan = off (Seq Scan verified "
             "via EXPLAIN). e2e adds the same per-query embed cost to both sides.",
             protocol=f"pg_prewarm; {len(labels)} distinct queries; {WARMUP_RUNS} warmup "
-            f"+ {N_RUNS} measured runs; the three variants timed back to back inside "
+            f"+ {N_RUNS} measured runs; the four variants timed back to back inside "
             "each query's slot with the order rotated by query index; repetitions "
             "collapsed per query (median) before ratios",
-            settings={"k": K, "ef_vector": EF_VECTOR, "ef_hybrid": EF_HYBRID},
+            settings={
+                "k": K,
+                "ef_vector_shipped": EF_VECTOR,
+                "ef_legacy_not_shipped": EF_LEGACY,
+                "ef_hybrid": EF_HYBRID,
+            },
             db_state=state,
             ground_truth_corpus=gt_method.get("corpus_size"),
             embed_component={"p50_ms": round(statistics.median(embed_ms), 1)},
@@ -167,9 +185,16 @@ def main() -> None:
             contention=contention,
         ),
         "levels": {v: across_runs(per_run[v]) for v in VARIANTS},
+        "arm_set": list(VARIANTS),
     }
 
-    for name, ef_variant in (("ef40", "hnsw_ef40"), ("ef600", "hnsw_ef600")):
+    for name, ef_variant in (
+        ("ef160", "hnsw_ef160"),
+        ("ef40", "hnsw_ef40"),
+        ("ef600", "hnsw_ef600"),
+    ):
+        if ef_variant not in VARIANTS:
+            continue
         retrieval = list(zip(med["exact"], med[ef_variant], strict=True))
         e2e = [(b + e, c + e) for (b, c), e in zip(retrieval, embed_ms, strict=True)]
         results[f"retrieval_only_{name}"] = paired_ratio(

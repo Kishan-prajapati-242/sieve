@@ -34,7 +34,7 @@ from typing import Any
 import psycopg
 from psycopg.rows import dict_row
 
-DEFAULT_EF_SEARCH = 40
+DEFAULT_EF_SEARCH = 160  # DECISION-4b (was 40)
 
 VECTOR_SQL = """
 SELECT id, doi, title, abstract, year, venue, citation_count, is_retracted, authors,

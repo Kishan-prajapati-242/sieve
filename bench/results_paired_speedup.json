@@ -1,13 +1,14 @@
 {
-  "measured_at": "2026-08-14T19:09:31.360476+00:00",
+  "measured_at": "2026-08-15T19:53:30.471251+00:00",
   "method": {
     "timing_window": "search_vector(query_vec, k=20) round trip, identical on both sides: same SQL, same projection, same 20 full rows. Baseline differs only by enable_indexscan/bitmapscan = off (Seq Scan verified via EXPLAIN). e2e adds the same per-query embed cost to both sides.",
     "hardware": "MacBook Air M1 8GB (fanless), podman VM 4 vCPU / 4GB",
     "database": "PostgreSQL 16.14, pgvector 0.8.5, shared_buffers 128MB, in compose",
-    "protocol": "pg_prewarm; 520 distinct queries; 1 warmup + 3 measured runs; the three variants timed back to back inside each query's slot with the order rotated by query index; repetitions collapsed per query (median) before ratios",
+    "protocol": "pg_prewarm; 520 distinct queries; 1 warmup + 3 measured runs; the four variants timed back to back inside each query's slot with the order rotated by query index; repetitions collapsed per query (median) before ratios",
     "settings": {
       "k": 20,
-      "ef_vector": 40,
+      "ef_vector_shipped": 160,
+      "ef_legacy_not_shipped": 40,
       "ef_hybrid": 600
     },
     "db_state": {
@@ -29,7 +30,7 @@
     },
     "ground_truth_corpus": null,
     "embed_component": {
-      "p50_ms": 6.1
+      "p50_ms": 8.7
     },
     "known_item_caveat": "500/520 queries are corpus titles (see recall sweep caveats)",
     "plans": {
@@ -37,11 +38,11 @@
       "hnsw": "Limit  (cost=415.31..442.49 rows=20 width=497)\n  ->  Index Scan using papers_embed_idx on papers  (cost=415.31..249253.56 rows=183078 width=497)\n        Order By: (embedding <=> '[-0.070739746,0.035369873,0.034240723,0.034332275,-0.03012085,-0.05545044,0.0017929077,0.07714844,0.032318115,-0.004310608,-0.01727295,0.039154053,0.03074646,-0.02557373,-0.010879517,-0.052581787,0.01828003,0.047668457,-0"
     },
     "contention": {
-      "own_transactions": 14686,
+      "own_transactions": 12546,
       "foreign_transactions": 0,
       "foreign_databases": [],
-      "clean": true,
-      "reads_as": "clean=false means something else used this server during the run; treat absolute levels as contaminated and re-run before publishing them"
+      "no_foreign_db_sessions": true,
+      "reads_as": "no_foreign_db_sessions=false means another client used this Postgres server during the run. TRUE DOES NOT MEAN THE RUN WAS CLEAN: host CPU contention is invisible here and hits a sequential scan differently from an index probe. Check per-run spread as well -- if the stability gate returned a range instead of a point estimate, something moved regardless of what this flag says."
     }
   },
   "levels": {
@@ -56,46 +57,38 @@
       "per_run": [
         {
           "n_samples": 520,
-          "p50_ms": 70.4,
-          "p95_ms": 143.3,
-          "p99_ms": 599.2,
-          "min_ms": 58.7,
-          "max_ms": 1012.8
+          "p50_ms": 66.1,
+          "p95_ms": 95.3,
+          "p99_ms": 168.2,
+          "min_ms": 59.9,
+          "max_ms": 595.0
         },
         {
           "n_samples": 520,
-          "p50_ms": 72.5,
-          "p95_ms": 242.6,
-          "p99_ms": 797.4,
-          "min_ms": 58.6,
-          "max_ms": 891.5
-        },
-        {
-          "n_samples": 520,
-          "p50_ms": 109.1,
-          "p95_ms": 676.3,
-          "p99_ms": 1212.5,
+          "p50_ms": 63.7,
+          "p95_ms": 80.3,
+          "p99_ms": 109.3,
           "min_ms": 59.7,
-          "max_ms": 1903.7
+          "max_ms": 146.8
+        },
+        {
+          "n_samples": 520,
+          "p50_ms": 64.7,
+          "p95_ms": 97.0,
+          "p99_ms": 241.1,
+          "min_ms": 60.2,
+          "max_ms": 607.0
         }
       ],
-      "p50_ms": null,
-      "p50_unstable_range_ms": [
-        70.4,
-        109.1
-      ],
-      "p95_ms": null,
-      "p95_unstable_range_ms": [
-        143.3,
-        676.3
-      ],
+      "p50_ms": 64.7,
+      "p95_ms": 95.3,
       "p99_ms": null,
       "p99_unstable_range_ms": [
-        599.2,
-        1212.5
+        109.3,
+        241.1
       ]
     },
-    "hnsw_ef40": {
+    "hnsw_ef160": {
       "n_runs": 3,
       "samples_per_run": [
         520,
@@ -106,146 +99,66 @@
       "per_run": [
         {
           "n_samples": 520,
-          "p50_ms": 3.1,
-          "p95_ms": 6.9,
-          "p99_ms": 32.9,
-          "min_ms": 1.3,
-          "max_ms": 454.3
+          "p50_ms": 8.9,
+          "p95_ms": 17.1,
+          "p99_ms": 30.3,
+          "min_ms": 2.1,
+          "max_ms": 59.5
         },
         {
           "n_samples": 520,
-          "p50_ms": 3.4,
-          "p95_ms": 12.6,
-          "p99_ms": 31.5,
-          "min_ms": 1.2,
-          "max_ms": 71.1
+          "p50_ms": 8.3,
+          "p95_ms": 14.9,
+          "p99_ms": 21.5,
+          "min_ms": 2.0,
+          "max_ms": 32.2
         },
         {
           "n_samples": 520,
-          "p50_ms": 5.3,
-          "p95_ms": 34.9,
-          "p99_ms": 87.2,
-          "min_ms": 1.3,
-          "max_ms": 206.2
+          "p50_ms": 8.7,
+          "p95_ms": 18.0,
+          "p99_ms": 49.5,
+          "min_ms": 2.0,
+          "max_ms": 104.7
         }
       ],
-      "p50_ms": null,
-      "p50_unstable_range_ms": [
-        3.1,
-        5.3
-      ],
-      "p95_ms": null,
-      "p95_unstable_range_ms": [
-        6.9,
-        34.9
-      ],
+      "p50_ms": 8.7,
+      "p95_ms": 17.1,
       "p99_ms": null,
       "p99_unstable_range_ms": [
-        31.5,
-        87.2
-      ]
-    },
-    "hnsw_ef600": {
-      "n_runs": 3,
-      "samples_per_run": [
-        520,
-        520,
-        520
-      ],
-      "stability_rule": "median across runs, only when max/min <= 1.3; otherwise the observed range, no point estimate",
-      "per_run": [
-        {
-          "n_samples": 520,
-          "p50_ms": 20.2,
-          "p95_ms": 54.8,
-          "p99_ms": 171.5,
-          "min_ms": 4.8,
-          "max_ms": 362.4
-        },
-        {
-          "n_samples": 520,
-          "p50_ms": 21.8,
-          "p95_ms": 98.9,
-          "p99_ms": 301.1,
-          "min_ms": 5.2,
-          "max_ms": 520.6
-        },
-        {
-          "n_samples": 520,
-          "p50_ms": 35.5,
-          "p95_ms": 185.3,
-          "p99_ms": 598.0,
-          "min_ms": 8.2,
-          "max_ms": 1082.7
-        }
-      ],
-      "p50_ms": null,
-      "p50_unstable_range_ms": [
-        20.2,
-        35.5
-      ],
-      "p95_ms": null,
-      "p95_unstable_range_ms": [
-        54.8,
-        185.3
-      ],
-      "p99_ms": null,
-      "p99_unstable_range_ms": [
-        171.5,
-        598.0
+        21.5,
+        49.5
       ]
     }
   },
-  "retrieval_only_ef40": {
-    "speedup": 23.0,
+  "arm_set": [
+    "exact",
+    "hnsw_ef160"
+  ],
+  "retrieval_only_ef160": {
+    "speedup": 7.7,
     "ci95": [
-      21.7,
-      24.3
+      7.5,
+      8.0
     ],
     "window": "sql only: search_vector(k=20), full rows",
     "paired": true,
     "n_pairs": 520,
-    "ratio_p10": 13.6,
-    "ratio_p90": 42.0,
+    "ratio_p10": 5.5,
+    "ratio_p90": 14.5,
     "method": "median of per-query baseline/candidate ratios, both timed inside one run with alternating order; percentile bootstrap over queries (2000 resamples, seed 20260812)"
   },
-  "end_to_end_ef40": {
-    "speedup": 8.7,
+  "end_to_end_ef160": {
+    "speedup": 4.2,
     "ci95": [
-      8.4,
-      9.0
+      4.1,
+      4.3
     ],
     "window": "end-to-end: query embed + search_vector(k=20), full rows",
     "paired": true,
     "n_pairs": 520,
-    "ratio_p10": 5.9,
-    "ratio_p90": 12.9,
-    "method": "median of per-query baseline/candidate ratios, both timed inside one run with alternating order; percentile bootstrap over queries (2000 resamples, seed 20260812)"
-  },
-  "retrieval_only_ef600": {
-    "speedup": 3.5,
-    "ci95": [
-      3.4,
-      3.6
-    ],
-    "window": "sql only: search_vector(k=20), full rows",
-    "paired": true,
-    "n_pairs": 520,
-    "ratio_p10": 2.2,
-    "ratio_p90": 6.5,
-    "method": "median of per-query baseline/candidate ratios, both timed inside one run with alternating order; percentile bootstrap over queries (2000 resamples, seed 20260812)"
-  },
-  "end_to_end_ef600": {
-    "speedup": 2.9,
-    "ci95": [
-      2.8,
-      3.0
-    ],
-    "window": "end-to-end: query embed + search_vector(k=20), full rows",
-    "paired": true,
-    "n_pairs": 520,
-    "ratio_p10": 2.0,
-    "ratio_p90": 4.7,
+    "ratio_p10": 3.1,
+    "ratio_p90": 5.7,
     "method": "median of per-query baseline/candidate ratios, both timed inside one run with alternating order; percentile bootstrap over queries (2000 resamples, seed 20260812)"
   }
 }

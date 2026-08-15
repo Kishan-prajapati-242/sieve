@@ -8,7 +8,7 @@ instruction prefix, the recorded text loses it and the test fails, which
 is the point (silent retrieval degradation has no other tripwire).
 
 Geometry: 60 papers cluster near e1 = [1, 0, ...] (year 2020), 3 papers
-near -e1 (year 1999). A query at e1 with ef_search=40 fills its candidate
+near -e1 (year 1999). A query at e1 with the default ef_search fills its candidate
 list entirely from the cluster, so a year<=1999 filter strains out every
 candidate — the case iterative_scan exists for.
 """
@@ -112,7 +112,7 @@ def test_vector_mode_prefixes_ranks_and_reports(client: TestClient, stub: Record
     assert scores == sorted(scores, reverse=True)
     assert all(0.85 < s <= 1.0 for s in scores)  # cosine similarity, near the query
 
-    assert data["ef_search"] == 40  # the default, recorded per query
+    assert data["ef_search"] == 160  # the default (DECISION-4b), recorded per query
     assert data["timings"]["embed_ms"] is not None and data["timings"]["embed_ms"] >= 0
     assert data["timings"]["retrieve_ms"] >= 0
 

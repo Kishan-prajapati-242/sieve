@@ -688,3 +688,61 @@ of ef=600**, which is the setting production actually runs. The honest
 headline is the ef=600 one, and it needs the same paired treatment
 applied to `search_hybrid()` rather than to `search_vector()` standing in
 for it.
+
+---
+
+## DECISION-4b: vector-mode ef_search moves from 40 to 160
+
+**Date:** 2026-08-14
+
+**Decision:** the shipped default for `mode=vector` goes from `ef_search=40`
+to `160`. Recall@20 rises 0.9238 -> 0.9782, +5.4 points, and the cost is
+2.6 ms of retrieval against a query-embed floor of about 7 ms that every
+vector query pays regardless. Buying 5.4 recall points for a cost smaller
+than the fixed overhead sitting in front of it is not a close call.
+
+The second reason is the degenerate-cluster argument. Low `ef` is exactly
+where that pathology bites: a small candidate frontier is what lets HNSW
+get trapped in a dense local cluster and return a neighbourhood rather than
+a ranking. Raising `ef` widens the frontier, so this is not only a recall
+trade, it removes the regime where the failure mode lives.
+
+**Alternatives considered:** staying at 40 and citing the 24.1x speedup;
+moving all the way to 600 to match the hybrid default and have one number;
+an intermediate 100.
+
+**Why rejected:** staying at 40 keeps a flattering ratio by shipping a
+worse product, which is the flattering-drift pattern this project has now
+caught six times. Matching 600 pays much more latency than the recall curve
+returns above ~160 — the curve is nearly flat there while the cost is not.
+
+**What would change my mind:** a Phase 4 nDCG eval showing the extra recall
+does not reach the ranked output — recall@20 is a retrieval-set measure, and
+if fusion or the ranker discards what the wider frontier finds, the 5.4
+points buy nothing a user sees.
+
+### Consequence: the 24.1x retrieval ratio now describes a configuration
+### that is not shipped
+
+`24.1x [23.3, 25.0]` (re-ran 2026-08-14 to `23.0x [21.7, 24.3]`) is the
+paired speedup of `search_vector` at **ef=40** against the exact scan. As of
+this decision, **nothing runs at ef=40.** The number is not wrong, it is
+simply about a setting the product no longer uses, which makes quoting it as
+"Sieve's retrieval speedup" a claim about a configuration a reviewer cannot
+observe.
+
+**Re-measured 2026-08-15. The shipped retrieval speedup is 7.7x
+[7.5, 8.0]**, paired, exact scan versus `search_vector` at ef=160, two arms,
+clean run. Kishan predicted 12-14x unpaired with paired lower; it came in
+lower than predicted.
+
+**Read the arm-set caveat before quoting it** (findings.md 2026-08-15). The
+same measurement with four arms returns 12.2x, because HNSW arms preheat each
+other's index pages and the rotation controls position but not neighbour.
+7.7x is the two-arm number and is the one to use: production runs one vector
+query, not three at different `ef` back to back, and it is the conservative
+reading of two defensible protocols.
+
+**This also means 24.1x and 3.8x are not clean comparisons.** Both were
+measured in a three-arm set and carry the same inflation by an unknown
+amount. Neither should be quoted beside a two-arm figure.

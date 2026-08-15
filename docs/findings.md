@@ -2852,3 +2852,58 @@ session with an empty bucket.
 that explains it or an instrument proven able to produce a positive. DOI has
 the mechanism. The visual funnel had neither and lost four conclusions.
 `id_exact` had neither and now has the proof.
+
+## 2026-08-15 — Pairing controls for drift between runs, not for who your neighbour is inside one
+
+**Symptom.** Adding a fourth arm (`hnsw_ef160`) to `paired_speedup` moved an
+UNCHANGED arm: `hnsw_ef40` went 3.0 ms -> 1.6 ms, and its ratio went 24.1x ->
+44.6x. Same code path, same corpus, same query set.
+
+**How found.** The ef=40 number was not the deliverable — it was kept
+deliberately as a measured-but-not-shipped arm so that "24.1x describes a
+configuration we no longer run" stayed checkable. It moved, which it had no
+business doing.
+
+**Root cause.** The harness rotates variant order per query so no arm gets a
+fixed second-mover advantage. With three arms, `hnsw_ef40` was preceded by
+the cache-destroying exact scan 1/3 of the time; with four, only 1/4, and by
+another HNSW arm the rest. **HNSW arms warm each other's index pages.** The
+rotation controls WHICH position each arm occupies, not WHO precedes it.
+
+**Confirmed by removing arms rather than adding them.** Two-arm run,
+`exact` + `hnsw_ef160` only, everything else identical and both runs clean
+(`no_foreign_db_sessions: true`, all levels inside the stability gate):
+
+| arm set | ef=160 level | retrieval-only ratio |
+|---|---|---|
+| exact, ef160, ef40, ef600 | 6.1 ms | **12.2x [12.0, 12.7]** |
+| exact, ef160 | 8.7 ms | **7.7x [7.5, 8.0]** |
+
+The shipped configuration's own headline moves **1.6x** depending on which
+other configurations were measured beside it. Nothing about the product
+changed between those two rows.
+
+**Which is right: the two-arm number.** Production runs one vector query
+against whatever cache state exists; it does not run three HNSW searches at
+different `ef` back to back. Letting HNSW arms preheat each other's pages
+measures a scenario no user experiences. The two-arm run is also the
+conservative one — the candidate arm sits next to a 183K-row sequential scan
+that evicts what it needs — and where two defensible protocols disagree,
+this project takes the one that flatters less.
+
+**This reaches backwards.** `24.1x` and `3.8x` were both measured in a
+THREE-arm set, so both carry the same artifact, and both are inflated by an
+unknown amount for the same reason. They are not comparable to a two-arm
+number and they are not comparable to each other across arm-set changes.
+
+**DECISION-3d is not wrong, it is incomplete.** Pairing removes drift
+between runs by construction, which a contaminated re-run demonstrated when
+three of four ratios survived every level failing its gate. It does not
+remove interference WITHIN a run. The arm set is now recorded in the results
+file as `arm_set` and settable via `PAIRED_VARIANTS`, because a ratio whose
+value depends on an unrecorded parameter is not reproducible.
+
+**Consequence for the resume claim.** Kishan predicted 12-14x unpaired with
+paired coming in lower. It came in at **7.7x**, lower than predicted and by
+more than expected — and the direction of his prediction was right for the
+same reason it has been right three times before.

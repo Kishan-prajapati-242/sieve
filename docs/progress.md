@@ -84,7 +84,24 @@ Paired speedup vs exact scan, with 2026-08-14 re-runs beside them:
 | e2e ef=600 | 2.9x [2.8, 3.0] | 2.9x [2.8, 3.0] | reproduces exactly |
 | e2e ef=40 | **7.1x [6.9, 7.3]** | **8.7x [8.4, 9.0]** | **CIs disjoint — see below** |
 
-> ### ⚠ RESUME-FACING: the 7.1x end-to-end figure
+> ### ✅ RESOLVED 2026-08-15 — the resume claim moves to retrieval-only
+>
+> **Kishan's call: the resume carries the retrieval-only figure. The
+> end-to-end number stays in the docs and comes off the resume.** It survived
+> a fully contaminated re-run with overlapping CIs, carries no encoder term,
+> and therefore has neither the drift nor the perverse incentive gradient
+> described below.
+>
+> **The figure itself is now 7.7x [7.5, 8.0]**, not 24.1x — ef_search moved
+> to 160 under DECISION-4b, so the ef=40 measurement describes a
+> configuration that is no longer shipped, and the re-measurement at the new
+> default also exposed an arm-set artifact in the old number. See DECISION-4b
+> and findings.md 2026-08-15 before quoting any speedup.
+>
+> The original block is kept below because the reasoning is the interview
+> answer.
+>
+> ### (superseded) RESUME-FACING: the 7.1x end-to-end figure
 >
 > **Kishan has 7.1x on his resume as the end-to-end number. It is now known
 > to be a joint measurement of retrieval AND the encoder, and 8.7x is the
