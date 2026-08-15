@@ -41,7 +41,7 @@ order-invariance argument gets its evidence.
 | stratum | n | why this size |
 |---|---|---|
 | `acc_abstract_hash_x_title_exact` (3+) | **20** | decides the cap rule; 6 could not separate 20% from 60% last time |
-| `acc_id_exact_only` | **12** | has never fired; 44,517 papers already carry PMIDs so PubMed exercises it immediately |
+| `acc_id_exact_only` | **12** ⚠ | has never fired; 44,517 papers already carry PMIDs so PubMed exercises it immediately — **but see the caveat below, this stratum can come back EMPTY** |
 | `no_doi_pairs` (neither side has a DOI) | **15** | never measured, cross-cuts every strategy |
 | `acc_abstract_hash_only` | 10 | re-measures the clean 1.000 claim on the split population |
 | `acc_title_exact_pair` (size 2) | 8 | the shipped title_exact rule |
@@ -50,6 +50,36 @@ order-invariance argument gets its evidence.
 | `acc_doi_exact` | 3 | |
 | `acc_jmir_doi` | 3 | mechanical identity; 3 is a spot check |
 | `ref_size_capped_title_exact` | 12 | the 3+ groups the cap now flags — recall cost of DECISION-3c |
+
+> ### ⚠ `acc_id_exact_only` may draw zero — check BEFORE the session
+>
+> **Verified 2026-08-14: the arm is not broken, but it has nothing to find
+> today.** The current corpus has **0 colliding groups** across 44,517 PMIDs
+> and 95 arXiv ids. Unlike `doi_exact` — whose zero has a mechanism, since
+> `papers_doi_key` is a UNIQUE index and collisions cannot survive insert —
+> `papers_pubmed_id_idx` is a plain partial index, so collisions here are
+> structurally possible and simply do not exist.
+>
+> The arm itself is now PROVEN able to fire
+> (`test_id_exact_actually_fires_on_a_shared_pmid`): given two rows sharing a
+> PMID and two sharing an arXiv id it proposes exactly those pairs and leaves
+> the controls alone. That test did not exist before; the arm had zero
+> coverage and zero real firings, which is a universal negative from an
+> instrument never shown able to see (findings.md 2026-08-14).
+>
+> **So the stratum's viability rests entirely on the pull creating
+> cross-source PMID collisions, which is plausible but unmeasured.** Run this
+> immediately after step 1 of the pull runbook, before allocating the draw:
+>
+>     SELECT count(*) FROM (
+>       SELECT pubmed_id FROM papers WHERE pubmed_id IS NOT NULL
+>       GROUP BY pubmed_id HAVING count(*) > 1) t;
+>
+> **If it returns 0, this stratum does not exist.** Reallocate its 12 pairs
+> rather than letting Kishan sit down to a session with an empty bucket —
+> `acc_title_year` and `ref_trgm_borderline` are the natural recipients, and
+> the reallocation gets recorded because it changes what the precision number
+> is measured over.
 | `ref_below_threshold_sameyear` | 10 | measured 0.182 miss rate |
 | `ref_abstract_low_title` | 8 | measured 0.250 |
 | `ref_below_threshold_preprint` | 6 | measured 0.833 — the Ascle gap, confirmed as population fact |

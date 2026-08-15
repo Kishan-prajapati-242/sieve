@@ -2807,3 +2807,48 @@ that proof is a separate step from making the observation.
 
 This is the same asymmetry as the false-negative argument one level up, but
 sharper: it says which SENTENCES are at risk, not just which measurements.
+
+## 2026-08-14 — id_exact: the blind-instrument test applied to a dedup arm
+
+**The claim under test.** `id_exact` has proposed zero pairs for the life of
+the project. That is a universal negative, and the finding one entry up says
+a blind instrument supports "I saw X" and cannot support "nobody does X".
+
+**The contrast that made it suspicious** (Kishan). `doi_exact` also proposes
+zero, but its zero has a MECHANISM: `papers_doi_key` is a UNIQUE index, so a
+collision cannot survive insert to become a pair. `id_exact` had no such
+explanation — and the arm had never been proven able to fire.
+
+**Measured.** `papers_pubmed_id_idx` and `papers_arxiv_id_idx` are plain
+partial indexes, NOT unique, so collisions are structurally possible:
+
+    pubmed_id   0 colliding groups   (44,517 papers carry one)
+    arxiv_id    0 colliding groups   (95 papers carry one)
+
+**And the arm had zero test coverage** — no test in the suite referenced
+`id_exact`, `pubmed_id`, or `arxiv_id`. So the zero came from an arm that
+had never been observed working, which is exactly the failure mode.
+
+**Calibrated it.** `test_id_exact_actually_fires_on_a_shared_pmid` inserts
+two rows sharing a PMID (different DOIs and titles — the cross-source glue
+case the arm exists for) and two sharing an arXiv id, plus two controls with
+distinct ids. The arm proposes exactly `{(1,2), (3,4)}` and leaves the
+controls alone.
+
+**Verdict: the arm works. The zero is honest and merely unexercised.** Which
+is the good outcome, but it was not knowable before the test, and the
+difference matters downstream.
+
+**Consequence, which is the reason this was worth chasing.** The
+post-PubMed labeling draw allocates `acc_id_exact_only` at n=12, assuming
+the arm produces merges to sample. With zero collisions today, that stratum
+depends entirely on the pull creating cross-source PMID collisions —
+plausible, since 44,517 papers already carry PMIDs, but unmeasured. The
+draw plan now carries a check to run immediately after the fetch, and a
+reallocation rule if it returns zero, so Kishan does not sit down to a
+session with an empty bucket.
+
+**The pattern, third instance.** A negative result needs either a mechanism
+that explains it or an instrument proven able to produce a positive. DOI has
+the mechanism. The visual funnel had neither and lost four conclusions.
+`id_exact` had neither and now has the proof.

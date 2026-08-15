@@ -19,6 +19,7 @@ import psycopg
 import pytest
 
 from api.db.migrate import migrate
+from api.dedup.cascade import find_pairs
 from api.dedup.rules import ABSTRACT_TITLE_SIM, TRGM_THRESHOLD, sibling_sql
 
 # (id, title, year, doi, abstract_key) — abstract_key stands in for the
@@ -242,3 +243,49 @@ def test_ascle_family_documents_a_known_recall_gap(db: str) -> None:
 
     # The mechanical DOI relationship that no title rule needs to guess.
     assert "10.2196/preprints.60601".replace("/preprints.", "/") == "10.2196/60601"
+
+
+def test_id_exact_actually_fires_on_a_shared_pmid(scratch_db: str) -> None:
+    """Prove the arm CAN fire. It never has, on any corpus.
+
+    id_exact has proposed zero pairs for the entire life of this project.
+    doi_exact also proposes zero, but that zero has a MECHANISM — `doi` has a
+    UNIQUE index, so a collision cannot survive insert to become a pair.
+    id_exact had no such explanation: `papers_pubmed_id_idx` and
+    `papers_arxiv_id_idx` are plain partial indexes, so collisions are
+    structurally possible and simply do not occur in this corpus (verified
+    2026-08-14: 0 colliding groups across 44,517 PMIDs and 95 arXiv ids).
+
+    A zero from an arm never proven able to fire is the blind-instrument
+    failure in another costume: it supports "I saw no duplicates" and cannot
+    support "there are none". This test is the calibration.
+    """
+    migrate(scratch_db)
+    with psycopg.connect(scratch_db, autocommit=True) as conn:
+        rows = [
+            # Same PMID, different DOIs and titles: the cross-source glue case
+            # the arm exists for — one record from OpenAlex, one from PubMed.
+            (1, "Deep learning for clinical notes", "10.1/a", "38000001", None),
+            (2, "Deep-learning for clinical notes.", "10.1/b", "38000001", None),
+            # Same arXiv id, two versions.
+            (3, "Attention is all you need", "10.2/a", None, "1706.03762"),
+            (4, "Attention Is All You Need (v5)", "10.2/b", None, "1706.03762"),
+            # Controls: distinct ids must NOT pair.
+            (5, "Unrelated paper", "10.3/a", "38000002", None),
+            (6, "Another unrelated paper", "10.3/b", None, "2101.00001"),
+        ]
+        for pid, title, doi, pmid, arxiv in rows:
+            conn.execute(
+                """
+                INSERT INTO papers (id, title, title_norm, year, doi, pubmed_id, arxiv_id)
+                VALUES (%s, %s, lower(%s), 2023, %s, %s, %s)
+                """,
+                (pid, title, title, doi, pmid, arxiv),
+            )
+        pairs = find_pairs(conn, strategies=["id_exact"])
+
+    got = {(min(p.a, p.b), max(p.a, p.b)) for p in pairs}
+    assert got == {(1, 2), (3, 4)}, f"id_exact did not fire as expected: {got}"
+    assert all(p.strategy == "id_exact" for p in pairs)
+    # The controls stayed apart — the arm is selective, not indiscriminate.
+    assert not any(5 in (p.a, p.b) or 6 in (p.a, p.b) for p in pairs)

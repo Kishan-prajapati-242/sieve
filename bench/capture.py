@@ -1,4 +1,11 @@
-"""Shared capture helpers. Import these instead of calling page.screenshot().
+"""Shared screenshot-capture helpers. Import these instead of page.screenshot().
+
+Lives in bench/ because visual capture IS a measurement instrument on this
+project, not a design tool — it is the only one that can observe a number
+describing the wrong MOMENT rather than the wrong value (findings.md
+2026-08-14). It was briefly force-added inside .design-review/, which is
+gitignored scratch and designed to be deleted; a tracked file in a
+disposable directory is one `rm -rf` from gone.
 
 WHY THIS EXISTS. `page.screenshot()` is viewport-only unless `full_page=True`,
 and `full_page` was never set in any of 19 capture scripts (findings.md

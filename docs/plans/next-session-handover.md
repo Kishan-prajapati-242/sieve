@@ -15,7 +15,7 @@ funnel saw **the initial static viewport only**. The asymmetry matters: a
 blind region can only produce FALSE NEGATIVES, so nothing was wrongly
 accepted and the whole exposure is in what was **discarded**.
 
-The default is now fixed in `.design-review/capture.py` — use `shoot()`,
+The default is now fixed in `bench/capture.py` — use `shoot()`,
 `shoot_element()`, and `assert_in_frame()` rather than `page.screenshot()`.
 
 ## 1. Re-run list — these four only
