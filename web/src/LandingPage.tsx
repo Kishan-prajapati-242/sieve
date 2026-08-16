@@ -7,6 +7,7 @@
 // unpublished, it is absent rather than estimated: hybrid p50 is not on this
 // page because its stability gate refused a point estimate.
 import { FusionDiagram } from "./FusionDiagram";
+import { Stack3D } from "./Stack3D";
 import {
   Button,
   ButtonLink,
@@ -106,8 +107,16 @@ export function LandingPage() {
             </div>
           </Reveal>
 
-          <Reveal delay={0.24} className="mt-20">
-            <Card className="overflow-hidden p-5 sm:p-8 lg:p-10">
+          {/* The 3D object sits in the hero, above the flat diagram: the
+              solid says "this is a thing", the diagram says "here is how it
+              works". Hidden below lg — a tilt-to-pointer object has no
+              pointer on a phone. */}
+          <div className="pointer-events-none absolute right-4 top-20 hidden w-[38%] max-w-[420px] xl:block">
+            <Stack3D className="pointer-events-auto h-[420px] w-full" />
+          </div>
+
+          <Reveal delay={0.24} className="mt-20" y={44}>
+            <Card className="lift sheen overflow-hidden p-5 sm:p-8 lg:p-10">
               <div className="w-full">
                 <FusionDiagram className="mx-auto h-[150px] w-full max-w-3xl sm:h-[260px]" />
               </div>
@@ -124,7 +133,7 @@ export function LandingPage() {
         <Container>
           <div className="grid grid-cols-2 gap-8 sm:gap-10 lg:grid-cols-4">
             {stats(corpus.value).map((s, i) => (
-              <Reveal key={s.label} delay={i * 0.06}>
+              <Reveal key={s.label} delay={i * 0.08} y={34}>
                 <Stat {...s} />
               </Reveal>
             ))}
@@ -153,8 +162,8 @@ export function LandingPage() {
 
           <div className="mt-10 grid gap-4 sm:mt-14 sm:gap-6 lg:grid-cols-2">
             {ARMS.map((arm, i) => (
-              <Reveal key={arm.name} delay={i * 0.08}>
-                <Card className="h-full p-6 sm:p-8" interactive>
+              <Reveal key={arm.name} delay={i * 0.1} y={40}>
+                <Card className="lift sheen h-full p-6 sm:p-8" interactive>
                   <div className="flex items-center gap-3">
                     <span
                       className={`size-2 rounded-full ${
@@ -164,7 +173,7 @@ export function LandingPage() {
                     />
                     <span
                       className={`font-mono text-eyebrow uppercase ${
-                        arm.tone === "keyword" ? "text-keyword-400" : "text-semantic-400"
+                        arm.tone === "keyword" ? "text-keyword-ink" : "text-semantic-ink"
                       }`}
                     >
                       {arm.name}
@@ -173,8 +182,8 @@ export function LandingPage() {
                   <p
                     className={`mt-5 rounded-lg px-3 py-2 font-mono text-sm ${
                       arm.tone === "keyword"
-                        ? "bg-keyword-950 text-keyword-300"
-                        : "bg-semantic-950 text-semantic-300"
+                        ? "bg-keyword-950 text-keyword-ink"
+                        : "bg-semantic-950 text-semantic-ink"
                     }`}
                   >
                     {arm.sql}
@@ -221,14 +230,14 @@ export function LandingPage() {
 
           <div className="mt-10 grid gap-px overflow-hidden rounded-card sm:mt-14 sm:grid-cols-2 lg:grid-cols-3">
             {PIPELINE.map((s, i) => (
-              <Reveal key={s.k} delay={i * 0.05} className="h-full">
+              <Reveal key={s.k} delay={i * 0.07} className="h-full" y={36}>
                 <div
-                  className="hairline group h-full border bg-ink-880 p-7 transition-colors
-                             duration-200 ease-[var(--ease-out-soft)] hover:bg-ink-850"
+                  className="hairline lift sheen group h-full border bg-ink-880 p-7
+                             hover:bg-ink-850"
                 >
                   <span
                     className="font-mono text-eyebrow text-ink-500 transition-colors
-                               duration-200 group-hover:text-keyword-400"
+                               duration-200 group-hover:text-keyword-ink"
                   >
                     {s.k}
                   </span>

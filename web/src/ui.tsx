@@ -111,8 +111,12 @@ const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
   // White-on-black primary, like every reference: on a near-black ground the
   // highest-contrast element should be the action, and any brand color used
   // at button size would compete with the arm chips.
-  primary: "bg-ink-50 text-ink-950 hover:bg-white shadow-[0_0_0_1px_rgba(255,255,255,0.1)]",
-  secondary: "hairline border bg-ink-850/60 text-ink-100 hover:bg-ink-800 hover:hairline-strong",
+  primary:
+    "bg-ink-50 text-ink-950 hover:bg-white shadow-[0_0_0_1px_rgba(255,255,255,0.1)] " +
+    "hover:-translate-y-0.5 hover:shadow-[0_10px_28px_-12px_rgba(0,0,0,0.6)] sheen",
+  secondary:
+    "hairline border bg-ink-850/60 text-ink-100 hover:bg-ink-800 hover:hairline-strong " +
+    "hover:-translate-y-0.5 sheen",
   ghost: "text-ink-300 hover:text-ink-50 hover:bg-ink-850",
 };
 
@@ -209,7 +213,7 @@ export function Stat({
 export function Reveal({
   children,
   delay = 0,
-  y = 14,
+  y = 32,
   className = "",
 }: {
   children: ReactNode;
@@ -222,10 +226,12 @@ export function Reveal({
   return (
     <motion.div
       className={className}
-      initial={{ opacity: 0, y }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-80px" }}
-      transition={{ duration: 0.5, delay, ease: [0.2, 0.8, 0.2, 1] }}
+      // Real travel, not a nudge: 32px plus a slight scale and blur, which
+      // is what separates "an element appeared" from "an element arrived".
+      initial={{ opacity: 0, y, scale: 0.985, filter: "blur(6px)" }}
+      whileInView={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+      viewport={{ once: true, margin: "-70px" }}
+      transition={{ duration: 0.72, delay, ease: [0.2, 0.8, 0.2, 1] }}
     >
       {children}
     </motion.div>

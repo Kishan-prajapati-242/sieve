@@ -10,6 +10,7 @@
 import { AnimatePresence, motion, useReducedMotion, useScroll, useTransform } from "motion/react";
 import { BrowserRouter, Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { AuthPage, RequireAuth } from "./AuthPage";
+import { Background } from "./Background";
 import { VerifyBanner } from "./VerifyBanner";
 import { useAuth } from "./auth";
 import { CollectionPage } from "./CollectionPage";
@@ -106,7 +107,8 @@ function Shell() {
   const location = useLocation();
   const isLanding = location.pathname === "/";
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="relative flex min-h-screen flex-col">
+      <Background />
       <Nav />
       <VerifyBanner />
       <main className="flex-1">

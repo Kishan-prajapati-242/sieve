@@ -205,6 +205,11 @@ export function SearchPage() {
                 role="radio"
                 aria-label={m}
                 aria-checked={mode === m}
+                // The white pill behind this label is an absolutely
+                // positioned sibling, so a contrast checker walking
+                // ancestors reads the strip instead. Declare the effective
+                // background rather than exempting the element.
+                data-contrast-bg={mode === m ? "var(--color-ink-50)" : undefined}
                 onClick={() => pickMode(m)}
                 onMouseEnter={() => setHoveredMode(m)}
                 onMouseLeave={() => setHoveredMode(null)}

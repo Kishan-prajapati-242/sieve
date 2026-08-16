@@ -36,10 +36,10 @@
   --s-850: #141419;
   --s-800: #1a1a20;
   --s-700: #24242c;
-  --s-600: #33333d;
-  --s-500: #4b4b57;
-  --s-400: #6e6e7d;
-  --s-300: #9a9aa8;
+  --s-600: #7c7c88;
+  --s-500: #8b8b97;
+  --s-400: #9d9daa;
+  --s-300: #b6b6c1;
   --s-200: #c4c4ce;
   --s-100: #e6e6ea;
   --s-50: #f6f6f8;
@@ -48,6 +48,8 @@
   --glow-strength: 42%;
   --glow-strength-2: 48%;
   --row-hover: rgba(255, 255, 255, 0.03);
+  --arm-keyword-ink: #f7b955;
+  --arm-semantic-ink: #b9a2ff;
   --card-shadow: 0 8px 28px -12px rgba(0, 0, 0, 0.7);
 }
 
@@ -61,10 +63,10 @@
   --s-850: #f4f4f2;
   --s-800: #ecece9;
   --s-700: #dededa;
-  --s-600: #c2c2bd;
-  --s-500: #8e8e88;
-  --s-400: #6b6b66;
-  --s-300: #4a4a46;
+  --s-600: #6f6f69;
+  --s-500: #63635d;
+  --s-400: #55554f;
+  --s-300: #3d3d38;
   --s-200: #2e2e2b;
   --s-100: #1a1a18;
   --s-50: #0d0d0c;
@@ -73,10 +75,18 @@
   --glow-strength: 26%;
   --glow-strength-2: 28%;
   --row-hover: rgba(0, 0, 0, 0.028);
+  --arm-keyword-ink: #7a4b00;
+  --arm-semantic-ink: #5b21b6;
   --card-shadow: 0 8px 24px -14px rgba(0, 0, 0, 0.22);
 }
 
 @theme {
+  /* NOTE: the muted tiers (400/500/600) are compressed deliberately. They
+     were spread for hierarchy and measured 3.99 / 2.33 / 1.60 against the
+     page ground — all three below WCAG AA, in BOTH themes, which is what
+     shipping a theme on reasoning rather than measurement produces. Contrast
+     wins over subtlety; hierarchy is carried by size and weight instead.
+     Verified by bench/theme_audit.py, not by eye. */
   --color-ink-950: var(--s-950);
   --color-ink-900: var(--s-900);
   --color-ink-880: var(--s-880);
@@ -96,11 +106,13 @@
   --color-keyword-300: #fcd34d;
   --color-keyword-400: #f7b955;
   --color-keyword-500: #eb9a2e;
+  --color-keyword-ink: var(--arm-keyword-ink);
   --color-keyword-950: var(--keyword-tint, #2a1c07);
 
   --color-semantic-300: #c4b5fd;
   --color-semantic-400: #a78bfa;
   --color-semantic-500: #8b5cf6;
+  --color-semantic-ink: var(--arm-semantic-ink);
   --color-semantic-950: var(--semantic-tint, #1c1533);
 
   /* Fusion: what the product does, as one value. */
@@ -264,4 +276,121 @@
   html {
     scroll-behavior: auto;
   }
+}
+
+
+/* ============================================================ BACKGROUND ==
+   The continuous layer. Every animation here is transform/opacity only, so
+   the compositor owns it and the main thread stays free. Cycle lengths are
+   coprime (37 / 43 / 29 s) on purpose: equal or harmonic periods resolve
+   into a visible repeat, and the point is motion that never does. */
+
+.bg-aurora {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  will-change: transform;
+}
+.bg-aurora-a {
+  width: 62vw; height: 62vw; top: -18vw; left: -12vw;
+  background: radial-gradient(circle,
+    color-mix(in oklab, var(--color-keyword-400) var(--glow-strength), transparent),
+    transparent 66%);
+}
+.bg-aurora-b {
+  width: 68vw; height: 68vw; top: -22vw; right: -16vw;
+  background: radial-gradient(circle,
+    color-mix(in oklab, var(--color-semantic-500) var(--glow-strength-2), transparent),
+    transparent 66%);
+}
+/* Sits low, and is where the two hues overlap — the fusion, literally, as
+   the background of the product that does it. */
+.bg-aurora-c {
+  width: 54vw; height: 54vw; bottom: -20vw; left: 28vw;
+  background: radial-gradient(circle,
+    color-mix(in oklab, var(--color-semantic-400) calc(var(--glow-strength) * 0.6), transparent),
+    transparent 70%);
+}
+
+@keyframes drift-a {
+  0%, 100% { transform: translate3d(0,0,0) scale(1); }
+  33%      { transform: translate3d(14vw, 8vh, 0) scale(1.16); }
+  66%      { transform: translate3d(-6vw, 16vh, 0) scale(0.92); }
+}
+@keyframes drift-b {
+  0%, 100% { transform: translate3d(0,0,0) scale(1); }
+  40%      { transform: translate3d(-16vw, 12vh, 0) scale(1.1); }
+  75%      { transform: translate3d(8vw, -6vh, 0) scale(0.88); }
+}
+@keyframes drift-c {
+  0%, 100% { transform: translate3d(0,0,0) scale(0.95); }
+  50%      { transform: translate3d(-18vw, -12vh, 0) scale(1.2); }
+}
+.animate-drift-a { animation: drift-a 37s ease-in-out infinite; }
+.animate-drift-b { animation: drift-b 43s ease-in-out infinite; }
+.animate-drift-c { animation: drift-c 29s ease-in-out infinite; }
+
+.bg-grid-drift {
+  position: absolute; inset: -10%;
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--color-ink-100) 6%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--color-ink-100) 6%, transparent) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 30%, black, transparent 78%);
+  will-change: transform;
+}
+@keyframes grid-slide {
+  from { transform: translate3d(0,0,0); }
+  to   { transform: translate3d(-72px, -72px, 0); }
+}
+.animate-grid { animation: grid-slide 14s linear infinite; }
+
+/* Grain. Gradients this large band visibly on 8-bit panels; the fix is
+   noise, not more colour depth. */
+.bg-grain {
+  position: absolute; inset: 0; opacity: 0.16;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+}
+[data-theme="light"] .bg-grain { opacity: 0.07; }
+
+/* ---- Shared hover primitives, so "everything reacts" is one rule rather
+   than forty ad-hoc transitions that drift apart. ---- */
+.lift {
+  transition:
+    transform 260ms var(--ease-out-soft),
+    box-shadow 260ms var(--ease-out-soft),
+    border-color 260ms var(--ease-out-soft),
+    background-color 260ms var(--ease-out-soft);
+}
+.lift:hover { transform: translateY(-3px); box-shadow: var(--card-shadow); }
+
+/* A sheen crossing an element on hover. Transform only, clipped by the
+   parent, so it costs nothing at rest. */
+.sheen { position: relative; overflow: hidden; }
+.sheen::after {
+  content: "";
+  position: absolute; inset: 0;
+  transform: translateX(-120%) skewX(-18deg);
+  background: linear-gradient(90deg, transparent,
+    color-mix(in oklab, var(--color-ink-100) 12%, transparent), transparent);
+  transition: transform 720ms var(--ease-out-soft);
+  pointer-events: none;
+}
+.sheen:hover::after { transform: translateX(120%) skewX(-18deg); }
+
+/* ---- 3D. `preserve-3d` with a real perspective ancestor, so the tilt is
+   genuine depth rather than a scale trick. ---- */
+.scene { perspective: 1100px; }
+.card3d { transform-style: preserve-3d; will-change: transform; }
+@keyframes float-3d {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-12px); }
+}
+.animate-float3d { animation: float-3d 12s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-drift-a, .animate-drift-b, .animate-drift-c,
+  .animate-grid, .animate-float3d { animation: none; }
+  .lift:hover { transform: none; }
+  .sheen:hover::after { transition: none; }
 }
