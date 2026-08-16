@@ -1,0 +1,47 @@
+# Render blueprint for the API.
+#
+# The frontend is NOT here — it goes to Vercel, which is free, fast, and what
+# Kishan already uses. Render hosts only the FastAPI service, because the API
+# needs a persistent process with the ONNX model resident and that is not a
+# static host's job.
+#
+# Free tier caveat, stated because it shapes the demo: the instance sleeps
+# after ~15 minutes idle and the next request pays a cold start. The app is
+# already built for this — the search page shows its loading state after a
+# 200ms delay, added specifically because a cold hybrid query measured
+# 1,611ms locally and Render is slower.
+services:
+  - type: web
+    name: sieve-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false # set to the Neon pooled connection string
+      - key: EMBED_MODEL_DIR
+        value: /models
+      - key: CORS_ORIGINS
+        sync: false # the Vercel URL, then the custom domain
+      - key: APP_ORIGIN
+        sync: false
+      - key: COOKIE_SECURE
+        value: "1"
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: MAIL_FROM
+        sync: false
