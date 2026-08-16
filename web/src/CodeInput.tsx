@@ -10,6 +10,7 @@
 // address can actually be reached and offers a way past.
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { API_BASE } from "./api";
 import { useAuth } from "./auth";
 import { Button } from "./ui";
@@ -19,11 +20,9 @@ const LEN = 6;
 export function CodeInput({
   email,
   onVerified,
-  onSkip,
 }: {
   email: string;
   onVerified: () => void;
-  onSkip: () => void;
 }) {
   const { verify, config } = useAuth();
   const [digits, setDigits] = useState<string[]>(Array(LEN).fill(""));
@@ -164,13 +163,12 @@ export function CodeInput({
             "Resend code"
           )}
         </Button>
-        <button
-          type="button"
-          onClick={onSkip}
+        <Link
+          to="/login"
           className="text-sm text-ink-400 underline underline-offset-4 hover:text-ink-100"
         >
-          Skip for now
-        </button>
+          Use a different email
+        </Link>
       </div>
 
       {config?.email_transport === "console" ? (
@@ -179,9 +177,9 @@ export function CodeInput({
         </p>
       ) : (
         <p className="hairline mt-6 border-t pt-4 text-xs leading-relaxed text-ink-500">
-          This deployment sends through Resend without a verified domain, so mail is only
-          delivered to the account owner&apos;s own address. Everyone else should use{" "}
-          <span className="text-ink-300">Skip for now</span> — the account works either way.
+          Mail is sent through Resend. Until a sending domain is verified, the provider only
+          delivers to the account owner&apos;s own address — other addresses are rejected
+          outright, and the button above will say so rather than pretending it worked.
         </p>
       )}
     </motion.div>

@@ -36,6 +36,25 @@ def signup(c: TestClient, email: str, password: str = PASSWORD):  # type: ignore
     return c.post("/api/auth/signup", json={"email": email, "password": password})
 
 
+def signup_verified(c: TestClient, dsn: str, email: str, password: str = PASSWORD) -> None:
+    """Sign up AND complete verification.
+
+    Most tests here are about what a signed-in user can do, and since
+    verification became a real gate, signing up alone no longer produces one.
+    The gate itself is tested in TestVerificationActuallyGates.
+    """
+    from api.auth import codes
+
+    signup(c, email, password).raise_for_status()
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        row = conn.execute(
+            "SELECT id FROM users WHERE lower(email) = lower(%s)", (email,)
+        ).fetchone()
+        assert row is not None
+        code = codes.issue(conn, int(row[0]))
+    c.post("/api/auth/verify", json={"code": code}).raise_for_status()
+
+
 class TestPasswordStorage:
     def test_password_is_never_stored_in_a_recoverable_form(
         self, client: TestClient, scratch_db: str
@@ -57,9 +76,14 @@ class TestPasswordStorage:
 
 
 class TestSessions:
-    def test_session_cookie_is_httponly_and_not_guessable(self, client: TestClient) -> None:
-        resp = signup(client, "ada@example.com")
-        assert resp.status_code == 201
+    def test_session_cookie_is_httponly_and_not_guessable(
+        self, client: TestClient, scratch_db: str
+    ) -> None:
+        signup_verified(client, scratch_db, "ada@example.com")
+        resp = client.post(
+            "/api/auth/login", json={"email": "ada@example.com", "password": PASSWORD}
+        )
+        assert resp.status_code == 200
         header = resp.headers["set-cookie"]
         assert "HttpOnly" in header  # an XSS cannot read it
         assert "samesite=lax" in header.lower()  # a cross-site POST cannot ride it
@@ -69,7 +93,7 @@ class TestSessions:
     def test_logout_actually_revokes_server_side(
         self, client: TestClient, scratch_db: str
     ) -> None:
-        signup(client, "ada@example.com")
+        signup_verified(client, scratch_db, "ada@example.com")
         token = client.cookies[SESSION_COOKIE]
         assert client.get("/api/auth/me").status_code == 200
 
@@ -130,14 +154,16 @@ class TestAccountRules:
 class TestCollectionIsolation:
     """The property the whole feature exists for."""
 
-    def test_one_user_cannot_see_or_touch_anothers_collection(self, client: TestClient) -> None:
-        signup(client, "ada@example.com")
+    def test_one_user_cannot_see_or_touch_anothers_collection(
+        self, client: TestClient, scratch_db: str
+    ) -> None:
+        signup_verified(client, scratch_db, "ada@example.com")
         made = client.post("/api/collections", json={"name": "Ada's review"})
         assert made.status_code == 201
         cid = made.json()["id"]
         client.post("/api/auth/logout")
 
-        signup(client, "grace@example.com", OTHER)
+        signup_verified(client, scratch_db, "grace@example.com", OTHER)
         # Not listed.
         assert client.get("/api/collections").json() == []
         # Not readable, and 404 rather than 403 — a 403 would confirm the id
@@ -153,8 +179,8 @@ class TestCollectionIsolation:
         assert client.delete(f"/api/collections/{cid}/screenings/1").status_code == 404
         assert client.get(f"/api/collections/{cid}/export.bib").status_code == 404
 
-    def test_owner_still_sees_their_own(self, client: TestClient) -> None:
-        signup(client, "ada@example.com")
+    def test_owner_still_sees_their_own(self, client: TestClient, scratch_db: str) -> None:
+        signup_verified(client, scratch_db, "ada@example.com")
         cid = client.post("/api/collections", json={"name": "Mine"}).json()["id"]
         assert [c["id"] for c in client.get("/api/collections").json()] == [cid]
         assert client.get(f"/api/collections/{cid}").status_code == 200
@@ -172,7 +198,7 @@ class TestCollectionIsolation:
         # session rather than being visible to everyone.
         with psycopg.connect(scratch_db, autocommit=True) as conn:
             conn.execute("INSERT INTO collections (name) VALUES ('legacy')")
-        signup(client, "ada@example.com")
+        signup_verified(client, scratch_db, "ada@example.com")
         assert client.get("/api/collections").json() == []
 
 
@@ -193,6 +219,12 @@ class TestEmailVerification:
     def test_signup_starts_unverified(self, client: TestClient) -> None:
         resp = signup(client, "ada@example.com")
         assert resp.json()["email_verified"] is False
+
+    def _verified_client(self, client: TestClient, scratch_db: str) -> None:
+        """Complete verification, so tests about POST-verification behaviour
+        can reach the routes the gate now protects."""
+        code = self._code(scratch_db)
+        client.post("/api/auth/verify", json={"code": code})
 
     def test_the_code_is_not_stored_in_plaintext(
         self, client: TestClient, scratch_db: str
@@ -237,7 +269,8 @@ class TestEmailVerification:
         # Even the RIGHT code fails now: the exhausted code is burned rather
         # than left guessable, so waiting does not restore it.
         assert client.post("/api/auth/verify", json={"code": code}).status_code == 400
-        assert client.get("/api/auth/me").json()["email_verified"] is False
+        # Still gated: no session was ever minted, so nothing is reachable.
+        assert client.get("/api/auth/me").status_code == 401
 
     def test_expired_code_is_refused(self, client: TestClient, scratch_db: str) -> None:
         signup(client, "ada@example.com")
@@ -294,3 +327,66 @@ class TestGoogleLinking:
         with psycopg.connect(scratch_db, autocommit=True) as conn:
             uid = link_or_create_google_user(conn, "sub-1", "who@example.com")
             assert user_for_session_by_id(conn, uid)["email_verified"] is True
+
+
+class TestVerificationActuallyGates:
+    """The gate must GATE. Signing up with an address you do not own must not
+    produce a working account — which is exactly what happened when signup
+    issued a real session and the UI merely suggested verifying."""
+
+    def test_signup_does_not_grant_a_usable_session(self, client: TestClient) -> None:
+        resp = signup(client, "impostor@example.com")
+        assert resp.status_code == 201
+        # A pending cookie exists, a session cookie does not.
+        assert "sieve_pending" in client.cookies
+        assert SESSION_COOKIE not in client.cookies
+        # And it opens nothing.
+        assert client.get("/api/auth/me").status_code == 401
+        assert client.get("/api/collections").status_code == 401
+        assert client.post("/api/collections", json={"name": "x"}).status_code == 401
+
+    def test_access_begins_only_after_the_code_is_entered(
+        self, client: TestClient, scratch_db: str
+    ) -> None:
+        signup(client, "ada@example.com")
+        assert client.get("/api/collections").status_code == 401
+
+        with psycopg.connect(scratch_db, autocommit=True) as conn:
+            from api.auth import codes
+
+            uid = conn.execute("SELECT id FROM users ORDER BY id DESC LIMIT 1").fetchone()
+            assert uid is not None
+            code = codes.issue(conn, int(uid[0]))
+
+        resp = client.post("/api/auth/verify", json={"code": code})
+        assert resp.status_code == 200
+        assert resp.json()["email_verified"] is True
+        # Proving control of the address is what mints access.
+        assert SESSION_COOKIE in client.cookies
+        assert client.get("/api/collections").status_code == 200
+
+    def test_pending_token_is_consumed_so_it_cannot_be_replayed(
+        self, client: TestClient, scratch_db: str
+    ) -> None:
+        signup(client, "ada@example.com")
+        pending = client.cookies["sieve_pending"]
+        with psycopg.connect(scratch_db, autocommit=True) as conn:
+            from api.auth import codes
+
+            uid = conn.execute("SELECT id FROM users ORDER BY id DESC LIMIT 1").fetchone()
+            assert uid is not None
+            code = codes.issue(conn, int(uid[0]))
+        client.post("/api/auth/verify", json={"code": code})
+
+        client.cookies.clear()
+        client.cookies.set("sieve_pending", pending)
+        # The pending row is deleted at verification, so a captured cookie is
+        # dead rather than a second way in.
+        assert client.get("/api/auth/me").status_code == 401
+
+    def test_a_wrong_code_leaves_the_account_locked_out(
+        self, client: TestClient, scratch_db: str
+    ) -> None:
+        signup(client, "ada@example.com")
+        assert client.post("/api/auth/verify", json={"code": "000000"}).status_code == 400
+        assert client.get("/api/collections").status_code == 401

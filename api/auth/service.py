@@ -106,11 +106,23 @@ def authenticate(conn: psycopg.Connection, email: str, password: str) -> int:
     return int(row[0])
 
 
-def create_session(conn: psycopg.Connection, user_id: int) -> str:
+PENDING_TTL = timedelta(minutes=30)
+
+
+def create_session(conn: psycopg.Connection, user_id: int, *, pending: bool = False) -> str:
+    """Mint a session token.
+
+    `pending=True` produces a SHORT-LIVED token used only to complete email
+    verification. It is stored in the same table (so it is revocable and
+    expires in SQL like any other) but is handed to the browser under a
+    different cookie name, and no protected route reads that cookie — so it
+    grants nothing except /verify and /resend.
+    """
     token = secrets.token_urlsafe(32)  # 256 bits
+    ttl = PENDING_TTL if pending else SESSION_TTL
     conn.execute(
         "INSERT INTO sessions (token, user_id, expires_at) VALUES (%s, %s, %s)",
-        (token, user_id, datetime.now(UTC) + SESSION_TTL),
+        (token, user_id, datetime.now(UTC) + ttl),
     )
     return token
 

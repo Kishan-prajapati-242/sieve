@@ -27,10 +27,20 @@ def client(scratch_db: str, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         # routes now requires a session. Signing in here keeps each test about
         # collection behaviour; the ownership boundary itself is tested in
         # test_auth.py::TestCollectionIsolation.
+        # Verification is a real gate now (signup grants no usable session),
+        # so the fixture completes it. The gate itself is covered in
+        # test_auth.py::TestVerificationActuallyGates.
+        from api.auth import codes
+
         c.post(
             "/api/auth/signup",
             json={"email": "reviewer@example.com", "password": "a-long-test-password"},
         ).raise_for_status()
+        with psycopg.connect(scratch_db, autocommit=True) as conn:
+            row = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
+            assert row is not None
+            code = codes.issue(conn, int(row[0]))
+        c.post("/api/auth/verify", json={"code": code}).raise_for_status()
         yield c
     pool.close_pool()
 

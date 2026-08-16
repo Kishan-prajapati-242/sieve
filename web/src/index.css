@@ -45,8 +45,8 @@
   --s-50: #f6f6f8;
   --hairline-mix: 9%;
   --hairline-strong-mix: 16%;
-  --glow-strength: 88%;
-  --glow-strength-2: 95%;
+  --glow-strength: 52%;
+  --glow-strength-2: 58%;
   --row-hover: rgba(255, 255, 255, 0.03);
   --arm-keyword-ink: #f7b955;
   --arm-semantic-ink: #b9a2ff;
@@ -348,10 +348,10 @@
 /* Grain. Gradients this large band visibly on 8-bit panels; the fix is
    noise, not more colour depth. */
 .bg-grain {
-  position: absolute; inset: 0; opacity: 0.16;
+  position: absolute; inset: 0; opacity: 0.05;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
 }
-[data-theme="light"] .bg-grain { opacity: 0.07; }
+[data-theme="light"] .bg-grain { opacity: 0.035; }
 
 /* ---- Shared hover primitives, so "everything reacts" is one rule rather
    than forty ad-hoc transitions that drift apart. ---- */

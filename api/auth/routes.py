@@ -67,6 +67,9 @@ class VerifyBody(BaseModel):
     code: str = Field(min_length=4, max_length=12)
 
 
+PENDING_COOKIE = "sieve_pending"
+
+
 class AuthConfig(BaseModel):
     """What sign-in methods this deployment actually supports.
 
@@ -126,11 +129,25 @@ def signup(body: Credentials, response: Response) -> UserOut:
         except AuthError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         code = codes.issue(conn, user_id)
-        token = create_session(conn, user_id)
+        # A PENDING token, not a session. It authenticates the /verify and
+        # /resend calls and NOTHING else — no collections, no /me, no access
+        # of any kind. Issuing a real session here and relying on the UI to
+        # send the user to a code screen was security theatre: anyone could
+        # register an address they do not own, ignore the screen, and have a
+        # working account.
+        pending = create_session(conn, user_id, pending=True)
     # Sent after the transaction so a delivery failure cannot roll back a
     # created account — the user can always request another code.
     delivered = send_code(body.email.strip().lower(), code)
-    _set_cookie(response, token)
+    response.set_cookie(
+        PENDING_COOKIE,
+        pending,
+        max_age=30 * 60,
+        httponly=True,
+        samesite=COOKIE_SAMESITE,  # type: ignore[arg-type]
+        secure=COOKIE_SECURE,
+        path="/",
+    )
     out = UserOut(id=user_id, email=body.email.strip().lower())
     out.delivery = delivered
     return out
@@ -167,20 +184,49 @@ def config() -> AuthConfig:
     return AuthConfig(google=google.configured(), email_transport=transport())
 
 
+def _pending_user(conn: Any, token: str | None) -> dict[str, Any]:
+    """The half-authenticated user mid-verification.
+
+    Accepts a pending token OR a real session, so an account created before
+    the gate existed can still finish verifying. Anything else is a 401.
+    """
+    user = user_for_session(conn, token)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    return user
+
+
 @router.post("/verify")
-def verify_email(body: VerifyBody, user: CurrentUser) -> UserOut:
+def verify_email(
+    body: VerifyBody,
+    response: Response,
+    sieve_pending: Annotated[str | None, Cookie()] = None,
+    sieve_session: Annotated[str | None, Cookie()] = None,
+) -> UserOut:
     with get_pool().connection() as conn:
+        user = _pending_user(conn, sieve_pending or sieve_session)
         try:
             codes.verify(conn, user["id"], body.code.strip())
         except codes.CodeError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        # The real session is minted HERE and nowhere else. Proving control of
+        # the address is what grants access — that is the whole point, and it
+        # is why signup deliberately hands back nothing usable.
+        destroy_session(conn, sieve_pending)
+        token = create_session(conn, user["id"])
         fresh = user_for_session_by_id(conn, user["id"])
+    _set_cookie(response, token)
+    response.delete_cookie(PENDING_COOKIE, path="/")
     return UserOut(**fresh)
 
 
 @router.post("/verify/resend", status_code=202)
-def resend_code(user: CurrentUser) -> dict[str, str]:
+def resend_code(
+    sieve_pending: Annotated[str | None, Cookie()] = None,
+    sieve_session: Annotated[str | None, Cookie()] = None,
+) -> dict[str, str]:
     with get_pool().connection() as conn:
+        user = _pending_user(conn, sieve_pending or sieve_session)
         if user.get("email_verified"):
             raise HTTPException(status_code=400, detail="Already verified")
         code = codes.issue(conn, user["id"])

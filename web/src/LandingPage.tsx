@@ -72,8 +72,8 @@ export function LandingPage() {
   return (
     <div className="relative">
       {/* ---------------- HERO ---------------- */}
-      <div className="field-glow relative overflow-hidden">
-        <div className="grid-lines absolute inset-0 h-[560px]" aria-hidden="true" />
+      <div className="relative overflow-hidden">
+        
         <Container className="relative z-10 pb-16 pt-16 sm:pb-20 sm:pt-24 lg:pt-32">
           <Reveal onMount>
             <Eyebrow>Hybrid retrieval over academic literature</Eyebrow>
@@ -265,7 +265,7 @@ export function LandingPage() {
       <Section>
         <Container>
           <Reveal>
-            <div className="hairline field-glow relative overflow-hidden rounded-card border px-6 py-14 text-center sm:px-16 sm:py-20">
+            <div className="hairline relative overflow-hidden rounded-card border bg-ink-900/50 px-6 py-14 text-center backdrop-blur-sm sm:px-16 sm:py-20">
               <div className="relative z-10">
                 <h2 className="mx-auto max-w-xl text-h1 font-semibold text-ink-50">
                   Search it yourself.

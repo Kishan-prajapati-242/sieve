@@ -84,7 +84,7 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
   }
 
   return (
-    <div className="field-glow relative min-h-[70vh] overflow-hidden">
+    <div className="relative min-h-[70vh] overflow-hidden">
       <Container className="relative z-10 flex justify-center py-24">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -93,11 +93,7 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
           className="w-full max-w-sm"
         >
           {awaitingCode ? (
-            <CodeInput
-              email={email}
-              onVerified={() => navigate(next, { replace: true })}
-              onSkip={() => navigate(next, { replace: true })}
-            />
+            <CodeInput email={email} onVerified={() => navigate(next, { replace: true })} />
           ) : (
           <>
           <h1 className="text-h2 font-semibold text-ink-50">{copy.title}</h1>

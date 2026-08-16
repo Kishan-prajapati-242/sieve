@@ -12,7 +12,12 @@ def test_healthz_ok_and_pool_lifecycle() -> None:
     with TestClient(app) as client:
         resp = client.get("/healthz")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
+    body = resp.json()
+    assert body["status"] == "ok"
+    # Readiness of the embedding model travels with liveness, so a deploy
+    # missing the downloaded artifact is visible without a 500.
+    assert "embed_model_present" in body
+    assert "bm25" in body["modes_available"]
 
     # Lifespan exit must reset the module global: a pool left behind after
     # close would be handed out, already closed, to every later caller.

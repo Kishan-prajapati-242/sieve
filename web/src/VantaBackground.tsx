@@ -78,8 +78,8 @@ export function VantaBackground() {
           // complaint is that the background could not be found. More points,
           // tighter spacing and longer links make it a structure you see
           // immediately.
-          points: resolved === "light" ? 14 : 18,
-          maxDistance: 28,
+          points: resolved === "light" ? 16 : 20,
+          maxDistance: 30,
           spacing: 13,
           showDots: true,
           mouseControls: true,
