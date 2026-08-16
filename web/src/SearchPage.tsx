@@ -166,7 +166,7 @@ export function SearchPage() {
           one line, so the primary field — the query — had no more visual
           weight than a year box. */}
       <form onSubmit={onSubmit} className="flex flex-col gap-3">
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <label className="relative flex-1">
             <span className="sr-only">Query</span>
             <input
@@ -181,14 +181,14 @@ export function SearchPage() {
           </label>
           <button
             type="submit"
-            className="h-12 shrink-0 rounded-xl bg-ink-50 px-6 text-sm font-medium text-ink-950
+            className="h-12 shrink-0 rounded-xl bg-ink-50 px-6 text-sm font-medium text-ink-950 sm:w-auto
                        transition-all duration-150 hover:bg-white active:scale-[0.98]"
           >
             Search
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3 sm:gap-x-5">
           {/* Segmented control rather than three loose radios. The active
               pill is a shared layoutId, so switching mode slides it across
               instead of blinking — the toggle is the marquee interaction and
@@ -295,7 +295,7 @@ export function SearchPage() {
       )}
       {data && (
         <>
-          <div className="flex flex-wrap items-baseline justify-between gap-2 py-1 text-sm">
+          <div className="flex flex-col gap-1.5 py-1 text-sm sm:flex-row sm:flex-wrap sm:items-baseline sm:justify-between sm:gap-2">
             <p className="text-ink-400">
               <span className="font-mono font-medium text-ink-50">
                 {Math.min(presentedCount, data.results.length)}

@@ -7,13 +7,14 @@
 // actually repeats. Adding a seventh should require noticing it three times
 // first.
 import { useQuery } from "@tanstack/react-query";
-import { animate, motion, useInView, useReducedMotion } from "motion/react";
+import { AnimatePresence, animate, motion, useInView, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { fetchStats } from "./api";
+import { useTheme, type ThemeChoice } from "./theme";
 
 export function Container({ className = "", children }: { className?: string; children: ReactNode }) {
-  return <div className={`mx-auto w-full max-w-6xl px-6 ${className}`}>{children}</div>;
+  return <div className={`mx-auto w-full max-w-6xl px-4 sm:px-6 ${className}`}>{children}</div>;
 }
 
 /** A page section with the hairline rule that separates every band.
@@ -77,7 +78,7 @@ export function Section({
   bordered?: boolean;
 }) {
   return (
-    <section className={`${bordered ? "hairline border-t" : ""} py-20 sm:py-28 ${className}`}>
+    <section className={`${bordered ? "hairline border-t" : ""} py-14 sm:py-20 lg:py-28 ${className}`}>
       {children}
     </section>
   );
@@ -195,7 +196,7 @@ export function Stat({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="font-mono text-h2 text-ink-50">{value}</span>
+      <span className="font-mono text-[1.5rem] leading-tight text-ink-50 sm:text-h2">{value}</span>
       <span className="text-sm text-ink-300">{label}</span>
       {note && <span className="font-mono text-[11px] uppercase tracking-wider text-ink-500">{note}</span>}
     </div>
@@ -273,4 +274,57 @@ export function CountUp({ to, format }: { to: number; format?: (n: number) => st
     return () => controls.stop();
   }, [inView, to, reduce]);
   return <span ref={ref}>{(format ?? ((x: number) => x.toLocaleString()))(n)}</span>;
+}
+
+
+const THEME_ORDER: ThemeChoice[] = ["system", "light", "dark"];
+const THEME_LABEL: Record<ThemeChoice, string> = {
+  system: "Match system",
+  light: "Light",
+  dark: "Dark",
+};
+
+/** Cycles system -> light -> dark. A cycle rather than a dropdown because
+ *  three states do not justify a menu, and the icon plus title says which
+ *  one is active. */
+export function ThemeToggle() {
+  const { choice, resolved, setChoice } = useTheme();
+  const next = THEME_ORDER[(THEME_ORDER.indexOf(choice) + 1) % THEME_ORDER.length];
+  return (
+    <button
+      type="button"
+      onClick={() => setChoice(next)}
+      title={`${THEME_LABEL[choice]} — click for ${THEME_LABEL[next].toLowerCase()}`}
+      aria-label={`Theme: ${THEME_LABEL[choice]}. Switch to ${THEME_LABEL[next]}.`}
+      className="hairline relative flex size-8 items-center justify-center rounded-lg border
+                 text-ink-400 transition-colors duration-200 hover:text-ink-50 hover:bg-ink-850"
+    >
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.span
+          key={choice}
+          initial={{ opacity: 0, rotate: -70, scale: 0.6 }}
+          animate={{ opacity: 1, rotate: 0, scale: 1 }}
+          exit={{ opacity: 0, rotate: 70, scale: 0.6 }}
+          transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}
+          className="absolute"
+        >
+          {choice === "system" ? (
+            <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <rect x="2.5" y="4" width="19" height="13" rx="2" />
+              <path d="M8 20h8" />
+            </svg>
+          ) : resolved === "light" ? (
+            <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <circle cx="12" cy="12" r="4.2" />
+              <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M20 13.5A8.5 8.5 0 0 1 10.5 4a8.5 8.5 0 1 0 9.5 9.5Z" />
+            </svg>
+          )}
+        </motion.span>
+      </AnimatePresence>
+    </button>
+  );
 }

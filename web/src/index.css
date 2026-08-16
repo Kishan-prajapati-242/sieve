@@ -20,34 +20,88 @@
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
 
+/* ---- Theme. The ink ramp is semantic BY POSITION, not by lightness:
+   950 is always the page ground and 50 is always primary text. So light mode
+   is a value swap, not a second design — every `bg-ink-900` and
+   `text-ink-300` in the app keeps meaning what it meant. That is the whole
+   reason the scale was named this way.
+
+   Set on <html data-theme>. Tailwind emits `var(--color-ink-x)`, which
+   resolves at runtime, so switching is instant and needs no rebuild. ---- */
+:root,
+[data-theme="dark"] {
+  --s-950: #08080a;
+  --s-900: #0b0b0e;
+  --s-880: #101014;
+  --s-850: #141419;
+  --s-800: #1a1a20;
+  --s-700: #24242c;
+  --s-600: #33333d;
+  --s-500: #4b4b57;
+  --s-400: #6e6e7d;
+  --s-300: #9a9aa8;
+  --s-200: #c4c4ce;
+  --s-100: #e6e6ea;
+  --s-50: #f6f6f8;
+  --hairline-mix: 9%;
+  --hairline-strong-mix: 16%;
+  --glow-strength: 42%;
+  --glow-strength-2: 48%;
+  --row-hover: rgba(255, 255, 255, 0.03);
+  --card-shadow: 0 8px 28px -12px rgba(0, 0, 0, 0.7);
+}
+
+/* Light is warm off-white rather than pure white: the amber keyword chip
+   disappears against #fff, and the two arm colours have to stay legible in
+   both themes or the provenance system stops working in one of them. */
+[data-theme="light"] {
+  --s-950: #fbfbfa;
+  --s-900: #ffffff;
+  --s-880: #ffffff;
+  --s-850: #f4f4f2;
+  --s-800: #ecece9;
+  --s-700: #dededa;
+  --s-600: #c2c2bd;
+  --s-500: #8e8e88;
+  --s-400: #6b6b66;
+  --s-300: #4a4a46;
+  --s-200: #2e2e2b;
+  --s-100: #1a1a18;
+  --s-50: #0d0d0c;
+  --hairline-mix: 14%;
+  --hairline-strong-mix: 26%;
+  --glow-strength: 26%;
+  --glow-strength-2: 28%;
+  --row-hover: rgba(0, 0, 0, 0.028);
+  --card-shadow: 0 8px 24px -14px rgba(0, 0, 0, 0.22);
+}
+
 @theme {
-  /* ---- Ground. A 9-step near-black ramp, cool-shifted so the warm
-     keyword amber reads as warm against it. ---- */
-  --color-ink-950: #08080a;
-  --color-ink-900: #0b0b0e;
-  --color-ink-880: #101014;
-  --color-ink-850: #141419;
-  --color-ink-800: #1a1a20;
-  --color-ink-700: #24242c;
-  --color-ink-600: #33333d;
-  --color-ink-500: #4b4b57;
-  --color-ink-400: #6e6e7d;
-  --color-ink-300: #9a9aa8;
-  --color-ink-200: #c4c4ce;
-  --color-ink-100: #e6e6ea;
-  --color-ink-50: #f6f6f8;
+  --color-ink-950: var(--s-950);
+  --color-ink-900: var(--s-900);
+  --color-ink-880: var(--s-880);
+  --color-ink-850: var(--s-850);
+  --color-ink-800: var(--s-800);
+  --color-ink-700: var(--s-700);
+  --color-ink-600: var(--s-600);
+  --color-ink-500: var(--s-500);
+  --color-ink-400: var(--s-400);
+  --color-ink-300: var(--s-300);
+  --color-ink-200: var(--s-200);
+  --color-ink-100: var(--s-100);
+  --color-ink-50: var(--s-50);
 
   /* ---- The two arms. These are load-bearing, not brand paint: a reader
      has to tell at a glance which ranker found a paper. ---- */
   --color-keyword-300: #fcd34d;
   --color-keyword-400: #f7b955;
   --color-keyword-500: #eb9a2e;
-  --color-keyword-950: #2a1c07;
+  --color-keyword-950: var(--keyword-tint, #2a1c07);
 
   --color-semantic-300: #c4b5fd;
   --color-semantic-400: #a78bfa;
   --color-semantic-500: #8b5cf6;
-  --color-semantic-950: #1c1533;
+  --color-semantic-950: var(--semantic-tint, #1c1533);
 
   /* Fusion: what the product does, as one value. */
   --color-fusion-from: #f7b955;
@@ -92,6 +146,17 @@
     background-color: var(--color-ink-950);
     color-scheme: dark;
     scroll-behavior: smooth;
+    /* Every colour in the app is a var, so a theme change is one repaint —
+       but the transition has to be capped or a 700ms fade on `color` makes
+       the whole page feel laggy on the switch. */
+    transition:
+      background-color 220ms var(--ease-out-soft),
+      color 220ms var(--ease-out-soft);
+  }
+  html[data-theme="light"] {
+    color-scheme: light;
+    --keyword-tint: #fdf6e6;
+    --semantic-tint: #f1ecfe;
   }
   body {
     background-color: var(--color-ink-950);
@@ -150,10 +215,10 @@
   /* Hairline grid. Structure comes from 1px lines on near-black, not from
      shadows — shadows need a light ground to read against. */
   .hairline {
-    border-color: color-mix(in oklab, var(--color-ink-100) 9%, transparent);
+    border-color: color-mix(in oklab, var(--color-ink-100) var(--hairline-mix), transparent);
   }
   .hairline-strong {
-    border-color: color-mix(in oklab, var(--color-ink-100) 16%, transparent);
+    border-color: color-mix(in oklab, var(--color-ink-100) var(--hairline-strong-mix), transparent);
   }
   /* The ambient field behind the hero: two blurred color pools, one per
      arm, overlapping where they fuse. Pure CSS, no image, no canvas —
@@ -166,12 +231,12 @@
     background:
       radial-gradient(
         44% 48% at 18% 28%,
-        color-mix(in oklab, var(--color-keyword-400) 42%, transparent),
+        color-mix(in oklab, var(--color-keyword-400) var(--glow-strength), transparent),
         transparent 68%
       ),
       radial-gradient(
         48% 52% at 74% 18%,
-        color-mix(in oklab, var(--color-semantic-500) 48%, transparent),
+        color-mix(in oklab, var(--color-semantic-500) var(--glow-strength-2), transparent),
         transparent 68%
       );
     filter: blur(84px);

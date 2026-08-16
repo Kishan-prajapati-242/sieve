@@ -17,7 +17,7 @@ import { CollectionsPage } from "./CollectionsPage";
 import { Footer, LandingPage } from "./LandingPage";
 import { routeVariants } from "./motion";
 import { SearchPage } from "./SearchPage";
-import { Button, ButtonLink, Container } from "./ui";
+import { Button, ButtonLink, Container, ThemeToggle } from "./ui";
 
 function Wordmark() {
   return (
@@ -53,10 +53,10 @@ function Nav() {
       style={reduce ? undefined : { borderBottomColor: border, backgroundColor: bg }}
       className="sticky top-0 z-50 border-b border-transparent backdrop-blur-xl"
     >
-      <Container className="flex h-14 items-center justify-between gap-6">
-        <div className="flex items-center gap-7">
+      <Container className="flex h-14 items-center justify-between gap-3 sm:gap-6">
+        <div className="flex items-center gap-4 sm:gap-7">
           <Wordmark />
-          <nav className="flex items-center gap-5">
+          <nav className="hidden items-center gap-4 sm:flex sm:gap-5">
             <NavLink to="/search" className={navClass}>
               Search
             </NavLink>
@@ -66,23 +66,33 @@ function Nav() {
           </nav>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <ThemeToggle />
           {user ? (
             <>
-              <span className="hidden font-mono text-[11px] text-ink-500 sm:inline">
+              <span className="hidden max-w-[180px] truncate font-mono text-[11px] text-ink-500 lg:inline">
                 {user.email}
               </span>
-              <Button variant="ghost" size="sm" onClick={() => void logout()}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void logout()}
+                className="whitespace-nowrap"
+              >
                 Sign out
               </Button>
             </>
           ) : (
             <>
-              <ButtonLink to="/login" variant="ghost" size="sm">
+              {/* 390px cannot hold wordmark + two links + theme + two CTAs.
+                  The secondary action is the one to drop: /signup carries a
+                  link to /login, so nothing becomes unreachable. */}
+              <ButtonLink to="/login" variant="ghost" size="sm" className="hidden sm:inline-flex">
                 Sign in
               </ButtonLink>
-              <ButtonLink to="/signup" size="sm">
-                Get started
+              <ButtonLink to="/signup" size="sm" className="whitespace-nowrap">
+                <span className="sm:hidden">Sign in</span>
+                <span className="hidden sm:inline">Get started</span>
               </ButtonLink>
             </>
           )}

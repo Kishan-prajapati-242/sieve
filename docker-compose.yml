@@ -64,6 +64,19 @@ services:
       # dir is gitignored; without it, bm25 works and vector mode fails
       # loudly on first use.
       EMBED_MODEL_DIR: /models
+      # Auth. All optional: absent Google credentials hide the button rather
+      # than break it, and absent SMTP falls back to the console transport.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:8000/api/auth/google/callback}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:5173}
+      COOKIE_SECURE: ${COOKIE_SECURE:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@sieve.local}
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:

@@ -73,13 +73,13 @@ export function LandingPage() {
       {/* ---------------- HERO ---------------- */}
       <div className="field-glow relative overflow-hidden">
         <div className="grid-lines absolute inset-0 h-[560px]" aria-hidden="true" />
-        <Container className="relative z-10 pb-20 pt-24 sm:pt-32">
+        <Container className="relative z-10 pb-16 pt-16 sm:pb-20 sm:pt-24 lg:pt-32">
           <Reveal>
             <Eyebrow>Hybrid retrieval over academic literature</Eyebrow>
           </Reveal>
 
           <Reveal delay={0.06}>
-            <h1 className="mt-7 max-w-3xl text-h1 font-semibold text-ink-50 sm:text-display">
+            <h1 className="mt-6 max-w-3xl text-[2rem] font-semibold leading-[1.06] tracking-[-0.03em] text-ink-50 sm:mt-7 sm:text-h1 lg:text-display">
               <RevealWords text="Two rankers disagree." />
               <br />
               <RevealWords text="Sieve" accent="settles it." />
@@ -87,7 +87,7 @@ export function LandingPage() {
           </Reveal>
 
           <Reveal delay={0.12}>
-            <p className="mt-6 max-w-xl text-[17px] leading-relaxed text-ink-300">
+            <p className="mt-5 max-w-xl text-[15px] leading-relaxed text-ink-300 sm:mt-6 sm:text-[17px]">
               Keyword search finds the papers that use your words. Vector search finds the
               ones that mean them. Sieve runs both against{" "}
               <span className="font-mono text-ink-100">{corpus.text}</span> papers and fuses
@@ -96,7 +96,7 @@ export function LandingPage() {
           </Reveal>
 
           <Reveal delay={0.18}>
-            <div className="mt-9 flex flex-wrap items-center gap-3">
+            <div className="mt-8 flex flex-col gap-3 sm:mt-9 sm:flex-row sm:flex-wrap sm:items-center">
               <ButtonLink to="/search" size="lg">
                 Try the search
               </ButtonLink>
@@ -107,8 +107,10 @@ export function LandingPage() {
           </Reveal>
 
           <Reveal delay={0.24} className="mt-20">
-            <Card className="overflow-hidden p-8 sm:p-10">
-              <FusionDiagram className="mx-auto h-[260px] w-full max-w-3xl" />
+            <Card className="overflow-hidden p-5 sm:p-8 lg:p-10">
+              <div className="w-full">
+                <FusionDiagram className="mx-auto h-[150px] w-full max-w-3xl sm:h-[260px]" />
+              </div>
               <p className="hairline mt-8 border-t pt-5 font-mono text-[11px] uppercase tracking-wider text-ink-500">
                 Reciprocal rank fusion · k=60 · depth 200 per arm
               </p>
@@ -120,7 +122,7 @@ export function LandingPage() {
       {/* ---------------- MEASURED ---------------- */}
       <Section>
         <Container>
-          <div className="grid grid-cols-2 gap-10 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-8 sm:gap-10 lg:grid-cols-4">
             {stats(corpus.value).map((s, i) => (
               <Reveal key={s.label} delay={i * 0.06}>
                 <Stat {...s} />
@@ -149,10 +151,10 @@ export function LandingPage() {
             </h2>
           </Reveal>
 
-          <div className="mt-14 grid gap-6 lg:grid-cols-2">
+          <div className="mt-10 grid gap-4 sm:mt-14 sm:gap-6 lg:grid-cols-2">
             {ARMS.map((arm, i) => (
               <Reveal key={arm.name} delay={i * 0.08}>
-                <Card className="h-full p-8" interactive>
+                <Card className="h-full p-6 sm:p-8" interactive>
                   <div className="flex items-center gap-3">
                     <span
                       className={`size-2 rounded-full ${
@@ -217,7 +219,7 @@ export function LandingPage() {
             </p>
           </Reveal>
 
-          <div className="mt-14 grid gap-px overflow-hidden rounded-card sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-10 grid gap-px overflow-hidden rounded-card sm:mt-14 sm:grid-cols-2 lg:grid-cols-3">
             {PIPELINE.map((s, i) => (
               <Reveal key={s.k} delay={i * 0.05} className="h-full">
                 <div
@@ -254,7 +256,7 @@ export function LandingPage() {
       <Section>
         <Container>
           <Reveal>
-            <div className="hairline field-glow relative overflow-hidden rounded-card border px-8 py-20 text-center sm:px-16">
+            <div className="hairline field-glow relative overflow-hidden rounded-card border px-6 py-14 text-center sm:px-16 sm:py-20">
               <div className="relative z-10">
                 <h2 className="mx-auto max-w-xl text-h1 font-semibold text-ink-50">
                   Search it yourself.
@@ -263,7 +265,7 @@ export function LandingPage() {
                   Run the same query through each arm and watch the ranking change. Save what
                   you find to a collection.
                 </p>
-                <div className="mt-9 flex flex-wrap justify-center gap-3">
+                <div className="mt-8 flex flex-col justify-center gap-3 sm:mt-9 sm:flex-row sm:flex-wrap">
                   <ButtonLink to="/search" size="lg">
                     Open the search
                   </ButtonLink>
