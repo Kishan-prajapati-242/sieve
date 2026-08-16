@@ -6,6 +6,7 @@
 // in or out invalidates that cache rather than mutating local state, so there
 // is exactly one source of truth and no way for the two to disagree.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { API_BASE } from "./api";
 import { createContext, useContext, type ReactNode } from "react";
 
 export interface User {
@@ -20,14 +21,14 @@ export interface AuthConfig {
 }
 
 async function fetchMe(): Promise<User | null> {
-  const resp = await fetch("/api/auth/me", { credentials: "include" });
+  const resp = await fetch(`${API_BASE}/api/auth/me`, { credentials: "include" });
   if (resp.status === 401) return null; // signed out is a normal state, not an error
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   return resp.json();
 }
 
 async function post(path: string, body?: unknown): Promise<Response> {
-  const resp = await fetch(path, {
+  const resp = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json" },
@@ -70,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { data: config } = useQuery({
     queryKey: ["auth-config"],
     queryFn: async (): Promise<AuthConfig> => {
-      const r = await fetch("/api/auth/config", { credentials: "include" });
+      const r = await fetch(`${API_BASE}/api/auth/config`, { credentials: "include" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r.json();
     },

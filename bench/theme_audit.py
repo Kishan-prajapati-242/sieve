@@ -59,13 +59,20 @@ AUDIT_JS = r"""
     let node = el, acc = null;
     while (node && node !== document.documentElement) {
       const c = parse(getComputedStyle(node).backgroundColor);
-      if (c && c.a > 0) { acc = acc ? over({rgb: acc, a: 1}, c.rgb) : (c.a === 1 ? c.rgb : null); if (c.a === 1) return acc || c.rgb; }
+      if (c && c.a > 0) {
+        acc = acc ? over({rgb: acc, a: 1}, c.rgb) : (c.a === 1 ? c.rgb : null);
+        if (c.a === 1) return acc || c.rgb;
+      }
       node = node.parentElement;
     }
     const html = parse(getComputedStyle(document.documentElement).backgroundColor);
     return html ? html.rgb : [0,0,0];
   };
-  const ratio = (a,b) => { const l1 = lum(a), l2 = lum(b); const [hi,lo] = l1>l2?[l1,l2]:[l2,l1]; return (hi+0.05)/(lo+0.05); };
+  const ratio = (a, b) => {
+    const l1 = lum(a), l2 = lum(b);
+    const [hi, lo] = l1 > l2 ? [l1, l2] : [l2, l1];
+    return (hi + 0.05) / (lo + 0.05);
+  };
 
   const out = [];
   document.querySelectorAll('*').forEach(el => {
@@ -75,7 +82,8 @@ AUDIT_JS = r"""
     const r = el.getBoundingClientRect();
     if (r.width < 2 || r.height < 2) return;
     const cs = getComputedStyle(el);
-    if (cs.visibility === 'hidden' || cs.display === 'none' || parseFloat(cs.opacity) < 0.15) return;
+    if (cs.visibility === 'hidden' || cs.display === 'none') return;
+    if (parseFloat(cs.opacity) < 0.15) return;
     // Gradient-clipped text sets color:transparent on purpose; its
     // legibility is a property of the gradient, not of `color`.
     if (cs.webkitBackgroundClip === 'text' || cs.backgroundClip === 'text') return;

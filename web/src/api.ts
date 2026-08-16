@@ -1,3 +1,12 @@
+/** Where the API lives.
+ *
+ *  Empty in dev (Vite proxies same-origin). In production the frontend is on
+ *  Vercel and the API on Render, so calls need the absolute origin — and
+ *  every one of them already sends credentials:"include", which is what makes
+ *  the cross-site session cookie travel.
+ */
+export const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+
 // The one place the frontend knows the API's shape. These types mirror the
 // Pydantic models in api/search/routes.py and api/collections/routes.py by
 // hand — duplicating the shapes was chosen over an OpenAPI codegen step,
@@ -57,7 +66,7 @@ export interface SearchParams {
 }
 
 export async function search(params: SearchParams): Promise<SearchResponse> {
-  const res = await fetch("/api/search", {
+  const res = await fetch(`${API_BASE}/api/search`, {
     credentials: "include",
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -127,7 +136,7 @@ async function json<T>(res: Response): Promise<T> {
 }
 
 export async function listCollections(): Promise<CollectionSummary[]> {
-  return json(await fetch("/api/collections", { credentials: "include" }));
+  return json(await fetch(`${API_BASE}/api/collections`, { credentials: "include" }));
 }
 
 export async function createCollection(
@@ -135,7 +144,7 @@ export async function createCollection(
   question?: string,
 ): Promise<CollectionSummary> {
   return json(
-    await fetch("/api/collections", {
+    await fetch(`${API_BASE}/api/collections`, {
     credentials: "include",
     method: "POST",
       headers: { "content-type": "application/json" },
@@ -149,7 +158,7 @@ export async function getCollection(
   decision?: Decision,
 ): Promise<CollectionDetail> {
   const qs = decision ? `?decision=${decision}` : "";
-  return json(await fetch(`/api/collections/${id}${qs}`, { credentials: "include" }));
+  return json(await fetch(`${API_BASE}/api/collections/${id}${qs}`, { credentials: "include" }));
 }
 
 export async function screen(
@@ -159,7 +168,7 @@ export async function screen(
   note?: string,
 ): Promise<void> {
   await json(
-    await fetch(`/api/collections/${collectionId}/screenings/${paperId}`, {
+    await fetch(`${API_BASE}/api/collections/${collectionId}/screenings/${paperId}`, {
     credentials: "include",
     method: "PUT",
       headers: { "content-type": "application/json" },
@@ -169,7 +178,7 @@ export async function screen(
 }
 
 export async function unscreen(collectionId: number, paperId: number): Promise<void> {
-  const res = await fetch(`/api/collections/${collectionId}/screenings/${paperId}`, {
+  const res = await fetch(`${API_BASE}/api/collections/${collectionId}/screenings/${paperId}`, {
     credentials: "include",
     method: "DELETE",
   });
@@ -197,7 +206,7 @@ export interface CorpusStats {
  *  weeks chasing, on its most visible surface. So the page asks the API.
  */
 export async function fetchStats(): Promise<CorpusStats> {
-  const res = await fetch("/api/stats", { credentials: "include" });
+  const res = await fetch(`${API_BASE}/api/stats`, { credentials: "include" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }

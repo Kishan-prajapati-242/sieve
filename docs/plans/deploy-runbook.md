@@ -145,3 +145,25 @@ records, so this is easiest to finish after the domain is bought.
 
 The corpus goes to ~200,000, so the subset is re-exported and reloaded. The
 number on the site follows automatically — nothing is typed in.
+
+---
+
+## Demo queries, re-picked against the DEPLOYED corpus (2026-08-16)
+
+The original "BERT for de-identification of clinical records" returns **0
+bm25 matches** on the 47,617-paper subset — its five keyword matches were not
+in the top-cited slice. The landing page's fusion claim would not hold in a
+live demo. Measured replacements, on Neon:
+
+| query | bm25 | top-20 fused: both / kw-only / sem-only |
+|---|---|---|
+| **summarizing radiology reports** | 11 | **4 / 7 / 9** ← best balance |
+| **clinical text de-identification with transformers** | 6 | 4 / 2 / 14 |
+| **simplifying medical jargon for patients** | 3 | 2 / 1 / 17 |
+| named entity recognition in clinical notes | 20 | 18 / 1 / 1 — too much agreement |
+| depression screening using language models | 20 | 17 / 1 / 2 — too much agreement |
+
+Use the top three. The first is the strongest demonstration: both arms
+contribute real volume and neither dominates, which is exactly the case
+fusion exists for. The last two in the table are poor demos precisely because
+the arms agree — there is nothing for fusion to resolve.

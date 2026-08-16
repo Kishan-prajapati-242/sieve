@@ -7,6 +7,10 @@
 
 FROM python:3.12-slim AS base
 
+# curl is needed by the runtime stage to fetch the embedding model.
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY pyproject.toml ./
@@ -29,3 +33,21 @@ COPY bench ./bench
 CMD ["pytest", "-q"]
 
 FROM base AS runtime
+
+# The embedding model is fetched at BUILD time rather than committed. 130 MB
+# of binary in git is permanent — every clone pays it forever, and history
+# cannot be rewritten once it is shared. Skipped automatically when the model
+# is bind-mounted (local compose), so this costs nothing in development.
+ARG EMBED_MODEL_REPO=BAAI/bge-small-en-v1.5
+ARG SKIP_MODEL_DOWNLOAD=0
+RUN if [ "$SKIP_MODEL_DOWNLOAD" = "0" ]; then \
+      set -eux; \
+      mkdir -p /models; \
+      base="https://huggingface.co/${EMBED_MODEL_REPO}/resolve/main"; \
+      for f in tokenizer.json tokenizer_config.json special_tokens_map.json config.json; do \
+        curl -fsSL "$base/$f" -o "/models/$f"; \
+      done; \
+      curl -fsSL "$base/onnx/model.onnx" -o /models/model.onnx; \
+      ls -la /models; \
+    fi
+ENV EMBED_MODEL_DIR=/models

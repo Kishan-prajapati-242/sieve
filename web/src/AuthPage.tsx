@@ -9,6 +9,7 @@
 import { motion } from "motion/react";
 import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { API_BASE } from "./api";
 import { useAuth } from "./auth";
 import { Button, Container } from "./ui";
 
@@ -86,7 +87,7 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
           {config?.google && (
             <>
               <a
-                href="/api/auth/google/start"
+                href={`${API_BASE}/api/auth/google/start`}
                 className="hairline mt-8 flex h-11 items-center justify-center gap-3 rounded-lg
                            border bg-ink-850/60 text-sm font-medium text-ink-100
                            transition-all duration-150 hover:bg-ink-800 active:scale-[0.98]"

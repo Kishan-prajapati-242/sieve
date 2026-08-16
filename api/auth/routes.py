@@ -37,6 +37,17 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # Secure cookies require HTTPS; local dev is http://localhost.
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "").lower() in {"1", "true", "yes"}
 
+# Frontend and API are on DIFFERENT origins in production (Vercel + Render),
+# which makes every API call cross-site. SameSite=Lax is sent only on
+# top-level navigation, so a Lax cookie would be omitted from every fetch and
+# the user would appear signed out immediately after signing in. "none"
+# requires Secure, which is why the two are validated together.
+COOKIE_SAMESITE = os.environ.get("COOKIE_SAMESITE", "lax").lower()
+if COOKIE_SAMESITE == "none" and not COOKIE_SECURE:
+    raise RuntimeError(
+        "COOKIE_SAMESITE=none requires COOKIE_SECURE=1 (browsers reject it otherwise)"
+    )
+
 
 class Credentials(BaseModel):
     email: str = Field(min_length=3, max_length=320)
@@ -70,7 +81,7 @@ def _set_cookie(response: Response, token: str) -> None:
         token,
         max_age=int(SESSION_TTL.total_seconds()),
         httponly=True,
-        samesite="lax",
+        samesite=COOKIE_SAMESITE,  # type: ignore[arg-type]
         secure=COOKIE_SECURE,
         path="/",
     )
@@ -134,9 +145,7 @@ def login(body: Credentials, response: Response) -> UserOut:
 
 
 @router.post("/logout", status_code=204)
-def logout(
-    response: Response, sieve_session: Annotated[str | None, Cookie()] = None
-) -> Response:
+def logout(response: Response, sieve_session: Annotated[str | None, Cookie()] = None) -> Response:
     with get_pool().connection() as conn:
         destroy_session(conn, sieve_session)
     response.delete_cookie(SESSION_COOKIE, path="/")
@@ -190,7 +199,7 @@ def google_start() -> RedirectResponse:
         state,
         max_age=600,
         httponly=True,
-        samesite="lax",
+        samesite=COOKIE_SAMESITE,  # type: ignore[arg-type]
         secure=COOKIE_SECURE,
         path="/",
     )
@@ -227,7 +236,7 @@ async def google_callback(request: Request) -> RedirectResponse:
         token,
         max_age=int(SESSION_TTL.total_seconds()),
         httponly=True,
-        samesite="lax",
+        samesite=COOKIE_SAMESITE,  # type: ignore[arg-type]
         secure=COOKIE_SECURE,
         path="/",
     )
