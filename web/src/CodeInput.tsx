@@ -20,9 +20,15 @@ const LEN = 6;
 export function CodeInput({
   email,
   onVerified,
+  delivery,
 }: {
   email: string;
   onVerified: () => void;
+  /** What the server did with the message: "sent", "console", or
+   *  "failed: …". A provider rejection must reach the screen — leaving a
+   *  real person watching an empty inbox is the worst outcome available,
+   *  and the gate means they cannot proceed without knowing why. */
+  delivery?: string | null;
 }) {
   const { verify, config } = useAuth();
   const [digits, setDigits] = useState<string[]>(Array(LEN).fill(""));
@@ -31,6 +37,7 @@ export function CodeInput({
   const [busy, setBusy] = useState(false);
   const [resending, setResending] = useState(false);
   const refs = useRef<Array<HTMLInputElement | null>>([]);
+  const [rejected, setRejected] = useState(Boolean(delivery?.startsWith("failed")));
 
   useEffect(() => {
     refs.current[0]?.focus();
@@ -71,13 +78,9 @@ export function CodeInput({
       const body = await r.json().catch(() => ({}));
       // The server reports what actually happened to the message, so a
       // provider rejection surfaces here instead of looking like success.
-      setStatus(
-        body.status === "sent"
-          ? "Code sent."
-          : String(body.status ?? "").startsWith("failed")
-            ? "The mail provider rejected that address."
-            : "Code issued.",
-      );
+      const st = String(body.status ?? "");
+      if (st.startsWith("failed")) setRejected(true);
+      setStatus(st === "sent" ? "Code sent." : st.startsWith("failed") ? null : "Code issued.");
     } finally {
       setResending(false);
     }
@@ -89,12 +92,46 @@ export function CodeInput({
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.4, ease: [0.2, 0.8, 0.2, 1] }}
     >
-      <h1 className="text-h2 font-semibold text-ink-50">Check your email</h1>
+      <h1 className="text-h2 font-semibold text-ink-50">
+        {rejected ? "We can't email this address yet" : "Check your email"}
+      </h1>
       <p className="mt-2 text-sm text-ink-400">
-        Six-digit code sent to <span className="font-mono text-ink-100">{email}</span>
+        {rejected ? (
+          <>
+            Our mail provider refused <span className="font-mono text-ink-100">{email}</span>{" "}
+            because this deployment has no verified sending domain yet.
+          </>
+        ) : (
+          <>
+            Six-digit code sent to <span className="font-mono text-ink-100">{email}</span>
+          </>
+        )}
       </p>
 
-      <div className="mt-8 flex gap-2">
+      {rejected && (
+        // The honest exit. Google proves control of an address the same way a
+        // code does, so this satisfies the gate rather than bypassing it —
+        // no unverified account gets access either way.
+        <div className="hairline mt-6 rounded-xl border bg-keyword-950/50 p-5">
+          <p className="text-sm leading-relaxed text-ink-200">
+            Nothing will arrive, so don&apos;t wait for it. Sign in with Google instead — it
+            verifies your address at Google and works today.
+          </p>
+          <a
+            href={`${API_BASE}/api/auth/google/start`}
+            className="hairline mt-4 flex h-11 items-center justify-center gap-3 rounded-lg border
+                       bg-ink-850/60 text-sm font-medium text-ink-100 transition-all
+                       duration-150 hover:bg-ink-800 active:scale-[0.98]"
+          >
+            Continue with Google
+          </a>
+          <p className="mt-3 text-xs text-ink-500">
+            Email codes start working for everyone once the domain is verified.
+          </p>
+        </div>
+      )}
+
+      <div className={`mt-8 flex gap-2 ${rejected ? "hidden" : ""}`}>
         {digits.map((d, i) => (
           <motion.input
             key={i}
@@ -153,7 +190,7 @@ export function CodeInput({
         )}
       </AnimatePresence>
 
-      <div className="mt-6 flex flex-wrap items-center gap-4">
+      <div className={`mt-6 flex flex-wrap items-center gap-4 ${rejected ? "hidden" : ""}`}>
         <Button variant="secondary" size="sm" onClick={() => void resend()} disabled={resending}>
           {resending ? (
             <>

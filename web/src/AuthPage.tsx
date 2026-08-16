@@ -57,6 +57,7 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
   // because bouncing to /collections and showing a banner made verification
   // feel like an unrelated interruption rather than the next step.
   const [awaitingCode, setAwaitingCode] = useState(false);
+  const [delivery, setDelivery] = useState<string | null>(null);
 
   // Where the user was headed before being bounced here.
   const next = (location.state as { from?: string } | null)?.from ?? "/collections";
@@ -73,7 +74,8 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
         await login(email, password);
         navigate(next, { replace: true });
       } else {
-        await signup(email, password);
+        const res = await signup(email, password);
+        setDelivery(res?.delivery ?? null);
         setAwaitingCode(true);
       }
     } catch (err) {
@@ -93,7 +95,11 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
           className="w-full max-w-sm"
         >
           {awaitingCode ? (
-            <CodeInput email={email} onVerified={() => navigate(next, { replace: true })} />
+            <CodeInput
+              email={email}
+              delivery={delivery}
+              onVerified={() => navigate(next, { replace: true })}
+            />
           ) : (
           <>
           <h1 className="text-h2 font-semibold text-ink-50">{copy.title}</h1>

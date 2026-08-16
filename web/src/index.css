@@ -456,3 +456,16 @@ button:disabled,
   animation: spin 720ms linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+
+/* Vanta sizes its canvas from the holder at construction and never re-pins
+   it, which left the mesh rendering in a band above the fold rather than
+   behind the page. Pinned here so the element cannot drift regardless of
+   what the library computes. */
+.vanta-holder,
+.vanta-holder canvas {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+}

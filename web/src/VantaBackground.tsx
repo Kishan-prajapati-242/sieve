@@ -65,9 +65,14 @@ export function VantaBackground() {
           // Light mode needs the deeper arm colour: semantic-400 on a white
           // page measured 2.7:1 in the contrast audit and a NET drawn in it
           // is invisible for the same reason.
+          // The mesh renders in ONE colour, so it takes the semantic arm and
+          // the amber aurora sits behind it — the two arms as two layers
+          // rather than a mesh that belongs to neither. semantic-500 rather
+          // than 400: a lighter violet at full strength reads as a wireframe
+          // laid over the page instead of part of it.
           color: cssColor(
-            resolved === "light" ? "--color-semantic-ink" : "--color-semantic-400",
-            "a78bfa",
+            resolved === "light" ? "--color-semantic-ink" : "--color-semantic-500",
+            "8b5cf6",
           ),
           backgroundColor: cssColor("--color-ink-950", "08080a"),
           // Transparent so the CSS aurora shows THROUGH the net rather than
@@ -78,10 +83,12 @@ export function VantaBackground() {
           // complaint is that the background could not be found. More points,
           // tighter spacing and longer links make it a structure you see
           // immediately.
-          points: resolved === "light" ? 16 : 20,
-          maxDistance: 30,
-          spacing: 13,
-          showDots: true,
+          points: resolved === "light" ? 11 : 13,
+          maxDistance: 24,
+          spacing: 17,
+          // Dots off. Points plus lines at this density is what made it look
+          // like a debug overlay; the lines alone read as depth.
+          showDots: false,
           mouseControls: true,
           touchControls: true,
           gyroControls: false,
@@ -109,8 +116,17 @@ export function VantaBackground() {
     <div
       ref={holder}
       aria-hidden="true"
-      className="pointer-events-none fixed inset-0 -z-10"
-      style={{ opacity: live ? 1 : 0, transition: "opacity 1.2s var(--ease-out-soft)" }}
+      // `vanta-holder` carries a stylesheet rule that pins the generated
+      // canvas to the viewport. Vanta sizes the canvas from the element at
+      // construction and does not re-pin it, which is how the mesh ended up
+      // rendering in a strip above the fold instead of behind the page.
+      className="vanta-holder pointer-events-none fixed inset-0 -z-10"
+      // Held well below full strength: at 1.0 the mesh competes with the
+      // content instead of sitting behind it.
+      style={{
+        opacity: live ? (resolved === "light" ? 0.35 : 0.55) : 0,
+        transition: "opacity 1.2s var(--ease-out-soft)",
+      }}
     />
   );
 }

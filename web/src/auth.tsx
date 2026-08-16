@@ -50,7 +50,7 @@ interface AuthValue {
   isLoading: boolean;
   verify: (code: string) => Promise<void>;
   resend: () => Promise<void>;
-  signup: (email: string, password: string) => Promise<void>;
+  signup: (email: string, password: string) => Promise<{ delivery?: string | null } | null>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -115,7 +115,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         verify: async (code) => void (await verifyM.mutateAsync(code)),
         resend: async () => void (await post("/api/auth/verify/resend")),
-        signup: async (email, password) => void (await signupM.mutateAsync({ email, password })),
+        signup: async (email, password) => {
+          const resp = await signupM.mutateAsync({ email, password });
+          // The delivery outcome travels back so the code screen can say
+          // "this was refused" instead of "check your inbox".
+          return await resp.json().catch(() => null);
+        },
         login: async (email, password) => void (await loginM.mutateAsync({ email, password })),
         logout: async () => void (await logoutM.mutateAsync()),
       }}
