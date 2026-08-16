@@ -75,19 +75,19 @@ export function LandingPage() {
       <div className="field-glow relative overflow-hidden">
         <div className="grid-lines absolute inset-0 h-[560px]" aria-hidden="true" />
         <Container className="relative z-10 pb-16 pt-16 sm:pb-20 sm:pt-24 lg:pt-32">
-          <Reveal>
+          <Reveal onMount>
             <Eyebrow>Hybrid retrieval over academic literature</Eyebrow>
           </Reveal>
 
-          <Reveal delay={0.06}>
+          <Reveal delay={0.06} onMount>
             <h1 className="mt-6 max-w-3xl text-[2rem] font-semibold leading-[1.06] tracking-[-0.03em] text-ink-50 sm:mt-7 sm:text-h1 lg:text-display">
-              <RevealWords text="Two rankers disagree." />
+              <RevealWords text="Two rankers disagree." onMount />
               <br />
-              <RevealWords text="Sieve" accent="settles it." />
+              <RevealWords text="Sieve" accent="settles it." onMount />
             </h1>
           </Reveal>
 
-          <Reveal delay={0.12}>
+          <Reveal delay={0.12} onMount>
             <p className="mt-5 max-w-xl text-[15px] leading-relaxed text-ink-300 sm:mt-6 sm:text-[17px]">
               Keyword search finds the papers that use your words. Vector search finds the
               ones that mean them. Sieve runs both against{" "}
@@ -96,7 +96,7 @@ export function LandingPage() {
             </p>
           </Reveal>
 
-          <Reveal delay={0.18}>
+          <Reveal delay={0.18} onMount>
             <div className="mt-8 flex flex-col gap-3 sm:mt-9 sm:flex-row sm:flex-wrap sm:items-center">
               <ButtonLink to="/search" size="lg">
                 Try the search
@@ -115,7 +115,7 @@ export function LandingPage() {
             <Stack3D className="pointer-events-auto h-[420px] w-full" />
           </div>
 
-          <Reveal delay={0.24} className="mt-20" y={44}>
+          <Reveal delay={0.24} className="mt-20" y={44} onMount>
             <Card className="lift sheen overflow-hidden p-5 sm:p-8 lg:p-10">
               <div className="w-full">
                 <FusionDiagram className="mx-auto h-[150px] w-full max-w-3xl sm:h-[260px]" />
@@ -153,7 +153,7 @@ export function LandingPage() {
       {/* ---------------- THE TWO ARMS ---------------- */}
       <Section>
         <Container>
-          <Reveal>
+          <Reveal onMount>
             <Eyebrow>The mechanism</Eyebrow>
             <h2 className="mt-6 max-w-2xl text-h1 font-semibold text-ink-50">
               <RevealWords text="Neither arm is enough on its own." />
@@ -216,7 +216,7 @@ export function LandingPage() {
       {/* ---------------- PIPELINE ---------------- */}
       <Section>
         <Container>
-          <Reveal>
+          <Reveal onMount>
             <Eyebrow>What runs behind it</Eyebrow>
             <h2 className="mt-6 max-w-2xl text-h1 font-semibold text-ink-50">
               <RevealWords text="The retrieval is the easy half." />

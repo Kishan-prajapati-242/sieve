@@ -58,6 +58,9 @@ class UserOut(BaseModel):
     id: int
     email: str
     email_verified: bool = False
+    # How the code actually went out, so the UI can say something true rather
+    # than "check your inbox" when nothing was sent there.
+    delivery: str | None = None
 
 
 class VerifyBody(BaseModel):
@@ -126,9 +129,11 @@ def signup(body: Credentials, response: Response) -> UserOut:
         token = create_session(conn, user_id)
     # Sent after the transaction so a delivery failure cannot roll back a
     # created account — the user can always request another code.
-    send_code(body.email.strip().lower(), code)
+    delivered = send_code(body.email.strip().lower(), code)
     _set_cookie(response, token)
-    return UserOut(id=user_id, email=body.email.strip().lower())
+    out = UserOut(id=user_id, email=body.email.strip().lower())
+    out.delivery = delivered
+    return out
 
 
 @router.post("/login")
@@ -179,8 +184,8 @@ def resend_code(user: CurrentUser) -> dict[str, str]:
         if user.get("email_verified"):
             raise HTTPException(status_code=400, detail="Already verified")
         code = codes.issue(conn, user["id"])
-    send_code(user["email"], code)
-    return {"status": "sent", "transport": transport()}
+    delivered = send_code(user["email"], code)
+    return {"status": delivered, "transport": transport()}
 
 
 # ---------------------------------------------------------------- Google ---

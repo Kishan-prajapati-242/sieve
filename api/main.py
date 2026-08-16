@@ -6,6 +6,7 @@ middleware, and router registration. Endpoint logic lives with its module
 surface.
 """
 
+import logging
 import os
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -13,6 +14,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from api.auth.routes import router as auth_router
 from api.collections.routes import router as collections_router
@@ -74,8 +76,30 @@ async def request_id_middleware(
     return response
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> Response:
+    """Return a JSON 500 THROUGH the middleware stack.
+
+    An exception that escapes to Starlette's ServerErrorMiddleware produces a
+    bare text/plain 500 generated ABOVE the CORS middleware, so the response
+    carries no Access-Control-Allow-Origin header. The browser then reports a
+    CORS error, and the actual server fault is invisible — which is exactly
+    what happened on the first deploy: a missing embedding model produced a
+    500 that reached the console as "blocked by CORS policy".
+
+    Handling it here keeps the response inside the stack, so CORS headers are
+    applied and the client sees the real status and a request id to grep for.
+    """
+    log = logging.getLogger("sieve.error")
+    log.exception("unhandled_exception", extra={"path": request.url.path})
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "request_id": request_id_var.get("")},
+    )
+
+
 @app.get("/healthz")
-def healthz() -> dict[str, str]:
+def healthz() -> dict[str, object]:
     """Liveness plus a DB round-trip: proves pool -> Postgres actually works."""
     with get_pool().connection() as conn:
         conn.execute("SELECT 1")

@@ -11,6 +11,7 @@ import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { API_BASE } from "./api";
 import { useAuth } from "./auth";
+import { CodeInput } from "./CodeInput";
 import { Button, Container } from "./ui";
 
 const COPY = {
@@ -52,19 +53,29 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
           : null,
   );
   const [busy, setBusy] = useState(false);
+  // Signup does not leave the page: it swaps this card for the code step,
+  // because bouncing to /collections and showing a banner made verification
+  // feel like an unrelated interruption rather than the next step.
+  const [awaitingCode, setAwaitingCode] = useState(false);
 
   // Where the user was headed before being bounced here.
   const next = (location.state as { from?: string } | null)?.from ?? "/collections";
 
-  if (!isLoading && user) return <Navigate to={next} replace />;
+  // Stay put while the code step is open, even though a session now exists.
+  if (!isLoading && user && !awaitingCode) return <Navigate to={next} replace />;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setBusy(true);
     try {
-      await (mode === "login" ? login(email, password) : signup(email, password));
-      navigate(next, { replace: true });
+      if (mode === "login") {
+        await login(email, password);
+        navigate(next, { replace: true });
+      } else {
+        await signup(email, password);
+        setAwaitingCode(true);
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -81,6 +92,14 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
           transition={{ duration: 0.4, ease: [0.2, 0.8, 0.2, 1] }}
           className="w-full max-w-sm"
         >
+          {awaitingCode ? (
+            <CodeInput
+              email={email}
+              onVerified={() => navigate(next, { replace: true })}
+              onSkip={() => navigate(next, { replace: true })}
+            />
+          ) : (
+          <>
           <h1 className="text-h2 font-semibold text-ink-50">{copy.title}</h1>
           <p className="mt-2 text-sm text-ink-400">{copy.sub}</p>
 
@@ -152,7 +171,13 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
             )}
 
             <Button type="submit" size="lg" disabled={busy} className="mt-2">
-              {busy ? "…" : copy.action}
+              {busy ? (
+                <>
+                  <span className="spinner" /> Working…
+                </>
+              ) : (
+                copy.action
+              )}
             </Button>
           </form>
 
@@ -162,6 +187,8 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
               {copy.swapLink}
             </Link>
           </p>
+          </>
+          )}
         </motion.div>
       </Container>
     </div>

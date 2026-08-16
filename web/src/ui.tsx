@@ -25,13 +25,16 @@ export function RevealWords({
   text,
   className = "",
   accent,
+  onMount = false,
 }: {
   text: string;
   className?: string;
   accent?: string;
+  onMount?: boolean;
 }) {
   const reduce = useReducedMotion();
   const words = text.split(" ");
+  // perspective so the rotateX reads as depth rather than a squash
   if (reduce) {
     return (
       <span className={className}>
@@ -40,15 +43,19 @@ export function RevealWords({
     );
   }
   return (
-    <span className={className}>
+    <span className={className} style={{ perspective: 800 }}>
       {words.map((w, i) => (
         <motion.span
           key={i}
           className="inline-block"
-          initial={{ opacity: 0, y: "0.35em" }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-60px" }}
-          transition={{ duration: 0.55, delay: i * 0.045, ease: [0.2, 0.8, 0.2, 1] }}
+          initial={{ opacity: 0, y: "0.6em", rotateX: -55 }}
+          {...(onMount
+            ? { animate: { opacity: 1, y: 0, rotateX: 0 } }
+            : {
+                whileInView: { opacity: 1, y: 0, rotateX: 0 },
+                viewport: { once: true, margin: "-60px" },
+              })}
+          transition={{ duration: 0.7, delay: i * 0.055, ease: [0.2, 0.8, 0.2, 1] }}
         >
           {w}&nbsp;
         </motion.span>
@@ -56,10 +63,14 @@ export function RevealWords({
       {accent && (
         <motion.span
           className="text-fusion inline-block"
-          initial={{ opacity: 0, y: "0.35em" }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-60px" }}
-          transition={{ duration: 0.55, delay: words.length * 0.045, ease: [0.2, 0.8, 0.2, 1] }}
+          initial={{ opacity: 0, y: "0.6em", rotateX: -55 }}
+          {...(onMount
+            ? { animate: { opacity: 1, y: 0, rotateX: 0 } }
+            : {
+                whileInView: { opacity: 1, y: 0, rotateX: 0 },
+                viewport: { once: true, margin: "-60px" },
+              })}
+          transition={{ duration: 0.7, delay: words.length * 0.055, ease: [0.2, 0.8, 0.2, 1] }}
         >
           {accent}
         </motion.span>
@@ -215,14 +226,36 @@ export function Reveal({
   delay = 0,
   y = 32,
   className = "",
+  onMount = false,
 }: {
   children: ReactNode;
   delay?: number;
   y?: number;
   className?: string;
+  /** Animate on mount instead of on scroll.
+   *
+   *  Required for anything above the fold. `whileInView` for an element that
+   *  is ALREADY visible at mount is a race with first paint: the observer
+   *  fires immediately, the element snaps to its end state, and on a hard
+   *  refresh the page simply appears — which is what made the site look dead
+   *  on first load while working fine after client-side navigation. */
+  onMount?: boolean;
 }) {
   const reduce = useReducedMotion();
   if (reduce) return <div className={className}>{children}</div>;
+  const anim = { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" };
+  if (onMount) {
+    return (
+      <motion.div
+        className={className}
+        initial={{ opacity: 0, y, scale: 0.985, filter: "blur(6px)" }}
+        animate={anim}
+        transition={{ duration: 0.72, delay, ease: [0.2, 0.8, 0.2, 1] }}
+      >
+        {children}
+      </motion.div>
+    );
+  }
   return (
     <motion.div
       className={className}
