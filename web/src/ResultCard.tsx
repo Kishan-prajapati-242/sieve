@@ -51,17 +51,20 @@ export const ResultCard = forwardRef<
       animate="animate"
       exit="exit"
       transition={{ layout: { duration: DUR.move, ease: EASE } }}
-      className="group relative px-3 py-3.5 transition-colors duration-200
-                 ease-[var(--ease-out-soft)] hover:bg-white/[0.03]"
+      className="group relative mb-2.5 overflow-hidden rounded-xl border bg-ink-880/70
+                 px-4 py-4 backdrop-blur-sm transition-[transform,border-color,background-color,box-shadow]
+                 duration-300 ease-[var(--ease-out-soft)] hairline
+                 hover:-translate-y-0.5 hover:hairline-strong hover:bg-ink-850/80
+                 hover:shadow-[0_14px_38px_-18px_rgba(0,0,0,0.75)]"
     >
       {/* A fusion-colored rail that grows from the row's centre on hover.
           Scale rather than width so it is a compositor-only animation and
           cannot cause layout work on a 20-row list. */}
       <span
         aria-hidden="true"
-        className="absolute left-0 top-1/2 h-0 w-[2px] -translate-y-1/2 rounded-full bg-fusion
-                   opacity-0 transition-all duration-300 ease-[var(--ease-out-soft)]
-                   group-hover:h-[70%] group-hover:opacity-100"
+        className="absolute inset-y-0 left-0 w-[3px] origin-center scale-y-0 bg-fusion
+                   transition-transform duration-400 ease-[var(--ease-out-soft)]
+                   group-hover:scale-y-100"
       />
       <div className="flex items-start gap-3">
         <span className="w-6 shrink-0 pt-0.5 text-right text-xs tabular-nums text-ink-500">

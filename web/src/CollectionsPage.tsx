@@ -88,7 +88,7 @@ export function CollectionsPage() {
         </p>
       )}
 
-      <ul className="space-y-3">
+      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <AnimatePresence initial={false} mode="popLayout">
           {data?.map((c) => (
             <motion.li
@@ -100,16 +100,29 @@ export function CollectionsPage() {
               animate="animate"
               exit="exit"
               transition={{ layout: { duration: DUR.move, ease: EASE } }}
-              className="hairline rounded-xl border bg-ink-880 p-4
+              className="hairline group relative overflow-hidden rounded-2xl border
+                         bg-ink-880/70 p-5 backdrop-blur-sm
                          transition-[background-color,border-color,box-shadow,transform]
-                         duration-200 ease-[var(--ease-out-soft)] hover:-translate-y-px
-                         hover:hairline-strong hover:bg-ink-850
-                         hover:shadow-[0_8px_28px_-12px_rgba(0,0,0,0.7)]"
+                         duration-300 ease-[var(--ease-out-soft)] hover:-translate-y-1
+                         hover:hairline-strong hover:bg-ink-850/80
+                         hover:shadow-[0_18px_44px_-20px_rgba(0,0,0,0.8)]"
             >
+              {/* A gradient edge that fills on hover, matching the result
+                  cards — one hover language across both views. */}
+              <span
+                aria-hidden="true"
+                className="absolute inset-x-0 top-0 h-[3px] origin-left scale-x-0 bg-fusion
+                           transition-transform duration-400 ease-[var(--ease-out-soft)]
+                           group-hover:scale-x-100"
+              />
               <Link to={`/collections/${c.id}`} className="block">
-                <h2 className="font-semibold text-ink-50">{c.name}</h2>
-                {c.question && <p className="text-sm text-ink-300">{c.question}</p>}
-                <div className="mt-2 flex flex-wrap gap-4">
+                <h2 className="font-semibold text-ink-50 transition-colors group-hover:text-fusion">
+                  {c.name}
+                </h2>
+                {c.question && (
+                  <p className="mt-1.5 line-clamp-2 text-sm text-ink-300">{c.question}</p>
+                )}
+                <div className="hairline mt-4 flex flex-wrap gap-4 border-t pt-4">
                   <CountBadge value={c.screened} label="screened" />
                   <CountBadge value={c.included} label="include" />
                   <CountBadge value={c.excluded} label="exclude" />

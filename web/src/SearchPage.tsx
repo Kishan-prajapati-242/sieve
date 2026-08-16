@@ -327,7 +327,7 @@ export function SearchPage() {
           <ul
             aria-busy={stale}
             className={
-              "hairline divide-y divide-white/5 border-t transition-opacity" +
+              "transition-opacity" +
               // The rows stay MOUNTED while dimmed — unmounting them is what
               // broke the layout animation in the first place. This only
               // says "these are the previous results".
