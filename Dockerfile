@@ -38,16 +38,21 @@ FROM base AS runtime
 # of binary in git is permanent — every clone pays it forever, and history
 # cannot be rewritten once it is shared. Skipped automatically when the model
 # is bind-mounted (local compose), so this costs nothing in development.
+# The layout must match OnnxEncoder, which opens <dir>/onnx/model.onnx. The
+# first build flattened it to <dir>/model.onnx and every vector query 500'd
+# with "Load model from /models/onnx/model.onnx failed" — so the layout is
+# asserted here (`test -s`) rather than assumed.
 ARG EMBED_MODEL_REPO=BAAI/bge-small-en-v1.5
 ARG SKIP_MODEL_DOWNLOAD=0
 RUN if [ "$SKIP_MODEL_DOWNLOAD" = "0" ]; then \
       set -eux; \
-      mkdir -p /models; \
+      mkdir -p /models/onnx; \
       base="https://huggingface.co/${EMBED_MODEL_REPO}/resolve/main"; \
       for f in tokenizer.json tokenizer_config.json special_tokens_map.json config.json; do \
         curl -fsSL "$base/$f" -o "/models/$f"; \
       done; \
-      curl -fsSL "$base/onnx/model.onnx" -o /models/model.onnx; \
-      ls -la /models; \
+      curl -fsSL "$base/onnx/model.onnx" -o /models/onnx/model.onnx; \
+      test -s /models/onnx/model.onnx; \
+      ls -la /models /models/onnx; \
     fi
 ENV EMBED_MODEL_DIR=/models

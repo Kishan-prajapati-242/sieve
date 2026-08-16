@@ -53,7 +53,7 @@ export function RevealWords({
             ? { animate: { opacity: 1, y: 0, rotateX: 0 } }
             : {
                 whileInView: { opacity: 1, y: 0, rotateX: 0 },
-                viewport: { once: true, margin: "-60px" },
+                viewport: { once: false, margin: "-60px" },
               })}
           transition={{ duration: 0.7, delay: i * 0.055, ease: [0.2, 0.8, 0.2, 1] }}
         >
@@ -68,7 +68,7 @@ export function RevealWords({
             ? { animate: { opacity: 1, y: 0, rotateX: 0 } }
             : {
                 whileInView: { opacity: 1, y: 0, rotateX: 0 },
-                viewport: { once: true, margin: "-60px" },
+                viewport: { once: false, margin: "-60px" },
               })}
           transition={{ duration: 0.7, delay: words.length * 0.055, ease: [0.2, 0.8, 0.2, 1] }}
         >
@@ -263,7 +263,11 @@ export function Reveal({
       // is what separates "an element appeared" from "an element arrived".
       initial={{ opacity: 0, y, scale: 0.985, filter: "blur(6px)" }}
       whileInView={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-      viewport={{ once: true, margin: "-70px" }}
+      // once:false — replays every time the element enters, scrolling either
+      // way. `once` was chosen to avoid re-animation reading as instability;
+      // Kishan wants the page alive on every pass, so the exit state is
+      // restored on leave and the entrance is earned again.
+      viewport={{ once: false, margin: "-70px" }}
       transition={{ duration: 0.72, delay, ease: [0.2, 0.8, 0.2, 1] }}
     >
       {children}
@@ -301,6 +305,8 @@ export function useCorpusSize(): { value: number | null; text: string } {
 export function CountUp({ to, format }: { to: number; format?: (n: number) => string }) {
   const reduce = useReducedMotion();
   const ref = useRef<HTMLSpanElement>(null);
+  // CountUp stays once-only: a measured figure re-counting on every scroll
+  // pass reads as the number changing, which is the one thing it must not do.
   const inView = useInView(ref, { once: true, margin: "-60px" });
   const [n, setN] = useState(reduce ? to : 0);
   useEffect(() => {

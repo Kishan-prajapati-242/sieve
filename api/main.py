@@ -100,7 +100,27 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> Respo
 
 @app.get("/healthz")
 def healthz() -> dict[str, object]:
-    """Liveness plus a DB round-trip: proves pool -> Postgres actually works."""
+    """Liveness, a DB round-trip, and READINESS of the embedding model.
+
+    The model is the thing most likely to be wrong on a fresh host: it is a
+    133 MB artifact downloaded at build time rather than committed, and its
+    absence otherwise shows up only as a 500 on the first vector or hybrid
+    query. Reporting the resolved path — not just a boolean — because the
+    first deploy failed on a PATH MISMATCH (the Dockerfile wrote
+    /models/model.onnx while the loader opens /models/onnx/model.onnx), and a
+    bare true/false would not have shown that.
+    """
     with get_pool().connection() as conn:
         conn.execute("SELECT 1")
-    return {"status": "ok"}
+    model_dir = os.environ.get("EMBED_MODEL_DIR", "")
+    # Must match OnnxEncoder's own construction exactly, or this endpoint
+    # confidently reports on a file nothing ever opens.
+    model_path = os.path.join(model_dir, "onnx", "model.onnx") if model_dir else ""
+    present = bool(model_path) and os.path.isfile(model_path)
+    return {
+        "status": "ok",
+        "embed_model_dir": model_dir or None,
+        "embed_model_path": model_path or None,
+        "embed_model_present": present,
+        "modes_available": ["bm25"] + (["vector", "hybrid"] if present else []),
+    }
