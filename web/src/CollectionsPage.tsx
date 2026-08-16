@@ -5,11 +5,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { useSpotlight } from "./useSpotlight";
 import { createCollection, listCollections } from "./api";
 import { CountBadge } from "./CountBadge";
 import { DUR, EASE, rowVariants } from "./motion";
 
 export function CollectionsPage() {
+  const spotlight = useSpotlight();
   const [name, setName] = useState("");
   const [question, setQuestion] = useState("");
   const qc = useQueryClient();
@@ -100,12 +102,10 @@ export function CollectionsPage() {
               animate="animate"
               exit="exit"
               transition={{ layout: { duration: DUR.move, ease: EASE } }}
-              className="hairline group relative overflow-hidden rounded-2xl border
-                         bg-ink-880/70 p-5 backdrop-blur-sm
-                         transition-[background-color,border-color,box-shadow,transform]
-                         duration-300 ease-[var(--ease-out-soft)] hover:-translate-y-1
-                         hover:hairline-strong hover:bg-ink-850/80
-                         hover:shadow-[0_18px_44px_-20px_rgba(0,0,0,0.8)]"
+              onPointerMove={spotlight}
+              className="hairline group spotlight lift relative overflow-hidden rounded-2xl
+                         border bg-ink-880/60 p-5 backdrop-blur-sm
+                         hover:hairline-strong hover:bg-ink-850/75"
             >
               {/* A gradient edge that fills on hover, matching the result
                   cards — one hover language across both views. */}

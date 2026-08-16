@@ -45,8 +45,8 @@
   --s-50: #f6f6f8;
   --hairline-mix: 9%;
   --hairline-strong-mix: 16%;
-  --glow-strength: 52%;
-  --glow-strength-2: 58%;
+  --glow-strength: 20%;
+  --glow-strength-2: 24%;
   --row-hover: rgba(255, 255, 255, 0.03);
   --arm-keyword-ink: #f7b955;
   --arm-semantic-ink: #b9a2ff;
@@ -72,8 +72,8 @@
   --s-50: #0d0d0c;
   --hairline-mix: 14%;
   --hairline-strong-mix: 26%;
-  --glow-strength: 58%;
-  --glow-strength-2: 62%;
+  --glow-strength: 16%;
+  --glow-strength-2: 18%;
   --row-hover: rgba(0, 0, 0, 0.028);
   --arm-keyword-ink: #7a4b00;
   --arm-semantic-ink: #5b21b6;
@@ -171,7 +171,16 @@
     --semantic-tint: #f1ecfe;
   }
   body {
-    background-color: var(--color-ink-950);
+    /* NO background-color here, deliberately.
+     *
+     * `body` painting its own opaque background is what hid every background
+     * layer for four rounds: a fixed, negative-z-index element is painted
+     * BEHIND its parent's background, so the canvas was drawn and then
+     * covered. It showed only in the rubber-band overscroll strip, where the
+     * body box does not extend — which is exactly the symptom reported.
+     *
+     * `html` keeps the colour, and html's background propagates to the canvas
+     * viewport, which negative-z-index children paint ON TOP of. */
     color: var(--color-ink-200);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
@@ -355,14 +364,49 @@
 
 /* ---- Shared hover primitives, so "everything reacts" is one rule rather
    than forty ad-hoc transitions that drift apart. ---- */
+/* Hover, rebuilt.
+ *
+ * The old version translated the whole card up 3px. That is the effect every
+ * bootstrap template ships and it has two real problems: the card visibly
+ * detaches from its neighbours, and on a list of twenty rows the jump reads
+ * as the layout twitching under the cursor.
+ *
+ * What Linear, Vercel and Stripe actually do on rows and cards is change the
+ * SURFACE, not the position: the border brightens, the background lifts a
+ * step, and a soft radial follows the pointer. Nothing moves, so a dense list
+ * stays calm while every row still responds. */
 .lift {
   transition:
-    transform 260ms var(--ease-out-soft),
-    box-shadow 260ms var(--ease-out-soft),
-    border-color 260ms var(--ease-out-soft),
-    background-color 260ms var(--ease-out-soft);
+    border-color 220ms var(--ease-out-soft),
+    background-color 220ms var(--ease-out-soft),
+    box-shadow 220ms var(--ease-out-soft);
 }
-.lift:hover { transform: translateY(-3px); box-shadow: var(--card-shadow); }
+.lift:hover {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--color-ink-100) 10%, transparent),
+    var(--card-shadow);
+}
+
+/* The pointer-tracked highlight. --mx/--my are set in JS from the pointer's
+   position within the element; with no JS it simply never shows, so this
+   degrades to the border/background change above. */
+.spotlight { position: relative; isolation: isolate; }
+.spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 260ms var(--ease-out-soft);
+  background: radial-gradient(
+    340px circle at var(--mx, 50%) var(--my, 50%),
+    color-mix(in oklab, var(--color-semantic-400) 13%, transparent),
+    transparent 68%
+  );
+  pointer-events: none;
+  z-index: -1;
+}
+.spotlight:hover::before { opacity: 1; }
 
 /* A sheen crossing an element on hover. Transform only, clipped by the
    parent, so it costs nothing at rest. */

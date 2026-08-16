@@ -11,7 +11,7 @@ import { AnimatePresence, motion, useReducedMotion, useScroll, useTransform } fr
 import { BrowserRouter, Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { AuthPage, RequireAuth } from "./AuthPage";
 import { Background } from "./Background";
-import { VantaBackground } from "./VantaBackground";
+import { LiveBackground } from "./LiveBackground";
 import { VerifyBanner } from "./VerifyBanner";
 import { useAuth } from "./auth";
 import { CollectionPage } from "./CollectionPage";
@@ -109,10 +109,10 @@ function Shell() {
   const isLanding = location.pathname === "/";
   return (
     <div className="relative flex min-h-screen flex-col">
-      {/* Two layers: the CSS aurora always runs and is what a
-          WebGL-less machine sees; the Vanta net fades in over it. */}
+      {/* Two layers: the CSS aurora is the colour field, the canvas
+          network is the structure that moves over it. */}
       <Background />
-      <VantaBackground />
+      <LiveBackground />
       <Nav />
       <VerifyBanner />
       <main className="flex-1">

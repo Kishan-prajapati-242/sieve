@@ -24,6 +24,7 @@ import { forwardRef } from "react";
 import { AddToCollection } from "./AddToCollection";
 import type { SearchResult } from "./api";
 import { DUR, EASE, rowMotionProps, rowVariants } from "./motion";
+import { useSpotlight } from "./useSpotlight";
 import { ProvenanceChips } from "./ProvenanceChips";
 
 const MAX_AUTHORS = 10;
@@ -39,6 +40,7 @@ export const ResultCard = forwardRef<
   { result: SearchResult; delay?: number; showAddTo?: boolean; dimmed?: boolean }
 >(function ResultCard({ result, delay = 0, showAddTo = true, dimmed = false }, ref) {
   const reduce = useReducedMotion();
+  const spotlight = useSpotlight();
   return (
     <motion.li
       ref={ref}
@@ -51,11 +53,10 @@ export const ResultCard = forwardRef<
       animate="animate"
       exit="exit"
       transition={{ layout: { duration: DUR.move, ease: EASE } }}
-      className="group relative mb-2.5 overflow-hidden rounded-xl border bg-ink-880/70
-                 px-4 py-4 backdrop-blur-sm transition-[transform,border-color,background-color,box-shadow]
-                 duration-300 ease-[var(--ease-out-soft)] hairline
-                 hover:-translate-y-0.5 hover:hairline-strong hover:bg-ink-850/80
-                 hover:shadow-[0_14px_38px_-18px_rgba(0,0,0,0.75)]"
+      onPointerMove={spotlight}
+      className="group spotlight lift hairline relative mb-2.5 overflow-hidden rounded-xl
+                 border bg-ink-880/60 px-4 py-4 backdrop-blur-sm
+                 hover:hairline-strong hover:bg-ink-850/75"
     >
       {/* A fusion-colored rail that grows from the row's centre on hover.
           Scale rather than width so it is a compositor-only animation and
