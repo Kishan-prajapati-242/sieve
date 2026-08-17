@@ -299,3 +299,43 @@ conflict detail, resolve, agreement. **265 backend tests green**, 30 of them new
 **Outstanding: the entire UI.** Members panel, invite flow, conflicts queue,
 reconciliation view, agreement display, and the per-paper state that
 distinguishes yours from everyone's.
+
+
+---
+
+# Amendment 4 — who resolves (2026-08-17)
+
+**The problem.** Resolution was owner-only. In the two-person case Kishan
+described — him and a co-author, both screening — the owner resolves every
+conflict, which makes the tie-breaker whoever happened to create the
+collection. Real systematic review uses a third party precisely because the two
+disagreeing parties should not adjudicate themselves.
+
+**Rejected: require a neutral resolver.** Methodologically correct and
+unusable. In a two-person collection there is no third party, so requiring one
+deadlocks the exact case that motivates the rule. A constraint that cannot be
+satisfied is not a safeguard.
+
+**Rejected: owner-resolves, unchanged.** Cheap and honest given preserved
+history, but it leaves the asymmetry implicit. Someone reading the review later
+would have to reconstruct from timestamps whether the adjudicator was party to
+the dispute.
+
+**Chosen: make the correct configuration possible, record it when it is not.**
+
+1. A **`resolver` role**, optional, invitable. It can adjudicate but not
+   administer — the shape a supervisor needs, and it means a three-person
+   review CAN have a neutral arbitrator without also handing them the ability
+   to remove people.
+2. **`self_resolved`** on every resolution, computed at the moment of the
+   ruling: was the adjudicator one of the people who disagreed? Recorded rather
+   than prevented, and surfaced in the API response.
+
+Computed at write time rather than derived on read, because the answer changes
+if the resolver later edits their own screening — and what matters is whether
+they were an interested party **when they ruled**.
+
+**The limitation, stated plainly.** In a two-person collection the owner still
+resolves their own disagreements. Nothing here prevents that, because nothing
+can. What changes is that the record says so, so a reader can weigh it instead
+of having to discover it.

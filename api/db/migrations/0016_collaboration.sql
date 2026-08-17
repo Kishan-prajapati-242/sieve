@@ -15,7 +15,13 @@
 CREATE TABLE collection_members (
     collection_id BIGINT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
     user_id       BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role          TEXT NOT NULL CHECK (role IN ('owner', 'screener', 'viewer')),
+    -- 'resolver' exists because the two parties to a disagreement should not
+    -- adjudicate it. In real systematic review the tie-breaker is a third
+    -- person for exactly that reason. It is OPTIONAL rather than required,
+    -- because in the two-person case Kishan actually described there is no
+    -- third party to fill it — making the correct configuration possible
+    -- without making the common one impossible.
+    role          TEXT NOT NULL CHECK (role IN ('owner', 'resolver', 'screener', 'viewer')),
     invited_by    BIGINT REFERENCES users(id),
     joined_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (collection_id, user_id)
@@ -40,7 +46,7 @@ SELECT id, user_id, 'owner' FROM collections WHERE user_id IS NOT NULL;
 CREATE TABLE collection_invites (
     token_hash    TEXT PRIMARY KEY,
     collection_id BIGINT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
-    role          TEXT NOT NULL CHECK (role IN ('screener', 'viewer')),
+    role          TEXT NOT NULL CHECK (role IN ('resolver', 'screener', 'viewer')),
     created_by    BIGINT NOT NULL REFERENCES users(id),
     expires_at    TIMESTAMPTZ NOT NULL,
     used_at       TIMESTAMPTZ,
@@ -107,5 +113,14 @@ CREATE TABLE screening_resolutions (
     note          TEXT,
     resolved_by   BIGINT NOT NULL REFERENCES users(id),
     resolved_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Did the resolver settle a disagreement they were party to?
+    --
+    -- Recorded rather than prevented. Blocking it would deadlock the
+    -- two-person case — the only people who can resolve are the two who
+    -- disagreed — but leaving it invisible would hide that the tie-breaker
+    -- was an interested party. Derived at write time because the answer can
+    -- change afterwards if the resolver later edits their own screening, and
+    -- what matters is whether they were party to it AT THE MOMENT they ruled.
+    self_resolved BOOLEAN NOT NULL DEFAULT false,
     PRIMARY KEY (collection_id, paper_id)
 );

@@ -450,3 +450,117 @@ class TestAggregateLeaks:
         assert "papers" in body
         assert "screened" not in body
         assert "included" not in body
+
+
+class TestResolverRoleAndSelfResolution:
+    """Who breaks a tie, and whether the asymmetry is visible.
+
+    In real systematic review the tie-breaker is a third party, precisely
+    because the two disagreeing parties should not adjudicate themselves. In a
+    two-person collection there IS no third party, so this is recorded rather
+    than prevented — blocking it would deadlock the exact case it exists for.
+    """
+
+    def _conflict(self, dsn: str, extra_role: str | None = None):  # type: ignore[no-untyped-def]
+        pid = seed(dsn, 1)[0]
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post(
+            "/api/collections", json={"name": "R", "screening_mode": "blind"}
+        ).json()["id"]
+        tok = ada.post(f"/api/collections/{cid}/invites", json={"role": "screener"}).json()[
+            "token"
+        ]
+        grace = client_for(dsn, "grace@example.com")
+        grace.post(f"/api/collections/invites/{tok}/accept")
+        ada.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "include"})
+        grace.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "exclude"})
+        third = None
+        if extra_role:
+            t2 = ada.post(f"/api/collections/{cid}/invites", json={"role": extra_role}).json()[
+                "token"
+            ]
+            third = client_for(dsn, "sam@example.com")
+            third.post(f"/api/collections/invites/{t2}/accept")
+        return ada, grace, third, cid, pid
+
+    def test_an_owner_who_screened_is_flagged_as_an_interested_party(self, dsn: str) -> None:
+        ada, _grace, _t, cid, pid = self._conflict(dsn)
+        out = ada.put(
+            f"/api/collections/{cid}/conflicts/{pid}", json={"decision": "include"}
+        ).json()
+        # Ada was one of the two who disagreed and ruled in her own favour.
+        # Permitted — there is nobody else — but a reader of this review is
+        # entitled to know.
+        assert out["self_resolved"] is True
+
+    def test_a_neutral_resolver_is_not_flagged(self, dsn: str) -> None:
+        _ada, _grace, sam, cid, pid = self._conflict(dsn, extra_role="resolver")
+        assert sam is not None
+        out = sam.put(
+            f"/api/collections/{cid}/conflicts/{pid}", json={"decision": "exclude"}
+        ).json()
+        # A third party who never screened this paper is the methodologically
+        # correct arbitrator, and the record says so.
+        assert out["self_resolved"] is False
+
+    def test_a_resolver_can_adjudicate_without_administering(self, dsn: str) -> None:
+        _ada, _grace, sam, cid, _pid = self._conflict(dsn, extra_role="resolver")
+        assert sam is not None
+        # Resolving: yes. Inviting people: no. That separation is what lets a
+        # supervisor arbitrate without being handed the keys.
+        assert sam.get(f"/api/collections/{cid}/conflicts").status_code == 200
+        assert sam.post(f"/api/collections/{cid}/invites", json={}).status_code == 404
+
+
+class TestConflictListIsAlsoBlinded:
+    """"This paper is contested" is a signal — arguably a stronger one than a
+    single decision, because it says the paper is hard."""
+
+    def test_a_screener_sees_conflicts_only_on_papers_they_decided(self, dsn: str) -> None:
+        pids = seed(dsn, 2)
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post(
+            "/api/collections", json={"name": "R", "screening_mode": "blind"}
+        ).json()["id"]
+        tok = ada.post(f"/api/collections/{cid}/invites", json={"role": "screener"}).json()[
+            "token"
+        ]
+        grace = client_for(dsn, "grace@example.com")
+        grace.post(f"/api/collections/invites/{tok}/accept")
+        sam_tok = ada.post(f"/api/collections/{cid}/invites", json={"role": "screener"}).json()[
+            "token"
+        ]
+        sam = client_for(dsn, "sam@example.com")
+        sam.post(f"/api/collections/invites/{sam_tok}/accept")
+
+        # Ada and Grace disagree about BOTH papers. Sam has decided only one.
+        for pid in pids:
+            ada.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "include"})
+            grace.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "exclude"})
+        sam.put(f"/api/collections/{cid}/screenings/{pids[0]}", json={"decision": "maybe"})
+
+        seen = sam.get(f"/api/collections/{cid}/conflicts").json()
+        assert seen["scoped"] is True
+        # Learning that pids[1] is contested would tell Sam it is a hard paper
+        # before he has looked at it.
+        assert [c["paper_id"] for c in seen["conflicts"]] == [pids[0]]
+
+    def test_a_resolver_sees_the_whole_queue(self, dsn: str) -> None:
+        pids = seed(dsn, 2)
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post(
+            "/api/collections", json={"name": "R", "screening_mode": "blind"}
+        ).json()["id"]
+        tok = ada.post(f"/api/collections/{cid}/invites", json={"role": "screener"}).json()[
+            "token"
+        ]
+        grace = client_for(dsn, "grace@example.com")
+        grace.post(f"/api/collections/invites/{tok}/accept")
+        for pid in pids:
+            ada.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "include"})
+            grace.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "exclude"})
+
+        seen = ada.get(f"/api/collections/{cid}/conflicts").json()
+        # Adjudicating a queue you cannot see is not a job.
+        assert seen["scoped"] is False
+        assert sorted(c["paper_id"] for c in seen["conflicts"]) == sorted(pids)

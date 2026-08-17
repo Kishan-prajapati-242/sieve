@@ -71,6 +71,17 @@ ORDER BY s.decided_at
 # `count(DISTINCT decision) > 1` is the definition of conflict, computed on
 # read. A paper three people agreed on is not a conflict no matter how many
 # screened it; a paper two people split IS one even if a third has not looked.
+#
+# THE LIST ITSELF IS A SIGNAL. "This paper is contested" tells you two people
+# already looked and could not agree — which is precisely the hint blinding
+# withholds, and arguably a stronger one than seeing a single decision, because
+# it says the paper is hard. So a screener sees conflicts only on papers they
+# have already decided.
+#
+# Resolvers see everything, because adjudicating a queue you cannot see is not
+# a job. That is an accepted asymmetry and the reason the `resolver` role is
+# separable from `screener`: someone who only arbitrates is never blinded by
+# the queue, having no judgement of their own to bias.
 CONFLICTS_SQL = """
 SELECT s.paper_id,
        p.title,
@@ -83,6 +94,15 @@ WHERE s.collection_id = %(collection_id)s
   AND NOT EXISTS (
       SELECT 1 FROM screening_resolutions r
       WHERE r.collection_id = s.collection_id AND r.paper_id = s.paper_id
+  )
+  AND (
+      %(see_all)s
+      OR EXISTS (
+          SELECT 1 FROM screenings mine
+          WHERE mine.collection_id = s.collection_id
+            AND mine.paper_id = s.paper_id
+            AND mine.user_id = %(user_id)s
+      )
   )
 GROUP BY s.paper_id, p.title
 HAVING count(DISTINCT s.decision) > 1
@@ -155,8 +175,18 @@ def paper_view(
     return {"mine": mine, "others": others, "notes_visible": False, "blinded": False}
 
 
-def conflicts(conn: psycopg.Connection, collection_id: int) -> list[dict[str, Any]]:
-    rows = conn.execute(CONFLICTS_SQL, {"collection_id": collection_id}).fetchall()
+def conflicts(
+    conn: psycopg.Connection, collection_id: int, *, user_id: int, see_all: bool
+) -> list[dict[str, Any]]:
+    """Contested papers this caller may know about.
+
+    Keyword-only, like `_fetch_papers`, so a new caller cannot inherit the
+    permissive case by omission — there is no default to inherit.
+    """
+    rows = conn.execute(
+        CONFLICTS_SQL,
+        {"collection_id": collection_id, "user_id": user_id, "see_all": see_all},
+    ).fetchall()
     return [
         {
             "paper_id": r[0],

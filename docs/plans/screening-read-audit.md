@@ -28,7 +28,7 @@ returns per role.
 | 3 | `GET .../export.csv` | `see_all` in `PAPERS_SQL` | own rows + notes | everything | resolutions |
 | 4 | `GET .../export.bib` | `see_all` in `PAPERS_SQL` | own includes | all includes | resolutions |
 | 5 | `GET .../papers/{pid}/screening` | `paper_view(blind=…)` | own; others' decisions **after deciding** | same | same |
-| 6 | `GET .../conflicts` | derived query | which papers are contested | same | same |
+| 6 | `GET .../conflicts` | `see_all` in `CONFLICTS_SQL` | contested papers **they have decided** | whole queue | own-decided (none) |
 | 7 | `GET .../conflicts/{pid}` | `CAN_RESOLVE` | **404** | everything incl. notes | **404** |
 | 8 | `GET .../agreement` | aggregate only | statistics, no individual calls | same | same |
 | 9 | `GET .../members` | membership | roster + per-member volume | same | same |
@@ -51,6 +51,19 @@ Now the decision counts are filtered to `s.user_id = %(user_id)s`. Two fields
 were added that reveal **volume without judgement** — `team_screened` and
 `screener_count` — because "how much work has been done" is not a leak and is
 genuinely needed for coordination. Progress is not a judgement.
+
+### The conflicts list was a signal in itself (path 6)
+
+"This paper is contested" tells you two people already looked and could not
+agree. That is arguably a *stronger* hint than seeing one person's decision,
+because it says the paper is hard — and it was visible on papers the caller had
+not screened.
+
+A screener now sees conflicts only on papers they have already decided.
+Resolvers see the whole queue, because adjudicating a queue you cannot see is
+not a job. That asymmetry is accepted and is the reason `resolver` is separable
+from `screener`: someone who only arbitrates has no judgement of their own to
+bias, so the queue cannot anchor them.
 
 ### `/api/stats` published private review activity (path 10)
 

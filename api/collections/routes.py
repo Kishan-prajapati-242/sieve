@@ -406,7 +406,10 @@ def export_csv(
 
 
 class InviteCreate(BaseModel):
-    role: Literal["screener", "viewer"] = "screener"
+    # 'resolver' can adjudicate but not administer — the shape a supervisor
+    # needs. Owners are not invitable: ownership is transferred deliberately,
+    # not handed out through a link.
+    role: Literal["resolver", "screener", "viewer"] = "screener"
 
 
 class ResolutionBody(BaseModel):
@@ -489,8 +492,13 @@ def get_conflicts(collection_id: int, user: CurrentUser) -> dict[str, Any]:
     decisions it describes.
     """
     with get_pool().connection() as conn:
-        _require_role(conn, collection_id, user["id"], CAN_VIEW)
-        return {"conflicts": screening_view.conflicts(conn, collection_id)}
+        role = _require_role(conn, collection_id, user["id"], CAN_VIEW)
+        return {
+            "conflicts": screening_view.conflicts(
+                conn, collection_id, user_id=user["id"], see_all=role in CAN_RESOLVE
+            ),
+            "scoped": role not in CAN_RESOLVE,
+        }
 
 
 @router.get("/{collection_id}/conflicts/{paper_id}")
@@ -524,16 +532,35 @@ def put_resolution(
         row = conn.execute(
             """
             INSERT INTO screening_resolutions
-                (collection_id, paper_id, decision, note, resolved_by)
-            VALUES (%s, %s, %s, %s, %s)
+                (collection_id, paper_id, decision, note, resolved_by, self_resolved)
+            VALUES (
+                %(collection_id)s, %(paper_id)s, %(decision)s, %(note)s, %(user_id)s,
+                -- Was the adjudicator one of the disagreeing parties? Computed
+                -- here, at the moment of the ruling, because the answer can
+                -- change later if they edit their own screening — and what
+                -- matters is whether they were interested WHEN they ruled.
+                EXISTS (
+                    SELECT 1 FROM screenings
+                    WHERE collection_id = %(collection_id)s
+                      AND paper_id = %(paper_id)s
+                      AND user_id = %(user_id)s
+                )
+            )
             ON CONFLICT (collection_id, paper_id) DO UPDATE
                 SET decision = EXCLUDED.decision,
                     note = EXCLUDED.note,
                     resolved_by = EXCLUDED.resolved_by,
+                    self_resolved = EXCLUDED.self_resolved,
                     resolved_at = now()
-            RETURNING decision, note, resolved_by, resolved_at
+            RETURNING decision, note, resolved_by, resolved_at, self_resolved
             """,
-            (collection_id, paper_id, body.decision, body.note, user["id"]),
+            {
+                "collection_id": collection_id,
+                "paper_id": paper_id,
+                "decision": body.decision,
+                "note": body.note,
+                "user_id": user["id"],
+            },
         ).fetchone()
     assert row is not None
     return {
@@ -542,6 +569,9 @@ def put_resolution(
         "note": row[1],
         "resolved_by": row[2],
         "resolved_at": row[3],
+        # Surfaced, not hidden: a reader of this review is entitled to know the
+        # tie-breaker was one of the two people who disagreed.
+        "self_resolved": row[4],
     }
 
 

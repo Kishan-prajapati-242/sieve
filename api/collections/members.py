@@ -36,16 +36,19 @@ from typing import Any, Literal
 
 import psycopg
 
-Role = Literal["owner", "screener", "viewer"]
+Role = Literal["owner", "resolver", "screener", "viewer"]
 
 INVITE_TTL = timedelta(days=14)
 
 # Who may do what. Kept as data rather than scattered `if role ==` checks, so
 # the permission model can be read in one place and tested as a table.
-CAN_SCREEN: frozenset[str] = frozenset({"owner", "screener"})
-CAN_RESOLVE: frozenset[str] = frozenset({"owner"})
+CAN_SCREEN: frozenset[str] = frozenset({"owner", "resolver", "screener"})
+# A dedicated resolver can adjudicate without being able to administer the
+# collection — which is what lets a supervisor arbitrate without also being
+# handed the ability to remove people.
+CAN_RESOLVE: frozenset[str] = frozenset({"owner", "resolver"})
 CAN_INVITE: frozenset[str] = frozenset({"owner"})
-CAN_VIEW: frozenset[str] = frozenset({"owner", "screener", "viewer"})
+CAN_VIEW: frozenset[str] = frozenset({"owner", "resolver", "screener", "viewer"})
 
 
 def _hash(token: str) -> str:
