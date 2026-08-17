@@ -44,3 +44,11 @@ def scratch_db(request: pytest.FixtureRequest) -> Iterator[str]:
     yield make_conninfo("", **{**params, "dbname": name})
     with psycopg.connect(admin_url, autocommit=True) as conn:
         conn.execute(drop)
+
+
+@pytest.fixture(autouse=True)
+def _enable_password_signup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Password signup is disabled in deployment (no verified mail domain) but
+    the flow still has to be tested — the flag flips back the moment the domain
+    lands, and untested code is not code that comes back safely."""
+    monkeypatch.setenv("PASSWORD_SIGNUP", "1")

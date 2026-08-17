@@ -49,6 +49,22 @@ if COOKIE_SAMESITE == "none" and not COOKIE_SECURE:
     )
 
 
+def password_signup_enabled() -> bool:
+    """Whether new email/password accounts may be created.
+
+    OFF by default, because verification cannot complete: Resend refuses every
+    address except the account owner until a sending domain is verified, so the
+    flow would hand a real person a code that can never arrive. A path that
+    cannot finish is worse than no path.
+
+    ONE SWITCH — set PASSWORD_SIGNUP=1 when the domain is verified and the whole
+    flow returns. Nothing is deleted and the tests still cover it. Read at call
+    time rather than import time so it is configurable per-test and per-deploy
+    without a restart ordering problem.
+    """
+    return os.environ.get("PASSWORD_SIGNUP", "").lower() in {"1", "true", "yes"}
+
+
 class Credentials(BaseModel):
     email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=1, max_length=1024)
@@ -74,11 +90,16 @@ class AuthConfig(BaseModel):
     """What sign-in methods this deployment actually supports.
 
     The frontend asks rather than assuming: a clone without Google
-    credentials must hide the button, not show one that 500s.
+    credentials must hide the button, not show one that 500s, and a
+    deployment that cannot deliver mail must not offer a code flow.
     """
 
     google: bool
     email_transport: str
+    password_signup: bool
+    # Existing password accounts must still be able to sign in even while new
+    # ones are closed — disabling signup is not a reason to lock people out.
+    password_login: bool = True
 
 
 def _set_cookie(response: Response, token: str) -> None:
@@ -123,6 +144,18 @@ def optional_user(
 
 @router.post("/signup", status_code=201)
 def signup(body: Credentials, response: Response) -> UserOut:
+    # Enforced HERE, not only in the UI. A disabled path that a curl can still
+    # walk through is not disabled, and this one would create accounts that can
+    # never verify.
+    if not password_signup_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Email sign-up is temporarily unavailable: we cannot deliver "
+                "verification codes until our sending domain is verified. "
+                "Please continue with Google."
+            ),
+        )
     with get_pool().connection() as conn:
         try:
             user_id = create_user(conn, body.email, body.password)
@@ -181,7 +214,11 @@ def me(user: CurrentUser) -> UserOut:
 
 @router.get("/config")
 def config() -> AuthConfig:
-    return AuthConfig(google=google.configured(), email_transport=transport())
+    return AuthConfig(
+        google=google.configured(),
+        email_transport=transport(),
+        password_signup=password_signup_enabled(),
+    )
 
 
 def _pending_user(conn: Any, token: str | None) -> dict[str, Any]:

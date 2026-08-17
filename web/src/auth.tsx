@@ -18,6 +18,8 @@ export interface User {
 export interface AuthConfig {
   google: boolean;
   email_transport: string;
+  password_signup: boolean;
+  password_login: boolean;
 }
 
 async function fetchMe(): Promise<User | null> {

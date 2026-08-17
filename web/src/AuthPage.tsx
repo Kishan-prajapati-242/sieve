@@ -126,6 +126,22 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
             </>
           )}
 
+          {mode === "signup" && config && !config.password_signup ? (
+            // No form, no disabled inputs to argue with. The server refuses
+            // this path, so the page says why once and points at the one that
+            // works — a greyed-out form invites people to try it anyway.
+            <div className="hairline mt-6 rounded-xl border bg-keyword-950/40 p-5">
+              <p className="text-sm leading-relaxed text-ink-200">
+                Email sign-up is paused. We can&apos;t deliver verification codes until our
+                sending domain is verified, and an account you can&apos;t verify is an account
+                you can&apos;t use.
+              </p>
+              <p className="mt-3 text-xs leading-relaxed text-ink-400">
+                Google sign-in works today and verifies your address at Google, so nothing is
+                lost. Email sign-up returns as soon as the domain is live.
+              </p>
+            </div>
+          ) : (
           <form onSubmit={onSubmit} className={`flex flex-col gap-4 ${config?.google ? "" : "mt-8"}`}>
             <label className="flex flex-col gap-2">
               <span className="font-mono text-eyebrow uppercase text-ink-400">Email</span>
@@ -182,6 +198,7 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
               )}
             </Button>
           </form>
+          )}
 
           <p className="mt-6 text-sm text-ink-400">
             {copy.swapText}{" "}

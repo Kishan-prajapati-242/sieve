@@ -123,7 +123,7 @@ const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
   // highest-contrast element should be the action, and any brand color used
   // at button size would compete with the arm chips.
   primary:
-    "bg-ink-50 text-ink-950 hover:bg-white shadow-[0_0_0_1px_rgba(255,255,255,0.1)] " +
+    "bg-ink-50 text-ink-950 hover:bg-ink-100 shadow-[0_0_0_1px_rgba(255,255,255,0.1)] " +
     "hover:-translate-y-0.5 hover:shadow-[0_10px_28px_-12px_rgba(0,0,0,0.6)] sheen",
   secondary:
     "hairline border bg-ink-850/60 text-ink-100 hover:bg-ink-800 hover:hairline-strong " +

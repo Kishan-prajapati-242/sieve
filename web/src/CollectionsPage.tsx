@@ -66,7 +66,7 @@ export function CollectionsPage() {
           type="submit"
           disabled={create.isPending}
           className="rounded-lg bg-ink-50 px-4 py-2 text-sm font-medium text-ink-950
-                     transition-colors hover:bg-white disabled:opacity-60"
+                     transition-colors hover:bg-ink-100 disabled:opacity-60"
         >
           New collection
         </button>

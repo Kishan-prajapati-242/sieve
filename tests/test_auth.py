@@ -390,3 +390,37 @@ class TestVerificationActuallyGates:
         signup(client, "ada@example.com")
         assert client.post("/api/auth/verify", json={"code": "000000"}).status_code == 400
         assert client.get("/api/collections").status_code == 401
+
+
+class TestPasswordSignupGate:
+    """The flag has to actually close the door, and reopening it has to work —
+    a disabled path nobody can re-enable is a deleted path with extra steps."""
+
+    def test_signup_is_refused_when_the_flag_is_off(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("PASSWORD_SIGNUP", raising=False)
+        resp = signup(client, "nobody@example.com")
+        # 403 from the SERVER, not merely hidden in the UI: a curl must not be
+        # able to create an account that can never verify.
+        assert resp.status_code == 403
+        assert "Google" in resp.json()["detail"]
+        assert client.get("/api/auth/config").json()["password_signup"] is False
+
+    def test_existing_password_accounts_can_still_sign_in(
+        self, client: TestClient, scratch_db: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Created while signup was open...
+        signup_verified(client, scratch_db, "early@example.com")
+        client.post("/api/auth/logout")
+        # ...and closing signup must not lock them out.
+        monkeypatch.delenv("PASSWORD_SIGNUP", raising=False)
+        resp = client.post(
+            "/api/auth/login", json={"email": "early@example.com", "password": PASSWORD}
+        )
+        assert resp.status_code == 200
+        assert client.get("/api/auth/me").status_code == 200
+
+    def test_flipping_the_flag_restores_signup(self, client: TestClient) -> None:
+        assert client.get("/api/auth/config").json()["password_signup"] is True
+        assert signup(client, "later@example.com").status_code == 201

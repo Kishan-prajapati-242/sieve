@@ -31,6 +31,12 @@ from playwright.sync_api import sync_playwright
 ROUTES = ["/", "/search", "/login", "/signup", "/collections"]
 THEMES = ["dark", "light"]
 
+# The resting state was the only one checked, which is why a white-on-white
+# button hover shipped past a passing audit. Hover, focus and active are
+# separate colour pairs and each can fail on its own — CSS lets you change
+# background without changing text, and nothing warns you.
+STATES = ["rest", "hover", "focus", "active"]
+
 AUDIT_JS = r"""
 () => {
   const srgb = (c) => { c /= 255; return c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); };
@@ -110,11 +116,20 @@ AUDIT_JS = r"""
 """
 
 
+# Same maths as AUDIT_JS, applied to one element handed in from Python.
+AUDIT_ONE_JS = (
+    AUDIT_JS.replace("() => {", "(el) => {")
+    .replace("  const out = [];\n  document.querySelectorAll('*').forEach(el => {", "  const out = [];\n  [el].forEach(el => {")
+)
+
+
 def main() -> int:
     base = "http://localhost:5173"
     out_dir = Path(".design-review/theme")
     out_dir.mkdir(parents=True, exist_ok=True)
     failures: list[dict[str, object]] = []
+    skipped: list[str] = []
+    checked = 0
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
@@ -126,16 +141,67 @@ def main() -> int:
                 page.goto(base + route, wait_until="load", timeout=45000)
                 page.wait_for_timeout(1800)
                 for row in page.evaluate(AUDIT_JS):
-                    row["theme"], row["route"] = theme, route
+                    row["theme"], row["route"], row["state"] = theme, route, "rest"
                     failures.append(row)
+
+                # Hover / focus / active are SEPARATE colour pairs, and each can
+                # fail alone: CSS lets a rule change background without touching
+                # colour, and nothing warns you. A white-on-white button hover
+                # shipped past this audit because only the resting state was
+                # ever measured.
+                #
+                # Playwright's hover()/focus() fire the real pseudo-classes, so
+                # what is measured is what the stylesheet actually applies —
+                # a class-based imitation would miss anything written against
+                # :hover directly.
+                controls = page.locator(
+                    "button:not(:disabled), a[href], [role='button'], summary"
+                )
+                for i in range(min(controls.count(), 30)):
+                    el = controls.nth(i)
+                    for state in ("hover", "focus", "active"):
+                        try:
+                            if not el.is_visible():
+                                break
+                            el.hover(timeout=1200)
+                            if state == "focus":
+                                el.focus(timeout=1200)
+                            if state == "active":
+                                # Held down, so :active is live while measured.
+                                page.mouse.down()
+                            handle = el.element_handle()
+                            if handle is not None:
+                                checked += 1
+                                bad = page.evaluate(AUDIT_ONE_JS, handle)
+                                for row in bad:
+                                    row["theme"], row["route"] = theme, route
+                                    row["state"] = state
+                                    failures.append(row)
+                        except Exception as exc:
+                            skipped.append(f"{route}/{theme}/{state}: {type(exc).__name__}")
+                            continue
+                        finally:
+                            if state == "active":
+                                try:
+                                    page.mouse.up()
+                                except Exception:
+                                    pass
+
                 slug = route.strip("/").replace("/", "_") or "landing"
                 page.screenshot(path=str(out_dir / f"{theme}_{slug}.png"), full_page=True)
                 ctx.close()
         browser.close()
 
+    print(f"checked {checked} interaction-state samples; {len(skipped)} skipped")
+    if skipped:
+        # Loudly. A skip is not a pass, and treating it as one is how a
+        # white-on-white hover survived a green audit.
+        print("SKIPPED (these were NOT checked):")
+        for line in sorted(set(skipped))[:12]:
+            print("   ", line)
     if not failures:
         print("PASS: no contrast failures in either theme")
-        return 0
+        return 1 if skipped else 0
 
     print(f"FAIL: {len(failures)} contrast failures\n")
     by_theme: dict[str, list[dict[str, object]]] = {}

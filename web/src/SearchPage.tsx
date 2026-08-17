@@ -182,7 +182,7 @@ export function SearchPage() {
           <button
             type="submit"
             className="h-12 shrink-0 rounded-xl bg-ink-50 px-6 text-sm font-medium text-ink-950 sm:w-auto
-                       transition-all duration-150 hover:bg-white active:scale-[0.98]"
+                       transition-all duration-150 hover:bg-ink-100 active:scale-[0.98]"
           >
             Search
           </button>
