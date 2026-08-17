@@ -116,11 +116,17 @@ SELECT
      WHERE status = 'running' AND locked_at < now() - interval '15 minutes') AS stale_running
 """
 
+# /api/stats is UNAUTHENTICATED — the landing page reads the corpus size from
+# it before anyone signs in. It therefore may only report facts about the
+# CORPUS, never about what users did with it.
+#
+# It previously returned global screening counts, which is other people's
+# private review activity served to the open internet, and on a small instance
+# it is worse than aggregate: with two users, one who knows their own count can
+# derive the other's exactly. Removed rather than scoped, because a public
+# endpoint has no caller to scope to.
 SCREENING_SQL = """
-SELECT
-    (SELECT count(*) FROM collections)                              AS collections,
-    (SELECT count(*) FROM screenings)                               AS screened,
-    (SELECT count(*) FROM screenings WHERE decision = 'include')    AS included
+SELECT (SELECT count(*) FROM collections) AS collections
 """
 
 
@@ -145,8 +151,7 @@ class QueueStats(BaseModel):
 
 class ScreeningStats(BaseModel):
     collections: int
-    screened: int
-    included: int
+    # screened/included deliberately absent: see SCREENING_SQL.
 
 
 class StatsResponse(BaseModel):
@@ -205,8 +210,7 @@ def read_stats(conn: psycopg.Connection) -> StatsResponse:
         ),
         screening=ScreeningStats(
             collections=screening_row[0],
-            screened=screening_row[1],
-            included=screening_row[2],
+
         ),
     )
 

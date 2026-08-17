@@ -57,12 +57,26 @@ DecisionFilter = Annotated[Decision | None, Query()]
 
 LIST_SQL = """
 SELECT c.id, c.name, c.question, c.created_at,
-       count(s.paper_id)                                          AS screened,
-       count(*) FILTER (WHERE s.decision = 'include')             AS included,
-       count(*) FILTER (WHERE s.decision = 'exclude')             AS excluded,
-       count(*) FILTER (WHERE s.decision = 'maybe')               AS maybe
+       -- YOUR counts, not the team's.
+       --
+       -- These aggregated every screener's decisions, which leaks judgement in
+       -- bulk: if you have screened 5 papers and the card says 12 included,
+       -- you have learned that colleagues included 7 more — before you have
+       -- looked at them. Same class of bug as the export leak, one level up.
+       count(*) FILTER (WHERE s.user_id = %(user_id)s)                AS screened,
+       count(*) FILTER (WHERE s.user_id = %(user_id)s
+                        AND s.decision = 'include')                   AS included,
+       count(*) FILTER (WHERE s.user_id = %(user_id)s
+                        AND s.decision = 'exclude')                   AS excluded,
+       count(*) FILTER (WHERE s.user_id = %(user_id)s
+                        AND s.decision = 'maybe')                     AS maybe,
+       -- Team VOLUME is fine and useful: it says how much work has been done,
+       -- never what anyone concluded. Progress is not a judgement.
+       count(s.paper_id)                              AS team_screened,
+       count(DISTINCT s.user_id)                      AS screener_count,
+       c.screening_mode
 FROM collections c
-JOIN collection_members m ON m.collection_id = c.id AND m.user_id = %s
+JOIN collection_members m ON m.collection_id = c.id AND m.user_id = %(user_id)s
 LEFT JOIN screenings s ON s.collection_id = c.id
 GROUP BY c.id
 ORDER BY c.created_at DESC, c.id DESC
@@ -141,6 +155,10 @@ class CollectionSummary(BaseModel):
     included: int = 0
     excluded: int = 0
     maybe: int = 0
+    # Volume, not judgement — safe to show under blinding.
+    team_screened: int = 0
+    screener_count: int = 0
+    screening_mode: str = "solo"
 
 
 @router.post("", status_code=201)
@@ -169,7 +187,7 @@ def create_collection(
 @router.get("")
 def list_collections(user: CurrentUser) -> list[CollectionSummary]:
     with get_pool().connection() as conn:
-        rows = conn.execute(LIST_SQL, (user["id"],)).fetchall()
+        rows = conn.execute(LIST_SQL, {"user_id": user["id"]}).fetchall()
     return [
         CollectionSummary(
             id=r[0],
@@ -180,6 +198,9 @@ def list_collections(user: CurrentUser) -> list[CollectionSummary]:
             included=r[5],
             excluded=r[6],
             maybe=r[7],
+            team_screened=r[8],
+            screener_count=r[9],
+            screening_mode=r[10],
         )
         for r in rows
     ]

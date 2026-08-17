@@ -285,7 +285,11 @@ def test_csv_export_carries_the_decisions_not_just_the_papers(
     body = resp.content.decode("utf-8-sig")
     # Excel on Windows reads UTF-8 as Latin-1 without this.
     assert resp.content.startswith(b"\xef\xbb\xbf")
-    assert body.splitlines()[0].startswith("decision,note,decided_at,title")
+    # `screener` leads since collaboration: in a blind collection the same
+    # paper appears once per reviewer, and an unattributed row is unreadable.
+    header = body.splitlines()[0]
+    assert header.startswith("screener,decision,note,decided_at")
+    assert "resolved_decision" in header
     assert "core method paper" in body
     # Exclusions stay: a screening record with the rejections removed is not
     # a screening record.

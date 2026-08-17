@@ -93,10 +93,19 @@ export interface CollectionSummary {
   name: string;
   question: string | null;
   created_at: string;
+  /** YOUR counts, not the team's. Aggregating every screener's decisions here
+   *  leaked judgement in bulk — a card reading "12 included" when you had
+   *  decided 5 told you what colleagues concluded about 7 papers you had not
+   *  opened. See docs/plans/screening-read-audit.md. */
   screened: number;
   included: number;
   excluded: number;
   maybe: number;
+  /** Volume, not judgement — safe to show under blind screening, and needed
+   *  for coordination. */
+  team_screened: number;
+  screener_count: number;
+  screening_mode: "solo" | "blind";
 }
 
 /** A paper as it appears inside a collection: the paper fields plus the

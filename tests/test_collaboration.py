@@ -394,3 +394,59 @@ class TestBlindingSurvivesExport:
         # marked include — scoping it keeps the two exports consistent rather
         # than leaving one path narrower than the other.
         assert grace.get(f"/api/collections/{cid}/export.bib").status_code == 200
+
+
+class TestAggregateLeaks:
+    """A COUNT leaks too.
+
+    The export bug was a query that was correct under one-decision-per-paper
+    and stopped being correct when that changed. These are the same shape one
+    level up: totals that aggregate across screeners reveal in bulk what
+    blinding withholds per paper.
+    """
+
+    def test_collection_card_counts_are_yours_not_the_teams(self, dsn: str) -> None:
+        pids = seed(dsn, 4)
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post(
+            "/api/collections", json={"name": "R", "screening_mode": "blind"}
+        ).json()["id"]
+        token = ada.post(f"/api/collections/{cid}/invites", json={"role": "screener"}).json()[
+            "token"
+        ]
+        grace = client_for(dsn, "grace@example.com")
+        grace.post(f"/api/collections/invites/{token}/accept")
+
+        for pid in pids:  # Ada screens all four, all include
+            ada.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "include"})
+        grace.put(f"/api/collections/{cid}/screenings/{pids[0]}", json={"decision": "exclude"})
+
+        card = grace.get("/api/collections").json()[0]
+        # Grace has decided ONE paper. A card reading "4 included" would tell
+        # her Ada's verdict on three papers she has not looked at yet.
+        assert card["screened"] == 1
+        assert card["included"] == 0
+        assert card["excluded"] == 1
+        # Volume is fine — it says how much work exists, never what anyone
+        # concluded.
+        assert card["team_screened"] == 5
+        assert card["screener_count"] == 2
+
+    def test_public_stats_does_not_report_private_screening_activity(
+        self, dsn: str
+    ) -> None:
+        pid = seed(dsn, 1)[0]
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post("/api/collections", json={"name": "Private"}).json()["id"]
+        ada.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "include"})
+
+        anon = TestClient(app)
+        with anon:
+            body = anon.get("/api/stats").json()
+        # /api/stats is unauthenticated — the landing page reads the corpus
+        # size from it before anyone signs in. It may describe the CORPUS and
+        # never what users did with it. On a two-user instance, a global
+        # "included" count minus your own is exactly the other person's.
+        assert "papers" in body
+        assert "screened" not in body
+        assert "included" not in body
