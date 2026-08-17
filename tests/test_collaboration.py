@@ -335,3 +335,62 @@ class TestAgreementEndpoint:
         # Same refusal the bench harness applies to unstable percentiles.
         assert report["alpha"]["alpha"] is None
         assert report["pairwise_cohen"][0]["kappa"] is None
+
+
+class TestBlindingSurvivesExport:
+    """The UI is not the only way out of the database.
+
+    A CSV download that carries a co-screener's notes defeats blinding more
+    thoroughly than any UI leak, because it does not require being subtle —
+    and this export shipped BEFORE collaboration, deliberately including notes.
+    """
+
+    def _blind_pair(self, dsn: str):  # type: ignore[no-untyped-def]
+        pids = seed(dsn, 2)
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post(
+            "/api/collections", json={"name": "R", "screening_mode": "blind"}
+        ).json()["id"]
+        token = ada.post(f"/api/collections/{cid}/invites", json={"role": "screener"}).json()[
+            "token"
+        ]
+        grace = client_for(dsn, "grace@example.com")
+        grace.post(f"/api/collections/invites/{token}/accept")
+        ada.put(
+            f"/api/collections/{cid}/screenings/{pids[0]}",
+            json={"decision": "include", "note": "ADA PRIVATE REASONING"},
+        )
+        grace.put(
+            f"/api/collections/{cid}/screenings/{pids[0]}",
+            json={"decision": "exclude", "note": "GRACE PRIVATE REASONING"},
+        )
+        return ada, grace, cid, pids
+
+    def test_a_screener_export_cannot_read_a_co_screeners_notes(self, dsn: str) -> None:
+        _ada, grace, cid, _pids = self._blind_pair(dsn)
+        body = grace.get(f"/api/collections/{cid}/export.csv").content.decode("utf-8-sig")
+        assert "GRACE PRIVATE REASONING" in body  # her own, correctly
+        assert "ADA PRIVATE REASONING" not in body  # never someone else's
+
+    def test_an_owner_export_carries_everything(self, dsn: str) -> None:
+        ada, _grace, cid, _pids = self._blind_pair(dsn)
+        body = ada.get(f"/api/collections/{cid}/export.csv").content.decode("utf-8-sig")
+        # Owners already read every note at reconciliation; withholding them
+        # here would protect nothing and break the export they actually need.
+        assert "ADA PRIVATE REASONING" in body
+        assert "GRACE PRIVATE REASONING" in body
+        assert "screener" in body.splitlines()[0]
+
+    def test_the_collection_view_is_scoped_too(self, dsn: str) -> None:
+        """Same boundary, other route — the leak would have been identical."""
+        _ada, grace, cid, _pids = self._blind_pair(dsn)
+        papers = grace.get(f"/api/collections/{cid}").json()["papers"]
+        assert all(p["note"] != "ADA PRIVATE REASONING" for p in papers)
+        assert any(p["note"] == "GRACE PRIVATE REASONING" for p in papers)
+
+    def test_bibtex_export_is_scoped_as_well(self, dsn: str) -> None:
+        _ada, grace, cid, _pids = self._blind_pair(dsn)
+        # BibTeX carries no notes, but it DOES reveal which papers someone
+        # marked include — scoping it keeps the two exports consistent rather
+        # than leaving one path narrower than the other.
+        assert grace.get(f"/api/collections/{cid}/export.bib").status_code == 200

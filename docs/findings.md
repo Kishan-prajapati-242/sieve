@@ -2907,3 +2907,41 @@ value depends on an unrecorded parameter is not reproducible.
 paired coming in lower. It came in at **7.7x**, lower than predicted and by
 more than expected — and the direction of his prediction was right for the
 same reason it has been right three times before.
+
+## 2026-08-17 — A merge conflict is now per (collection, SCREENER)
+
+**Not a bug — a measured rule whose meaning changed underneath it**, recorded
+because someone reading the dedup work later will otherwise find a rule that
+does not match its own decision record.
+
+**The rule as measured.** `merge_group` refuses to merge duplicates when a
+collection holds different decisions across the group. The reasoning
+(DECISION-3c era) was that a human answered the same question twice and gave
+two answers, so the machine must not pick a winner — most-recent-wins was
+rejected for order-dependence, survivor's-decision-wins for resting on
+metadata quality that says nothing about which judgement was better considered.
+
+**What changed.** Migration 0016 made `screenings` per-user. "A collection
+holds different decisions" now has two very different causes:
+
+| cause | what it means | merge |
+|---|---|---|
+| ONE person called two duplicates differently | they contradicted themselves; collapsing silently picks one of their own judgements over the other | **still blocked** |
+| TWO people disagree about a paper | ordinary blind screening — the signal the collaboration feature exists to capture | **must not block** |
+
+Under the old grouping the second case would have refused every merge in every
+double-screened collection with any disagreement in it, which is most of them.
+The check is now keyed on `(collection_id, user_id)` rather than
+`collection_id`.
+
+**Why this is worth writing down rather than just changing.** The original rule
+was justified by an argument about a *person* answering twice, and that
+argument survives intact — it just needed the schema to be able to tell one
+person from two. The rule did not weaken; it became able to express what it
+always meant. Pinned by
+`test_two_screeners_disagreeing_does_not_block_a_merge`.
+
+**Cost of getting it wrong in the other direction:** if the per-screener key
+had been forgotten, dedup would have quietly stopped merging anything in
+collaborative collections, and the symptom would have been "the cascade found
+fewer duplicates" — a plausible-looking number with no obvious cause.

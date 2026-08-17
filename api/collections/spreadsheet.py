@@ -10,6 +10,12 @@ dependency, and writing real xlsx means adding openpyxl to serve one endpoint.
 If a formatted workbook is wanted later this is the function to wrap, not
 replace.
 
+WHAT IS IN THE FILE DEPENDS ON WHO ASKED. Under blind screening a screener's
+export carries their own rows only; an owner's carries everyone's. That
+filtering happens in the query (routes.PAPERS_SQL), not here — this function
+renders whatever it is handed, and putting the boundary in the SQL means a new
+export route cannot forget to apply it by calling the wrong formatter.
+
 Two details that decide whether the file actually opens correctly:
 
   BOM         Excel on Windows reads a UTF-8 CSV as Latin-1 unless the file
@@ -29,9 +35,18 @@ import io
 from typing import Any
 
 COLUMNS = [
+    # Whose call this is. Meaningless in a solo collection and essential in a
+    # blind one, where the same paper appears once per screener — without it
+    # an owner's export is an unattributed pile of contradictory rows.
+    "screener",
     "decision",
     "note",
     "decided_at",
+    # The collection's official answer, visible to every member because it is
+    # not a private judgement.
+    "resolved_decision",
+    "resolved_note",
+    "resolved_by",
     "title",
     "authors",
     "year",

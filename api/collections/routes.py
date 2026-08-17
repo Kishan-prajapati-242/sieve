@@ -68,15 +68,40 @@ GROUP BY c.id
 ORDER BY c.created_at DESC, c.id DESC
 """
 
+# BLINDING SURVIVES THE EXPORT PATH.
+#
+# This query previously joined screenings with no user filter, which was
+# correct when a paper had exactly one decision. Post-0016 it would return
+# EVERY screener's row — including their notes — to anyone who could reach the
+# collection, and a CSV download would have been a way to read a co-screener's
+# reasoning before deciding. That defeats blinding more thoroughly than the UI
+# ever could, because it does not even require being subtle about it.
+#
+# `see_all` is true only for roles that may already read everything at
+# reconciliation (owners). For everyone else the join is scoped to their own
+# user_id, so their own notes come back and nobody else's ever do.
+#
+# The RESOLUTION is visible to every member regardless: it is the collection's
+# official answer, not a private judgement, and hiding it from the people doing
+# the work would be perverse.
 PAPERS_SQL = """
 SELECT p.id, p.doi, p.title, p.abstract, p.year, p.venue, p.citation_count,
        p.is_retracted, p.authors, p.arxiv_id, p.pubmed_id,
-       s.decision, s.note, s.decided_at
+       s.decision, s.note, s.decided_at,
+       su.email        AS screener,
+       r.decision      AS resolved_decision,
+       r.note          AS resolved_note,
+       ru.email        AS resolved_by
 FROM screenings s
 JOIN papers p ON p.id = s.paper_id
+JOIN users su ON su.id = s.user_id
+LEFT JOIN screening_resolutions r
+       ON r.collection_id = s.collection_id AND r.paper_id = s.paper_id
+LEFT JOIN users ru ON ru.id = r.resolved_by
 WHERE s.collection_id = %(collection_id)s
+  AND (%(see_all)s OR s.user_id = %(user_id)s)
   AND (%(decision)s::text IS NULL OR s.decision = %(decision)s)
-ORDER BY s.decided_at DESC, p.id
+ORDER BY s.decided_at DESC, p.id, su.email
 """
 
 # Per-screener now. Two members screening the same paper at the same instant
@@ -160,9 +185,30 @@ def list_collections(user: CurrentUser) -> list[CollectionSummary]:
     ]
 
 
-def _fetch_papers(conn: Any, collection_id: int, decision: str | None) -> list[dict[str, Any]]:
+def _fetch_papers(
+    conn: Any,
+    collection_id: int,
+    decision: str | None,
+    *,
+    user_id: int,
+    see_all: bool,
+) -> list[dict[str, Any]]:
+    """Papers with screening, scoped to what this caller may read.
+
+    `see_all` is not a convenience flag — it is the blinding boundary, and it
+    is passed explicitly at every call site so that adding a new export cannot
+    accidentally default to leaking.
+    """
     with conn.cursor(row_factory=dict_row) as cur:
-        cur.execute(PAPERS_SQL, {"collection_id": collection_id, "decision": decision})
+        cur.execute(
+            PAPERS_SQL,
+            {
+                "collection_id": collection_id,
+                "decision": decision,
+                "user_id": user_id,
+                "see_all": see_all,
+            },
+        )
         rows: list[dict[str, Any]] = cur.fetchall()
         return rows
 
@@ -206,7 +252,14 @@ def get_collection(
 ) -> dict[str, Any]:
     with get_pool().connection() as conn:
         row = _require_collection(conn, collection_id, user["id"])
-        papers = _fetch_papers(conn, collection_id, decision)
+        role = role_for(conn, collection_id, user["id"])
+        papers = _fetch_papers(
+            conn,
+            collection_id,
+            decision,
+            user_id=user["id"],
+            see_all=role in CAN_RESOLVE,
+        )
     return {
         "id": row[0],
         "name": row[1],
@@ -280,7 +333,14 @@ def export_bibtex(
     that is what "export my collection" means to a reviewer."""
     with get_pool().connection() as conn:
         row = _require_collection(conn, collection_id, user["id"])
-        papers = _fetch_papers(conn, collection_id, decision)
+        role = role_for(conn, collection_id, user["id"])
+        papers = _fetch_papers(
+            conn,
+            collection_id,
+            decision,
+            user_id=user["id"],
+            see_all=role in CAN_RESOLVE,
+        )
     name = str(row[1]).replace('"', "")
     return Response(
         content=to_bibtex(papers),
@@ -305,7 +365,14 @@ def export_csv(
     """
     with get_pool().connection() as conn:
         row = _require_collection(conn, collection_id, user["id"])
-        papers = _fetch_papers(conn, collection_id, decision)
+        role = role_for(conn, collection_id, user["id"])
+        papers = _fetch_papers(
+            conn,
+            collection_id,
+            decision,
+            user_id=user["id"],
+            see_all=role in CAN_RESOLVE,
+        )
     name = str(row[1]).replace('"', "")
     return Response(
         content=to_csv(papers),
