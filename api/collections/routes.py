@@ -28,7 +28,21 @@ from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
 from api.auth.routes import CurrentUser
+from api.collections import screening as screening_view
+from api.collections.agreement import agreement_report
 from api.collections.bibtex import to_bibtex
+from api.collections.members import (
+    CAN_INVITE,
+    CAN_RESOLVE,
+    CAN_SCREEN,
+    CAN_VIEW,
+    InviteError,
+    accept_invite,
+    create_invite,
+    list_members,
+    remove_member,
+    role_for,
+)
 from api.collections.spreadsheet import to_csv
 from api.db.pool import get_pool
 
@@ -48,8 +62,8 @@ SELECT c.id, c.name, c.question, c.created_at,
        count(*) FILTER (WHERE s.decision = 'exclude')             AS excluded,
        count(*) FILTER (WHERE s.decision = 'maybe')               AS maybe
 FROM collections c
+JOIN collection_members m ON m.collection_id = c.id AND m.user_id = %s
 LEFT JOIN screenings s ON s.collection_id = c.id
-WHERE c.user_id = %s
 GROUP BY c.id
 ORDER BY c.created_at DESC, c.id DESC
 """
@@ -65,16 +79,25 @@ WHERE s.collection_id = %(collection_id)s
 ORDER BY s.decided_at DESC, p.id
 """
 
+# Per-screener now. Two members screening the same paper at the same instant
+# are two DIFFERENT primary keys, so they cannot collide — concurrent screening
+# is safe by schema rather than by locking, which is the point of the key
+# change. The conflict target is the full key: a reviewer changing their own
+# mind still updates in place.
 UPSERT_SQL = """
-INSERT INTO screenings (collection_id, paper_id, decision, note)
-VALUES (%(collection_id)s, %(paper_id)s, %(decision)s, %(note)s)
-ON CONFLICT (collection_id, paper_id)
+INSERT INTO screenings (collection_id, paper_id, user_id, decision, note)
+VALUES (%(collection_id)s, %(paper_id)s, %(user_id)s, %(decision)s, %(note)s)
+ON CONFLICT (collection_id, paper_id, user_id)
 DO UPDATE SET decision = EXCLUDED.decision, note = EXCLUDED.note, decided_at = now()
 RETURNING decision, note, decided_at
 """
 
 
 class CollectionCreate(BaseModel):
+    # Fixed at creation on purpose — switching mid-review leaves most papers
+    # screened once where the mode expects several, and "partially
+    # double-screened" is a state nobody wants to design around.
+    screening_mode: Literal["solo", "blind"] = "solo"
     name: str = Field(min_length=1, max_length=200)
     question: str | None = Field(default=None, max_length=2000)
 
@@ -101,10 +124,19 @@ def create_collection(
 ) -> CollectionSummary:
     with get_pool().connection() as conn:
         row = conn.execute(
-            "INSERT INTO collections (name, question, user_id) VALUES (%s, %s, %s)"
-            " RETURNING id, name, question, created_at",
-            (body.name, body.question, user["id"]),
+            "INSERT INTO collections (name, question, user_id, screening_mode)"
+            " VALUES (%s, %s, %s, %s) RETURNING id, name, question, created_at",
+            (body.name, body.question, user["id"], body.screening_mode),
         ).fetchone()
+        assert row is not None
+        # The creator is the first member. collections.user_id is kept as the
+        # original-owner record, but every permission check goes through
+        # membership from here.
+        conn.execute(
+            "INSERT INTO collection_members (collection_id, user_id, role)"
+            " VALUES (%s, %s, 'owner')",
+            (row[0], user["id"]),
+        )
     assert row is not None
     return CollectionSummary(id=row[0], name=row[1], question=row[2], created_at=row[3])
 
@@ -135,6 +167,19 @@ def _fetch_papers(conn: Any, collection_id: int, decision: str | None) -> list[d
         return rows
 
 
+def _require_role(conn: Any, collection_id: int, user_id: int, allowed: frozenset[str]) -> str:
+    """The caller's role, or 404 if they lack the permission.
+
+    404 rather than 403 throughout: a 403 confirms the collection exists, which
+    tells an attacker enumerating ids exactly what they wanted to know. The
+    same reasoning the single-owner check already used, extended to roles.
+    """
+    role = role_for(conn, collection_id, user_id)
+    if role is None or role not in allowed:
+        raise HTTPException(status_code=404, detail=f"no collection {collection_id}")
+    return role
+
+
 def _require_collection(conn: Any, collection_id: int, user_id: int) -> tuple[Any, ...]:
     """Fetch a collection the caller owns.
 
@@ -143,10 +188,10 @@ def _require_collection(conn: Any, collection_id: int, user_id: int) -> tuple[An
     a 403) is returned so the API does not confirm that someone else's
     collection id exists. Legacy rows with user_id IS NULL match no caller.
     """
+    _require_role(conn, collection_id, user_id, CAN_VIEW)
     row = conn.execute(
-        "SELECT id, name, question, created_at FROM collections"
-        " WHERE id = %s AND user_id = %s",
-        (collection_id, user_id),
+        "SELECT id, name, question, created_at, screening_mode FROM collections WHERE id = %s",
+        (collection_id,),
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail=f"no collection {collection_id}")
@@ -181,7 +226,7 @@ def screen(
     """Record or change a decision. Idempotent: the same PUT twice leaves
     one row, and a different decision replaces the old one in place."""
     with get_pool().connection() as conn:
-        _require_collection(conn, collection_id, user["id"])
+        _require_role(conn, collection_id, user["id"], CAN_SCREEN)
         if conn.execute("SELECT 1 FROM papers WHERE id = %s", (paper_id,)).fetchone() is None:
             raise HTTPException(status_code=404, detail=f"no paper {paper_id}")
         row = conn.execute(
@@ -189,6 +234,7 @@ def screen(
             {
                 "collection_id": collection_id,
                 "paper_id": paper_id,
+                "user_id": user["id"],
                 "decision": body.decision,
                 "note": body.note,
             },
@@ -210,12 +256,14 @@ def unscreen(
     user: CurrentUser,
 ) -> Response:
     with get_pool().connection() as conn:
-        # Ownership first: without it, any signed-in user could delete any
-        # screening by guessing a collection id.
-        _require_collection(conn, collection_id, user["id"])
+        # Membership first, and the DELETE is scoped to the caller's own row:
+        # withdrawing your judgement is yours to do, removing someone else's
+        # is not.
+        _require_role(conn, collection_id, user["id"], CAN_SCREEN)
         deleted = conn.execute(
-            "DELETE FROM screenings WHERE collection_id = %s AND paper_id = %s RETURNING paper_id",
-            (collection_id, paper_id),
+            "DELETE FROM screenings WHERE collection_id = %s AND paper_id = %s"
+            " AND user_id = %s RETURNING paper_id",
+            (collection_id, paper_id, user["id"]),
         ).fetchone()
     if deleted is None:
         raise HTTPException(status_code=404, detail="no such screening")
@@ -264,3 +312,162 @@ def export_csv(
         media_type="text/csv; charset=utf-8",
         headers={"content-disposition": f'attachment; filename="{name}.csv"'},
     )
+
+
+# ============================================================ COLLABORATION ==
+
+
+class InviteCreate(BaseModel):
+    role: Literal["screener", "viewer"] = "screener"
+
+
+class ResolutionBody(BaseModel):
+    decision: Decision
+    note: str | None = Field(default=None, max_length=4000)
+
+
+@router.get("/{collection_id}/members")
+def get_members(collection_id: int, user: CurrentUser) -> dict[str, Any]:
+    with get_pool().connection() as conn:
+        role = _require_role(conn, collection_id, user["id"], CAN_VIEW)
+        return {
+            "members": list_members(conn, collection_id),
+            "your_role": role,
+            # Progress is visible to everyone: knowing a colleague has screened
+            # 200 papers reveals no judgement, and hiding it makes coordination
+            # impossible for no privacy gain.
+            "progress": screening_view.progress(conn, collection_id),
+        }
+
+
+@router.post("/{collection_id}/invites", status_code=201)
+def post_invite(collection_id: int, body: InviteCreate, user: CurrentUser) -> dict[str, Any]:
+    """Mint a single-use invite link.
+
+    The plaintext token is returned exactly once and never stored — only its
+    hash is. Losing it means minting another, which is the correct tradeoff for
+    something that grants access to a collection.
+    """
+    with get_pool().connection() as conn:
+        _require_role(conn, collection_id, user["id"], CAN_INVITE)
+        token = create_invite(conn, collection_id, body.role, user["id"])
+    return {"token": token, "role": body.role, "collection_id": collection_id}
+
+
+@router.post("/invites/{token}/accept")
+def post_accept_invite(token: str, user: CurrentUser) -> dict[str, Any]:
+    with get_pool().connection() as conn:
+        try:
+            collection_id = accept_invite(conn, token, user["id"])
+        except InviteError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"collection_id": collection_id}
+
+
+@router.delete("/{collection_id}/members/{member_id}", status_code=204)
+def delete_member(collection_id: int, member_id: int, user: CurrentUser) -> Response:
+    with get_pool().connection() as conn:
+        # Leaving is always allowed; removing someone else needs ownership.
+        if member_id != user["id"]:
+            _require_role(conn, collection_id, user["id"], CAN_INVITE)
+        else:
+            _require_role(conn, collection_id, user["id"], CAN_VIEW)
+        try:
+            remove_member(conn, collection_id, member_id)
+        except InviteError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(status_code=204)
+
+
+@router.get("/{collection_id}/papers/{paper_id}/screening")
+def get_paper_screening(collection_id: int, paper_id: int, user: CurrentUser) -> dict[str, Any]:
+    """What this caller may see about one paper — the blinding rule applied."""
+    with get_pool().connection() as conn:
+        _require_role(conn, collection_id, user["id"], CAN_VIEW)
+        row = conn.execute(
+            "SELECT screening_mode FROM collections WHERE id = %s", (collection_id,)
+        ).fetchone()
+        blind = bool(row and row[0] == "blind")
+        return screening_view.paper_view(
+            conn, collection_id, paper_id, user["id"], blind=blind
+        )
+
+
+@router.get("/{collection_id}/conflicts")
+def get_conflicts(collection_id: int, user: CurrentUser) -> dict[str, Any]:
+    """Papers where screeners disagree and nobody has resolved it.
+
+    Derived on read — there is no conflict table to drift out of sync with the
+    decisions it describes.
+    """
+    with get_pool().connection() as conn:
+        _require_role(conn, collection_id, user["id"], CAN_VIEW)
+        return {"conflicts": screening_view.conflicts(conn, collection_id)}
+
+
+@router.get("/{collection_id}/conflicts/{paper_id}")
+def get_conflict_detail(collection_id: int, paper_id: int, user: CurrentUser) -> dict[str, Any]:
+    """Every call on a contested paper, WITH the notes.
+
+    This is the one place notes cross the blind. Resolving a disagreement
+    requires understanding why it happened, and the reasoning is the most
+    valuable thing on the screen — the protection exists to stop anchoring
+    before a judgement, and by here every judgement is already made.
+    """
+    with get_pool().connection() as conn:
+        _require_role(conn, collection_id, user["id"], CAN_RESOLVE)
+        return screening_view.paper_view(
+            conn, collection_id, paper_id, user["id"], blind=True, reconciling=True
+        )
+
+
+@router.put("/{collection_id}/conflicts/{paper_id}")
+def put_resolution(
+    collection_id: int, paper_id: int, body: ResolutionBody, user: CurrentUser
+) -> dict[str, Any]:
+    """Settle a conflict. The individual calls underneath are untouched.
+
+    Two resolvers racing is a real tie with no correct winner; last write wins
+    and `resolved_by` records who, which is honest about what happened rather
+    than pretending the race did not occur.
+    """
+    with get_pool().connection() as conn:
+        _require_role(conn, collection_id, user["id"], CAN_RESOLVE)
+        row = conn.execute(
+            """
+            INSERT INTO screening_resolutions
+                (collection_id, paper_id, decision, note, resolved_by)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (collection_id, paper_id) DO UPDATE
+                SET decision = EXCLUDED.decision,
+                    note = EXCLUDED.note,
+                    resolved_by = EXCLUDED.resolved_by,
+                    resolved_at = now()
+            RETURNING decision, note, resolved_by, resolved_at
+            """,
+            (collection_id, paper_id, body.decision, body.note, user["id"]),
+        ).fetchone()
+    assert row is not None
+    return {
+        "paper_id": paper_id,
+        "decision": row[0],
+        "note": row[1],
+        "resolved_by": row[2],
+        "resolved_at": row[3],
+    }
+
+
+@router.get("/{collection_id}/agreement")
+def get_agreement(collection_id: int, user: CurrentUser) -> dict[str, Any]:
+    """Inter-rater agreement, with the guards that make it honest.
+
+    Krippendorff's alpha as the headline because it admits a variable number of
+    raters per paper, which is the actual situation and which Fleiss' kappa
+    cannot handle without discarding data. Pairwise Cohen's kappa alongside it,
+    because "you and Sam agree at 0.41" is the number somebody can act on.
+    Both absent rather than estimated below their thresholds.
+    """
+    with get_pool().connection() as conn:
+        _require_role(conn, collection_id, user["id"], CAN_VIEW)
+        rows = screening_view.agreement_rows(conn, collection_id)
+    return agreement_report(rows)

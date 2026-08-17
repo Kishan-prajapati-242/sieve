@@ -1,0 +1,337 @@
+"""Collaborative screening: membership, blinding, conflicts, concurrency.
+
+The properties that matter here are the ones that make the feature worth
+having. A members table that lets two people edit one row would pass a naive
+test suite and destroy the methodology, so these pin the METHOD: independence
+before a decision, notes sealed until reconciliation, conflicts derived rather
+than stored, and history preserved through resolution.
+"""
+
+from collections.abc import Iterator
+
+import psycopg
+import pytest
+from fastapi.testclient import TestClient
+
+from api.db.migrate import migrate
+from api.db.pool import close_pool
+from api.main import app
+
+PW = "a-long-test-password"
+
+
+def _register(c: TestClient, dsn: str, email: str) -> int:
+    from api.auth import codes
+
+    c.post("/api/auth/signup", json={"email": email, "password": PW}).raise_for_status()
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        row = conn.execute("SELECT id FROM users WHERE lower(email)=lower(%s)", (email,)).fetchone()
+        assert row is not None
+        code = codes.issue(conn, int(row[0]))
+    c.post("/api/auth/verify", json={"code": code}).raise_for_status()
+    return int(row[0])
+
+
+@pytest.fixture
+def dsn(scratch_db: str, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
+    migrate(scratch_db)
+    close_pool()
+    monkeypatch.setenv("DATABASE_URL", scratch_db)
+    yield scratch_db
+    close_pool()
+
+
+def client_for(dsn: str, email: str) -> TestClient:
+    c = TestClient(app)
+    c.__enter__()
+    _register(c, dsn, email)
+    return c
+
+
+def seed(dsn: str, n: int) -> list[int]:
+    ids = []
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        for i in range(n):
+            row = conn.execute(
+                "INSERT INTO papers (title, title_norm, year) VALUES (%s, %s, 2020) RETURNING id",
+                (f"Paper {i}", f"paper {i}"),
+            ).fetchone()
+            assert row is not None
+            ids.append(int(row[0]))
+    return ids
+
+
+class TestMembershipAndInvites:
+    def test_invite_link_grants_access_and_is_single_use(self, dsn: str) -> None:
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post(
+            "/api/collections", json={"name": "Review", "screening_mode": "blind"}
+        ).json()["id"]
+        token = ada.post(f"/api/collections/{cid}/invites", json={"role": "screener"}).json()[
+            "token"
+        ]
+
+        grace = client_for(dsn, "grace@example.com")
+        assert grace.get(f"/api/collections/{cid}").status_code == 404  # not yet a member
+        assert grace.post(f"/api/collections/invites/{token}/accept").status_code == 200
+        assert grace.get(f"/api/collections/{cid}").status_code == 200
+
+        # Spent. A link that keeps working is a link that leaks.
+        sam = client_for(dsn, "sam@example.com")
+        assert sam.post(f"/api/collections/invites/{token}/accept").status_code == 400
+        assert sam.get(f"/api/collections/{cid}").status_code == 404
+
+    def test_invite_token_is_hashed_at_rest(self, dsn: str) -> None:
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post("/api/collections", json={"name": "R"}).json()["id"]
+        token = ada.post(f"/api/collections/{cid}/invites", json={}).json()["token"]
+        with psycopg.connect(dsn) as conn:
+            row = conn.execute("SELECT token_hash FROM collection_invites").fetchone()
+        # An unused invite IS a credential; a database dump must not contain it.
+        assert row is not None and token not in row[0] and len(row[0]) == 64
+
+    def test_only_owners_invite(self, dsn: str) -> None:
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post("/api/collections", json={"name": "R"}).json()["id"]
+        token = ada.post(f"/api/collections/{cid}/invites", json={"role": "screener"}).json()[
+            "token"
+        ]
+        grace = client_for(dsn, "grace@example.com")
+        grace.post(f"/api/collections/invites/{token}/accept")
+        assert grace.post(f"/api/collections/{cid}/invites", json={}).status_code == 404
+
+    def test_the_last_owner_cannot_be_removed(self, dsn: str) -> None:
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post("/api/collections", json={"name": "R"}).json()["id"]
+        me = ada.get("/api/auth/me").json()["id"]
+        resp = ada.delete(f"/api/collections/{cid}/members/{me}")
+        # An ownerless collection can be administered by nobody and deleted by
+        # nobody — a permanent orphan.
+        assert resp.status_code == 400
+        assert "at least one owner" in resp.json()["detail"]
+
+    def test_viewers_cannot_screen(self, dsn: str) -> None:
+        ada = client_for(dsn, "ada@example.com")
+        pid = seed(dsn, 1)[0]
+        cid = ada.post("/api/collections", json={"name": "R"}).json()["id"]
+        token = ada.post(f"/api/collections/{cid}/invites", json={"role": "viewer"}).json()[
+            "token"
+        ]
+        bob = client_for(dsn, "bob@example.com")
+        bob.post(f"/api/collections/invites/{token}/accept")
+        assert bob.get(f"/api/collections/{cid}").status_code == 200
+        assert (
+            bob.put(
+                f"/api/collections/{cid}/screenings/{pid}", json={"decision": "include"}
+            ).status_code
+            == 404
+        )
+
+
+class TestBlinding:
+    """The methodological core. If this leaks, the feature is worse than useless."""
+
+    def _two_screeners(self, dsn: str):  # type: ignore[no-untyped-def]
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post(
+            "/api/collections", json={"name": "Blind review", "screening_mode": "blind"}
+        ).json()["id"]
+        token = ada.post(f"/api/collections/{cid}/invites", json={"role": "screener"}).json()[
+            "token"
+        ]
+        grace = client_for(dsn, "grace@example.com")
+        grace.post(f"/api/collections/invites/{token}/accept")
+        return ada, grace, cid
+
+    def test_undecided_screener_sees_nothing_not_even_a_count(self, dsn: str) -> None:
+        pid = seed(dsn, 1)[0]
+        ada, grace, cid = self._two_screeners(dsn)
+        ada.put(
+            f"/api/collections/{cid}/screenings/{pid}",
+            json={"decision": "include", "note": "clearly a trial"},
+        )
+        view = grace.get(f"/api/collections/{cid}/papers/{pid}/screening").json()
+        # A count is itself a signal — "three people already looked at this"
+        # tells you something. Blinding that leaks a hint is not blinding.
+        assert view["blinded"] is True
+        assert view["mine"] is None
+        assert view["others"] == []
+
+    def test_after_deciding_you_see_decisions_but_never_notes(self, dsn: str) -> None:
+        pid = seed(dsn, 1)[0]
+        ada, grace, cid = self._two_screeners(dsn)
+        ada.put(
+            f"/api/collections/{cid}/screenings/{pid}",
+            json={"decision": "include", "note": "SECRET REASONING"},
+        )
+        grace.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "exclude"})
+
+        view = grace.get(f"/api/collections/{cid}/papers/{pid}/screening").json()
+        assert view["blinded"] is False
+        assert [o["decision"] for o in view["others"]] == ["include"]
+        # Reasoning is MORE persuasive than a label, so it stays sealed longer.
+        assert view["notes_visible"] is False
+        assert "SECRET REASONING" not in str(view)
+        assert all("note" not in o for o in view["others"])
+
+    def test_notes_open_at_reconciliation_and_only_there(self, dsn: str) -> None:
+        pid = seed(dsn, 1)[0]
+        ada, grace, cid = self._two_screeners(dsn)
+        ada.put(
+            f"/api/collections/{cid}/screenings/{pid}",
+            json={"decision": "include", "note": "randomised, meets criteria"},
+        )
+        grace.put(
+            f"/api/collections/{cid}/screenings/{pid}",
+            json={"decision": "exclude", "note": "protocol only, no results"},
+        )
+        detail = ada.get(f"/api/collections/{cid}/conflicts/{pid}").json()
+        assert detail["notes_visible"] is True
+        notes = {o["note"] for o in detail["others"]}
+        # Resolving REQUIRES understanding why — the reasoning is the point here.
+        assert "protocol only, no results" in notes
+
+        # And a non-resolver still cannot open it.
+        assert grace.get(f"/api/collections/{cid}/conflicts/{pid}").status_code == 404
+
+    def test_solo_mode_does_not_blind(self, dsn: str) -> None:
+        pid = seed(dsn, 1)[0]
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post(
+            "/api/collections", json={"name": "Mine", "screening_mode": "solo"}
+        ).json()["id"]
+        view = ada.get(f"/api/collections/{cid}/papers/{pid}/screening").json()
+        assert view["blinded"] is False  # nobody to be blinded from
+
+
+class TestConflictsAndResolution:
+    def _disagreement(self, dsn: str):  # type: ignore[no-untyped-def]
+        pids = seed(dsn, 2)
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post(
+            "/api/collections", json={"name": "R", "screening_mode": "blind"}
+        ).json()["id"]
+        token = ada.post(f"/api/collections/{cid}/invites", json={"role": "screener"}).json()[
+            "token"
+        ]
+        grace = client_for(dsn, "grace@example.com")
+        grace.post(f"/api/collections/invites/{token}/accept")
+        # Disagree on the first, agree on the second.
+        ada.put(f"/api/collections/{cid}/screenings/{pids[0]}", json={"decision": "include"})
+        grace.put(f"/api/collections/{cid}/screenings/{pids[0]}", json={"decision": "exclude"})
+        ada.put(f"/api/collections/{cid}/screenings/{pids[1]}", json={"decision": "include"})
+        grace.put(f"/api/collections/{cid}/screenings/{pids[1]}", json={"decision": "include"})
+        return ada, grace, cid, pids
+
+    def test_only_disagreements_are_conflicts(self, dsn: str) -> None:
+        ada, _grace, cid, pids = self._disagreement(dsn)
+        conflicts = ada.get(f"/api/collections/{cid}/conflicts").json()["conflicts"]
+        assert [c["paper_id"] for c in conflicts] == [pids[0]]
+        assert conflicts[0]["distinct_decisions"] == 2
+
+    def test_resolving_clears_the_conflict_and_keeps_both_calls(self, dsn: str) -> None:
+        ada, _grace, cid, pids = self._disagreement(dsn)
+        ada.put(
+            f"/api/collections/{cid}/conflicts/{pids[0]}",
+            json={"decision": "include", "note": "trial, Grace read the protocol paper"},
+        )
+        assert ada.get(f"/api/collections/{cid}/conflicts").json()["conflicts"] == []
+
+        # NOTHING is overwritten. "Ada said include, Grace said exclude, Ada
+        # resolved to include" is what makes a review defensible later.
+        detail = ada.get(f"/api/collections/{cid}/conflicts/{pids[0]}").json()
+        assert {o["decision"] for o in detail["others"]} == {"include", "exclude"}
+
+    def test_screeners_cannot_resolve(self, dsn: str) -> None:
+        _ada, grace, cid, pids = self._disagreement(dsn)
+        assert (
+            grace.put(
+                f"/api/collections/{cid}/conflicts/{pids[0]}", json={"decision": "include"}
+            ).status_code
+            == 404
+        )
+
+
+class TestConcurrency:
+    def test_two_screeners_on_one_paper_do_not_collide(self, dsn: str) -> None:
+        """Safe by SCHEMA, not by locking: the primary key includes user_id, so
+        simultaneous writes are simply different rows."""
+        pid = seed(dsn, 1)[0]
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post(
+            "/api/collections", json={"name": "R", "screening_mode": "blind"}
+        ).json()["id"]
+        token = ada.post(f"/api/collections/{cid}/invites", json={"role": "screener"}).json()[
+            "token"
+        ]
+        grace = client_for(dsn, "grace@example.com")
+        grace.post(f"/api/collections/invites/{token}/accept")
+
+        ada.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "include"})
+        grace.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "exclude"})
+        with psycopg.connect(dsn) as conn:
+            n = conn.execute(
+                "SELECT count(*) FROM screenings WHERE collection_id=%s AND paper_id=%s",
+                (cid, pid),
+            ).fetchone()
+        assert n is not None and n[0] == 2  # both survived; neither overwrote
+
+    def test_changing_your_own_mind_updates_in_place(self, dsn: str) -> None:
+        pid = seed(dsn, 1)[0]
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post("/api/collections", json={"name": "R"}).json()["id"]
+        ada.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "include"})
+        ada.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "exclude"})
+        with psycopg.connect(dsn) as conn:
+            rows = conn.execute(
+                "SELECT decision FROM screenings WHERE collection_id=%s AND paper_id=%s",
+                (cid, pid),
+            ).fetchall()
+        assert [r[0] for r in rows] == ["exclude"]
+
+    def test_unscreening_removes_only_your_own_row(self, dsn: str) -> None:
+        pid = seed(dsn, 1)[0]
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post(
+            "/api/collections", json={"name": "R", "screening_mode": "blind"}
+        ).json()["id"]
+        token = ada.post(f"/api/collections/{cid}/invites", json={"role": "screener"}).json()[
+            "token"
+        ]
+        grace = client_for(dsn, "grace@example.com")
+        grace.post(f"/api/collections/invites/{token}/accept")
+        ada.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "include"})
+        grace.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "exclude"})
+
+        grace.delete(f"/api/collections/{cid}/screenings/{pid}")
+        with psycopg.connect(dsn) as conn:
+            rows = conn.execute(
+                "SELECT decision FROM screenings WHERE collection_id=%s AND paper_id=%s",
+                (cid, pid),
+            ).fetchall()
+        # Withdrawing your judgement is yours to do; removing someone else's is not.
+        assert [r[0] for r in rows] == ["include"]
+
+
+class TestAgreementEndpoint:
+    def test_agreement_is_absent_below_the_threshold_not_estimated(self, dsn: str) -> None:
+        pids = seed(dsn, 5)
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post(
+            "/api/collections", json={"name": "R", "screening_mode": "blind"}
+        ).json()["id"]
+        token = ada.post(f"/api/collections/{cid}/invites", json={"role": "screener"}).json()[
+            "token"
+        ]
+        grace = client_for(dsn, "grace@example.com")
+        grace.post(f"/api/collections/invites/{token}/accept")
+        for pid in pids:
+            ada.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "include"})
+            grace.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "include"})
+
+        report = ada.get(f"/api/collections/{cid}/agreement").json()
+        assert report["raters"] == 2
+        assert report["multiply_screened"] == 5
+        # Same refusal the bench harness applies to unstable percentiles.
+        assert report["alpha"]["alpha"] is None
+        assert report["pairwise_cohen"][0]["kappa"] is None

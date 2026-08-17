@@ -27,21 +27,32 @@ def seed(conn: psycopg.Connection) -> tuple[int, int, int]:
             " VALUES (%s,%s,'{}'::jsonb,%s)",
             ("openalex", f"W{i}", ids[-1]),
         )
-    cid = conn.execute("INSERT INTO collections (name) VALUES ('Q') RETURNING id").fetchone()
+    uid_row = conn.execute(
+        "INSERT INTO users (email, password_hash) VALUES ('rev@example.com','x') RETURNING id"
+    ).fetchone()
+    assert uid_row is not None
+    uid = int(uid_row[0])
+    cid = conn.execute(
+        "INSERT INTO collections (name, user_id) VALUES ('Q', %s) RETURNING id", (uid,)
+    ).fetchone()
     assert cid is not None
-    return ids[0], ids[1], int(cid[0])
+    conn.execute(
+        "INSERT INTO collection_members (collection_id, user_id, role) VALUES (%s,%s,'owner')",
+        (int(cid[0]), uid),
+    )
+    return ids[0], ids[1], int(cid[0]), uid
 
 
 def test_merging_a_screened_paper(scratch_db: str) -> None:
     migrate(scratch_db)
     with psycopg.connect(scratch_db, autocommit=True) as conn:
-        a, b, cid = seed(conn)
+        a, b, cid, uid = seed(conn)
         # Screen the paper that the merge will consume (the higher id loses:
         # choose_survivor prefers the richer/earlier record).
         conn.execute(
-            "INSERT INTO screenings (collection_id, paper_id, decision, note)"
-            " VALUES (%s,%s,'include','kept for the outcome measure')",
-            (cid, b),
+            "INSERT INTO screenings (collection_id, paper_id, user_id, decision, note)"
+            " VALUES (%s,%s,%s,'include','kept for the outcome measure')",
+            (cid, b, uid),
         )
 
         outcome: str
@@ -79,12 +90,12 @@ def test_same_decision_on_both_collapses_silently(scratch_db: str) -> None:
     """Branch 1 of Kishan's rule: no conflict exists, so do not manufacture one."""
     migrate(scratch_db)
     with psycopg.connect(scratch_db, autocommit=True) as conn:
-        a, b, cid = seed(conn)
+        a, b, cid, uid = seed(conn)
         for pid in (a, b):
             conn.execute(
-                "INSERT INTO screenings (collection_id, paper_id, decision)"
-                " VALUES (%s,%s,'include')",
-                (cid, pid),
+                "INSERT INTO screenings (collection_id, paper_id, user_id, decision)"
+                " VALUES (%s,%s,%s,'include')",
+                (cid, pid, uid),
             )
         with conn.transaction():
             merge_group(conn, [a, b], "title_exact", 1.0)
@@ -99,14 +110,16 @@ def test_different_decisions_refuse_the_merge(scratch_db: str) -> None:
     machine does not pick a winner — the group goes to review."""
     migrate(scratch_db)
     with psycopg.connect(scratch_db, autocommit=True) as conn:
-        a, b, cid = seed(conn)
+        a, b, cid, uid = seed(conn)
         conn.execute(
-            "INSERT INTO screenings (collection_id, paper_id, decision) VALUES (%s,%s,'include')",
-            (cid, a),
+            "INSERT INTO screenings (collection_id, paper_id, user_id, decision)"
+            " VALUES (%s,%s,%s,'include')",
+            (cid, a, uid),
         )
         conn.execute(
-            "INSERT INTO screenings (collection_id, paper_id, decision) VALUES (%s,%s,'exclude')",
-            (cid, b),
+            "INSERT INTO screenings (collection_id, paper_id, user_id, decision)"
+            " VALUES (%s,%s,%s,'exclude')",
+            (cid, b, uid),
         )
         with pytest.raises(ScreeningConflict) as exc, conn.transaction():
             merge_group(conn, [a, b], "title_exact", 1.0)
@@ -123,11 +136,11 @@ def test_rollback_restores_a_collapsed_screening(scratch_db: str) -> None:
     loses a decision it moved."""
     migrate(scratch_db)
     with psycopg.connect(scratch_db, autocommit=True) as conn:
-        a, b, cid = seed(conn)
+        a, b, cid, uid = seed(conn)
         conn.execute(
-            "INSERT INTO screenings (collection_id, paper_id, decision, note)"
-            " VALUES (%s,%s,'include','on the loser')",
-            (cid, b),
+            "INSERT INTO screenings (collection_id, paper_id, user_id, decision, note)"
+            " VALUES (%s,%s,%s,'include','on the loser')",
+            (cid, b, uid),
         )
         with conn.transaction():
             res = merge_group(conn, [a, b], "title_exact", 1.0)
@@ -142,3 +155,48 @@ def test_rollback_restores_a_collapsed_screening(scratch_db: str) -> None:
     assert res
     assert papers == (2,), "both papers back"
     assert rows == [(b, "include", "on the loser")], "the decision is back on its own paper"
+
+
+def test_two_screeners_disagreeing_does_not_block_a_merge(scratch_db: str) -> None:
+    """The semantic change collaboration forced.
+
+    One person calling two duplicates differently still blocks the merge —
+    collapsing those would silently pick one of their own judgements over the
+    other. But TWO people disagreeing about a paper is ordinary blind
+    screening, and it is the exact signal the feature exists to capture, so it
+    must not block anything.
+    """
+    migrate(scratch_db)
+    with psycopg.connect(scratch_db, autocommit=True) as conn:
+        a, b, cid, uid = seed(conn)
+        other = conn.execute(
+            "INSERT INTO users (email, password_hash) VALUES ('two@example.com','x') RETURNING id"
+        ).fetchone()
+        assert other is not None
+        uid2 = int(other[0])
+        conn.execute(
+            "INSERT INTO collection_members (collection_id, user_id, role)"
+            " VALUES (%s,%s,'screener')",
+            (cid, uid2),
+        )
+        conn.execute(
+            "INSERT INTO screenings (collection_id, paper_id, user_id, decision)"
+            " VALUES (%s,%s,%s,'include')",
+            (cid, a, uid),
+        )
+        conn.execute(
+            "INSERT INTO screenings (collection_id, paper_id, user_id, decision)"
+            " VALUES (%s,%s,%s,'exclude')",
+            (cid, b, uid2),
+        )
+        with conn.transaction():
+            merge_group(conn, [a, b], "title_exact", 1.0)
+
+        rows = conn.execute(
+            "SELECT user_id, decision FROM screenings WHERE collection_id=%s ORDER BY user_id",
+            (cid,),
+        ).fetchall()
+        # Both survive, on the surviving paper, as a live disagreement.
+        assert sorted((int(r[0]), r[1]) for r in rows) == sorted(
+            [(uid, "include"), (uid2, "exclude")]
+        )

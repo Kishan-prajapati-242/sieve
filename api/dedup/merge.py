@@ -152,14 +152,21 @@ def merge_group(
     # (survivorship is chosen on METADATA quality and says nothing about which
     # judgment was better considered).
     screenings = conn.execute(
-        "SELECT collection_id, paper_id, decision, note FROM screenings"
+        "SELECT collection_id, paper_id, decision, note, user_id FROM screenings"
         " WHERE paper_id = ANY(%s) ORDER BY collection_id, paper_id",
         ([m["id"] for m in members],),
     ).fetchall()
-    by_collection: dict[int, set[str]] = {}
-    for cid, _pid, decision, _note in screenings:
-        by_collection.setdefault(int(cid), set()).add(str(decision))
-    conflicts = sorted(c for c, ds in by_collection.items() if len(ds) > 1)
+    # Conflict is now per (collection, SCREENER), not per collection.
+    #
+    # Two screeners disagreeing about one paper is ordinary blind screening and
+    # must not block a merge — that disagreement is the signal the whole
+    # collaboration feature exists to capture. What still blocks a merge is ONE
+    # person having called two duplicates differently, because collapsing those
+    # would silently pick one of their own judgements over the other.
+    by_rater: dict[tuple[int, int], set[str]] = {}
+    for cid, _pid, decision, _note, uid in screenings:
+        by_rater.setdefault((int(cid), int(uid)), set()).add(str(decision))
+    conflicts = sorted({c for (c, _u), ds in by_rater.items() if len(ds) > 1})
     if conflicts:
         raise ScreeningConflict(
             f"collections {conflicts} hold different decisions across members "
@@ -177,7 +184,13 @@ def merge_group(
         # Every screening row as it stood, so rollback can put the collapsed
         # ones back on the papers they were made about.
         "screening_map": [
-            {"collection_id": r[0], "paper_id": r[1], "decision": r[2], "note": r[3]}
+            {
+                "collection_id": r[0],
+                "paper_id": r[1],
+                "decision": r[2],
+                "note": r[3],
+                "user_id": r[4],
+            }
             for r in screenings
         ],
         "member_ids": [m["id"] for m in members],
@@ -213,11 +226,13 @@ def merge_group(
     # Collapse screenings onto the survivor before the losers die. Same
     # decision everywhere in a collection by the check above, so the survivor
     # either already carries it or inherits it; the loser rows then go.
+    # Per-screener: every reviewer's call moves to the survivor independently,
+    # so a merge cannot collapse two people's judgements into one.
     conn.execute(
-        "INSERT INTO screenings (collection_id, paper_id, decision, note)"
-        " SELECT collection_id, %s, decision, note FROM screenings"
+        "INSERT INTO screenings (collection_id, paper_id, user_id, decision, note)"
+        " SELECT collection_id, %s, user_id, decision, note FROM screenings"
         " WHERE paper_id = ANY(%s)"
-        " ON CONFLICT (collection_id, paper_id) DO NOTHING",
+        " ON CONFLICT (collection_id, paper_id, user_id) DO NOTHING",
         (survivor["id"], loser_ids),
     )
     conn.execute("DELETE FROM screenings WHERE paper_id = ANY(%s)", (loser_ids,))
@@ -291,10 +306,24 @@ def rollback(conn: psycopg.Connection, merge_id: int) -> dict[str, Any]:
             ),
         )
         for e in smap:
+            # user_id is read with .get so snapshots taken BEFORE collaboration
+            # shipped still roll back — a merge recorded under the old schema
+            # has no screener recorded, and refusing to restore it would make
+            # old merges permanently irreversible. Those rows are attributed to
+            # the collection's owner, which is who made them.
             conn.execute(
-                "INSERT INTO screenings (collection_id, paper_id, decision, note)"
-                " VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                (e["collection_id"], e["paper_id"], e["decision"], e["note"]),
+                "INSERT INTO screenings (collection_id, paper_id, user_id, decision, note)"
+                " VALUES (%s, %s,"
+                "  coalesce(%s, (SELECT user_id FROM collections WHERE id = %s)),"
+                "  %s, %s) ON CONFLICT DO NOTHING",
+                (
+                    e["collection_id"],
+                    e["paper_id"],
+                    e.get("user_id"),
+                    e["collection_id"],
+                    e["decision"],
+                    e["note"],
+                ),
             )
 
     for entry in snap.get("prior_merge_map", []):

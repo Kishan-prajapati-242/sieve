@@ -22,6 +22,7 @@ theme, route and computed colours, so a failure names the fix.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sys
 from pathlib import Path
@@ -117,10 +118,9 @@ AUDIT_JS = r"""
 
 
 # Same maths as AUDIT_JS, applied to one element handed in from Python.
-AUDIT_ONE_JS = (
-    AUDIT_JS.replace("() => {", "(el) => {")
-    .replace("  const out = [];\n  document.querySelectorAll('*').forEach(el => {", "  const out = [];\n  [el].forEach(el => {")
-)
+_ALL = "  const out = [];\n  document.querySelectorAll('*').forEach(el => {"
+_ONE = "  const out = [];\n  [el].forEach(el => {"
+AUDIT_ONE_JS = AUDIT_JS.replace("() => {", "(el) => {").replace(_ALL, _ONE)
 
 
 def main() -> int:
@@ -182,10 +182,8 @@ def main() -> int:
                             continue
                         finally:
                             if state == "active":
-                                try:
+                                with contextlib.suppress(Exception):
                                     page.mouse.up()
-                                except Exception:
-                                    pass
 
                 slug = route.strip("/").replace("/", "_") or "landing"
                 page.screenshot(path=str(out_dir / f"{theme}_{slug}.png"), full_page=True)

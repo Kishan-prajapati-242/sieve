@@ -1,6 +1,10 @@
 # Collaborative screening — design proposal
 
-**Status: proposal. Nothing built. Kishan decides.**
+**Status: APPROVED and being built (2026-08-17). Backend landed; UI outstanding.**
+
+Kishan's two amendments and how they were resolved are recorded at the bottom
+under "Amendments" — both changed the design rather than being absorbed into
+it.
 
 ---
 
@@ -222,3 +226,76 @@ If it is meant to be used by two people on a real review, it needs building
 properly and the estimate stands.
 
 Those lead to different amounts of work and only Kishan knows which he wants.
+
+
+---
+
+# Amendments (Kishan, 2026-08-17)
+
+## 1. N screeners, not two — and what that does to the statistic
+
+The original proposal said "kappa" and would have been wrong. **Cohen's kappa
+is defined for exactly two raters.** With N screeners, and with one paper
+judged by three people while another was judged by two, there is no single
+Cohen's kappa to compute, and averaging pairwise ones is not a statistic — it
+is a number that resembles one.
+
+Three candidates, and why the winner won:
+
+| candidate | verdict |
+|---|---|
+| **Fleiss' kappa** | REJECTED. Generalises to N raters but requires the SAME number on every item. Meeting that means discarding every paper without exactly k screeners — and the retained subset is not random, because papers get extra screeners precisely when they are contentious. Throwing away data to fit a formula, and biasing what is left. |
+| **Krippendorff's alpha** | ACCEPTED as the headline. Admits a variable number of raters per item and missing data by construction, which is exactly this situation. |
+| **pairwise Cohen's kappa** | ACCEPTED as the detail. Not a single number, but the one a human can act on: "you and Grace agree at 0.84, you and Sam at 0.41" names where the problem is. |
+
+Both ship, doing different jobs. Alpha answers *is this screening
+reproducible*; the pairwise matrix answers *who needs to talk to whom*.
+
+**Guards, the same refusal the bench harness applies to unstable percentiles:**
+a pair needs ≥30 co-screened papers, alpha needs ≥50 multiply-screened papers,
+and **both are undefined — not zero, not one — when every rater used a single
+category.** That last case is the trap: two people who called everything
+`include` agree perfectly and chance predicts exactly that, so kappa is 0/0.
+Printing 1.0 would claim perfect reliability from raters who never
+discriminated, which is the opposite of what happened. Detected and reported as
+undefined, with the observed agreement alongside so the reader can see why.
+
+Implemented in `api/collections/agreement.py`, with every expected value in the
+tests derived by hand rather than copied from a library — the point of
+implementing these is being able to defend the numbers.
+
+## 2. When notes become visible
+
+Kishan's observation is the one that decides it: **a colleague's reasoning is
+more persuasive than their label.** Seeing "exclude" makes you wonder; seeing
+"exclude — protocol paper, no results" hands you a conclusion that is hard to
+argue with, whether or not it is right. So notes are protected MORE strictly
+than decisions, in three stages:
+
+| stage | you see |
+|---|---|
+| **before you decide** | nothing from anyone — no decisions, no notes, **not even a count**. A count is itself a signal ("three people already looked at this"), and blinding that leaks a hint is not blinding. |
+| **after you decide** | others' DECISIONS, never their notes. Your call is committed and cannot be anchored retroactively, and knowing a disagreement exists is what makes reconciliation possible. Their reasoning stays sealed because there is nothing you should do with it yet. |
+| **at reconciliation** | notes, in full. The goal has inverted — resolving REQUIRES understanding why the disagreement happened, and the notes are the most valuable thing on the screen. |
+
+Enforced by projection, not by filtering: `OTHERS_DECISIONS_SQL` does not
+select the note column at all, so a later refactor cannot forget to strip it.
+
+## 3. One semantic change this forced elsewhere
+
+Dedup merge conflict detection became **per (collection, screener)** rather
+than per collection. One person calling two duplicates differently still blocks
+a merge — collapsing those would silently pick one of their own judgements over
+the other. But two people disagreeing about a paper is ordinary blind screening
+and is the signal this whole feature exists to capture, so it must not block
+anything. `test_two_screeners_disagreeing_does_not_block_a_merge` pins it.
+
+## What landed
+
+Migration 0016, `agreement.py`, `members.py`, `screening.py`, and the API:
+members, invites, accept, remove, per-paper screening view, conflicts,
+conflict detail, resolve, agreement. **265 backend tests green**, 30 of them new.
+
+**Outstanding: the entire UI.** Members panel, invite flow, conflicts queue,
+reconciliation view, agreement display, and the per-paper state that
+distinguishes yours from everyone's.
