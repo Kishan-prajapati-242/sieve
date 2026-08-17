@@ -167,3 +167,70 @@ Use the top three. The first is the strongest demonstration: both arms
 contribute real volume and neither dominates, which is exactly the case
 fusion exists for. The last two in the table are poor demos precisely because
 the arms agree — there is nothing for fusion to resolve.
+
+---
+
+## Migration 0016 (collaboration) — rehearsed before it touches Neon
+
+**Why this one got special treatment.** 0016 drops and recreates the
+`screenings` primary key and deletes rows, against a database with no restore
+point. Backfilling `user_id` from the collection owner is EXACT — the owner is
+demonstrably who made those decisions — but exact and reversible are different
+things, and only one of them helps at 2am.
+
+### State before (measured on Neon, 2026-08-17)
+
+```
+users 4 · collections 6 · screenings 4 · papers 47,617
+collections with NULL user_id ......... 0
+screenings the migration would DELETE .. 0
+last applied migration ................ 0015_email_verification_oauth.sql
+```
+
+The destructive `DELETE FROM screenings WHERE user_id IS NULL` is a **no-op on
+this database** — there are no ownerless collections to orphan rows.
+
+### Rehearsal
+
+Neon runs PostgreSQL 18 and the toolchain here ships `pg_dump` 16, which
+refuses a newer server — so the backup is written directly rather than as a
+binary dump. The tables 0016 mutates hold 14 rows between them, so a
+hand-rolled INSERT script is both sufficient and easier to verify.
+
+0016 was then applied to a throwaway local database seeded with **Neon's
+actual rows**, at migration 0015 exactly like production:
+
+```
+before: users 4 · collections 6 · screenings 4
+after : users 4 · collections 6 · screenings 4     <- nothing lost
+NULL user_id remaining : 0
+members created        : 6                          <- one owner per collection
+attribution correct    : True                       <- every screening -> its owner
+new primary key        : collection_id,paper_id,user_id
+```
+
+### Backup and restore
+
+`docs/plans/pre-0016-backup.sql` holds every row of `users`, `collections` and
+`screenings` as they stood before the migration. To restore:
+
+    psql "$NEON_URL" -f docs/plans/pre-0016-backup.sql
+
+It uses `ON CONFLICT DO NOTHING`, so it is safe to run against a database that
+already has some of those rows — it fills gaps rather than overwriting.
+
+**It restores rows, not schema.** If 0016 itself needs undoing, the primary
+key and the added tables have to come off first:
+
+    psql "$NEON_URL" -c "ALTER TABLE screenings DROP CONSTRAINT screenings_pkey;
+                         ALTER TABLE screenings DROP COLUMN user_id;
+                         ALTER TABLE screenings ADD PRIMARY KEY (collection_id, paper_id);
+                         DROP TABLE IF EXISTS screening_resolutions, collection_invites, collection_members;
+                         ALTER TABLE collections DROP COLUMN screening_mode;
+                         DELETE FROM schema_migrations WHERE filename = '0016_collaboration.sql';"
+
+### To apply
+
+    docker compose run --rm --no-deps -e NEON_URL="<neon url>" \
+      -v ./api:/app/api test python -c \
+      "import os; from api.db.migrate import migrate; migrate(os.environ['NEON_URL'])"
