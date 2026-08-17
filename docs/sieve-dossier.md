@@ -207,7 +207,7 @@ ingest_jobs       the queue: state, attempts, run_after, dedupe_key, claimed_by
 collections       a research question
 screenings        (collection_id, paper_id) → include/exclude/maybe + note
 users, sessions   argon2id, server-side sessions, HttpOnly + SameSite cookie
-collaboration     migration 0016 — schema for blind double screening (proposed)
+collaboration     migration 0016 — blind double screening (uncommitted, see §9)
 ```
 
 **The one FK that is deliberately missing a cascade:** `screenings` cascades from
@@ -538,7 +538,8 @@ unique hits and stop demonstrating fusion. A plain largest-first pass dropped
 `--require` list. **And the deployed site reads its own `/api/stats`**, so a
 128k deployment reports 128,078 rather than inheriting 183,167.
 
-**The collaborative-screening design (2026-08-17, proposed, not built).** Four
+**The collaborative-screening design (2026-08-17; the committed artifact is the
+design, and an unverified implementation is uncommitted in the tree — §9).** Four
 designs explored and argued against. Shared-mutable ("Google Docs") is rejected
 as *disqualifying* rather than merely cheap: seeing a colleague's call anchors
 your own — the exact bias blind screening exists to prevent — last-write-wins
@@ -797,7 +798,7 @@ rejection reasoning, and **what would change my mind**.
 | 3d | Speedups are paired, not divided | Cross-run division let an unexplained regression inflate the headline claim |
 | 4a | Assemble motion from effects, not adopt a library | Adopting one registry produces an app that looks like that registry's demo |
 | 4b | Vector `ef_search` 40 → 160 | +5.4 recall@20 points for 2.6 ms behind a ~7 ms embed floor; also removes the low-`ef` regime where the degenerate-cluster failure lives — **and it costs the flattering 24.1x, which is the point** |
-| — | Collaborative screening | Proposed, not built; shared-mutable rejected as *disqualifying* |
+| — | Collaborative screening | Design proposal; shared-mutable rejected as *disqualifying* rather than merely cheap. Implementation is uncommitted in the tree — see §9 |
 
 ---
 
@@ -940,8 +941,15 @@ project loses an argument it would otherwise win.
   smoke-verified on 12 live articles; the pull is staged as a runbook and has not
   run. The corpus is 2 sources, not 3. *Say "two live sources, third client
   built and staged."*
-- **Collaborative screening** — designed, argued, costed, migration 0016 drafted.
-  Not built.
+- **Collaborative screening** — designed and argued in
+  `docs/plans/collaboration-design.md`, and **a substantial implementation is
+  sitting UNCOMMITTED in the working tree** as of 2026-08-17: migration
+  `0016_collaboration.sql` (111 lines), `api/collections/{members,screening,
+  agreement}.py` (542 lines), 30 new tests in `tests/test_collaboration.py` +
+  `tests/test_agreement.py`, plus modifications to `collections/routes.py`,
+  `dedup/merge.py` and `test_screening_survives_merge.py`. **Its test suite has
+  not been run in this session, so it is "written, not verified."** Do not claim
+  it either way until `make test` says so.
 - **Pagination, `ts_headline` match highlighting, sort control, faceted sidebar,
   bulk add-to-collection, abstract preview** — the accepted functional list, not
   yet built.
