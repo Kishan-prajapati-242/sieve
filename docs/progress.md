@@ -1,5 +1,23 @@
 # Progress
 
+### 2026-08-17 — the whole project written down in one file
+
+`docs/sieve-dossier.md`: origin, both flow diagrams, the phase-by-phase build,
+the five hard cores with the number each earned, the measurement discipline, the
+17-decision index, resume bullets at three lengths, a provenance table for every
+figure, and an explicit NOT-MEASURED list.
+
+Three numbers were corrected while assembling it, all in the conservative
+direction: dedup recall reads **0.966** (the as-shipped rescoring), not 0.973;
+the retrieval speedup is **7.7x [7.5, 8.0]** at the shipped ef=160, not 24.1x;
+and the vector-mode percentiles in `results_mode_latency.json` were measured at
+ef=40, so they describe a configuration DECISION-4b replaced — `bench/latency.py`
+wants a re-run at 160.
+
+**The README still does not exist.** The resume links to this repo. The dossier's
+§2.1 diagram and §4/§8 tables are drafted to drop straight in; the prose is
+Kishan's per the working agreement.
+
 ### 2026-08-15 — Sieve became a product, not a results list
 
 **The brief changed.** Nine turns had gone into one toggle's choreography
