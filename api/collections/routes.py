@@ -8,6 +8,7 @@ Six endpoints, no more than the brief's acceptance needs:
     PUT    /api/collections/{id}/screenings/{pid} decide (idempotent upsert)
     DELETE /api/collections/{id}/screenings/{pid} undecide
     GET    /api/collections/{id}/export.bib       BibTeX
+    GET    /api/collections/{id}/export.csv       CSV, with the decisions
 
 Screening is an UPSERT on the (collection_id, paper_id) primary key, so
 changing a decision is the same request as making it. That matters for a
@@ -28,6 +29,7 @@ from pydantic import BaseModel, Field
 
 from api.auth.routes import CurrentUser
 from api.collections.bibtex import to_bibtex
+from api.collections.spreadsheet import to_csv
 from api.db.pool import get_pool
 
 logger = logging.getLogger("sieve.collections")
@@ -236,4 +238,29 @@ def export_bibtex(
         content=to_bibtex(papers),
         media_type="application/x-bibtex",
         headers={"content-disposition": f'attachment; filename="{name}.bib"'},
+    )
+
+
+@router.get("/{collection_id}/export.csv")
+def export_csv(
+    collection_id: int,
+    user: CurrentUser,
+    decision: DecisionFilter = None,
+) -> Response:
+    """The collection as a spreadsheet.
+
+    Defaults to ALL papers rather than only the included ones, unlike the
+    BibTeX export. The two exports answer different questions: BibTeX is "give
+    me the citations that made the cut", CSV is "show someone the screening",
+    and a screening record with the exclusions removed is not a screening
+    record.
+    """
+    with get_pool().connection() as conn:
+        row = _require_collection(conn, collection_id, user["id"])
+        papers = _fetch_papers(conn, collection_id, decision)
+    name = str(row[1]).replace('"', "")
+    return Response(
+        content=to_csv(papers),
+        media_type="text/csv; charset=utf-8",
+        headers={"content-disposition": f'attachment; filename="{name}.csv"'},
     )

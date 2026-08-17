@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
+  csvExportUrl,
   exportUrl,
   getCollection,
   screen,
@@ -61,13 +62,24 @@ export function CollectionPage() {
           <h1 className="mt-1 text-xl font-bold text-ink-50">{data.name}</h1>
           {data.question && <p className="text-ink-300">{data.question}</p>}
         </div>
-        <a
-          href={exportUrl(cid, filter === "all" ? "include" : filter)}
-          className="rounded-lg hairline border px-3 py-2 text-sm font-medium
-                     text-ink-200 transition-colors hover:border-slate-400 hover:bg-ink-850"
-        >
-          Export .bib
-        </a>
+        <div className="flex flex-wrap gap-2">
+          <a
+            href={exportUrl(cid, filter === "all" ? "include" : filter)}
+            className="hairline lift rounded-lg border px-3 py-2 text-sm font-medium
+                       text-ink-200 hover:hairline-strong hover:bg-ink-850"
+          >
+            Export .bib
+          </a>
+          {/* CSV for anyone without a reference manager — and it carries the
+              decisions and notes, which BibTeX cannot. */}
+          <a
+            href={csvExportUrl(cid)}
+            className="hairline lift rounded-lg border px-3 py-2 text-sm font-medium
+                       text-ink-200 hover:hairline-strong hover:bg-ink-850"
+          >
+            Export .csv
+          </a>
+        </div>
       </div>
 
       <div className="flex gap-2">

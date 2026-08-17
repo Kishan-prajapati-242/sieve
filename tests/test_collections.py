@@ -265,3 +265,59 @@ def test_deleting_a_screened_paper_is_refused(client: TestClient, scratch_db: st
         pytest.raises(psycopg.errors.ForeignKeyViolation),
     ):
         conn.execute("DELETE FROM papers WHERE id = %s", (pid,))
+
+
+def test_csv_export_carries_the_decisions_not_just_the_papers(
+    client: TestClient, scratch_db: str
+) -> None:
+    """The point of sending a colleague a spreadsheet is the screening."""
+    ids = seed_papers(scratch_db, 2)
+    cid = client.post("/api/collections", json={"name": "Review"}).json()["id"]
+    client.put(
+        f"/api/collections/{cid}/screenings/{ids[0]}",
+        json={"decision": "include", "note": "core method paper"},
+    )
+    client.put(f"/api/collections/{cid}/screenings/{ids[1]}", json={"decision": "exclude"})
+
+    resp = client.get(f"/api/collections/{cid}/export.csv")
+    assert resp.status_code == 200
+    assert "text/csv" in resp.headers["content-type"]
+    body = resp.content.decode("utf-8-sig")
+    # Excel on Windows reads UTF-8 as Latin-1 without this.
+    assert resp.content.startswith(b"\xef\xbb\xbf")
+    assert body.splitlines()[0].startswith("decision,note,decided_at,title")
+    assert "core method paper" in body
+    # Exclusions stay: a screening record with the rejections removed is not
+    # a screening record.
+    assert "exclude" in body and "include" in body
+
+
+def test_csv_export_defuses_spreadsheet_formulas(client: TestClient, scratch_db: str) -> None:
+    """A title beginning '=' is executed by Excel and Sheets. Real titles start
+    with '-' often enough that this is not hypothetical, and a crafted abstract
+    could do worse."""
+    with psycopg.connect(scratch_db, autocommit=True) as conn:
+        row = conn.execute(
+            "INSERT INTO papers (title, title_norm, year)"
+            " VALUES (%s, lower(%s), 2020) RETURNING id",
+            ("=HYPERLINK(\"http://evil\",\"click\")", "x"),
+        ).fetchone()
+        assert row is not None
+        pid = int(row[0])
+    cid = client.post("/api/collections", json={"name": "Injection"}).json()["id"]
+    client.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "maybe"})
+
+    body = client.get(f"/api/collections/{cid}/export.csv").content.decode("utf-8-sig")
+    assert "'=HYPERLINK" in body  # neutralised
+    assert ",=HYPERLINK" not in body  # never bare at the start of a cell
+
+
+def test_csv_export_is_owner_scoped_like_every_other_route(
+    client: TestClient, scratch_db: str
+) -> None:
+    cid = client.post("/api/collections", json={"name": "Mine"}).json()["id"]
+    client.post("/api/auth/logout")
+    client.post(
+        "/api/auth/signup", json={"email": "other@example.com", "password": "another-long-one"}
+    )
+    assert client.get(f"/api/collections/{cid}/export.csv").status_code in (401, 404)

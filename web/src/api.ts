@@ -188,7 +188,18 @@ export async function unscreen(collectionId: number, paperId: number): Promise<v
 /** A plain href, not a fetch: the browser should download the file, and
  *  content-disposition already names it. */
 export function exportUrl(collectionId: number, decision: Decision = "include"): string {
-  return `/api/collections/${collectionId}/export.bib?decision=${decision}`;
+  return `${API_BASE}/api/collections/${collectionId}/export.bib?decision=${decision}`;
+}
+
+/** CSV of the whole screening, decisions included.
+ *
+ *  No `decision` filter by default, unlike BibTeX: the two exports answer
+ *  different questions. BibTeX is "the citations that made the cut"; CSV is
+ *  "here is the screening", and one with the exclusions stripped out is not a
+ *  screening record.
+ */
+export function csvExportUrl(collectionId: number): string {
+  return `${API_BASE}/api/collections/${collectionId}/export.csv`;
 }
 
 
