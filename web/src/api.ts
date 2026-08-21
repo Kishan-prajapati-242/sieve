@@ -311,3 +311,106 @@ export async function removeMember(collectionId: number, memberId: number): Prom
 export function inviteLink(token: string): string {
   return `${window.location.origin}/invite/${token}`;
 }
+
+export interface OtherCall {
+  user_id: number;
+  email: string;
+  decision: Decision;
+  /** Present ONLY at reconciliation. The server omits the column entirely
+   *  otherwise, so this being undefined is a fact about the response, not a
+   *  client-side redaction. */
+  note?: string;
+  decided_at: string;
+}
+
+export interface PaperScreening {
+  mine: { decision: Decision; note: string | null; decided_at: string } | null;
+  others: OtherCall[];
+  notes_visible: boolean;
+  /** True when the caller has not decided yet in a blind collection: no
+   *  decisions, no notes, and no count — a count is itself a signal. */
+  blinded?: boolean;
+}
+
+export async function getPaperScreening(
+  collectionId: number,
+  paperId: number,
+): Promise<PaperScreening> {
+  return json(
+    await fetch(
+      `${API_BASE}/api/collections/${collectionId}/papers/${paperId}/screening`,
+      { credentials: "include" },
+    ),
+  );
+}
+
+export interface Conflict {
+  paper_id: number;
+  title: string;
+  screener_count: number;
+  distinct_decisions: number;
+  decisions: Decision[];
+}
+
+export async function getConflicts(
+  collectionId: number,
+): Promise<{ conflicts: Conflict[]; scoped: boolean }> {
+  return json(
+    await fetch(`${API_BASE}/api/collections/${collectionId}/conflicts`, {
+      credentials: "include",
+    }),
+  );
+}
+
+export async function getConflictDetail(
+  collectionId: number,
+  paperId: number,
+): Promise<PaperScreening> {
+  return json(
+    await fetch(`${API_BASE}/api/collections/${collectionId}/conflicts/${paperId}`, {
+      credentials: "include",
+    }),
+  );
+}
+
+export async function resolveConflict(
+  collectionId: number,
+  paperId: number,
+  decision: Decision,
+  note?: string,
+): Promise<{ decision: Decision; self_resolved: boolean }> {
+  return json(
+    await fetch(`${API_BASE}/api/collections/${collectionId}/conflicts/${paperId}`, {
+      credentials: "include",
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ decision, note: note || null }),
+    }),
+  );
+}
+
+export interface PairwiseKappa {
+  user_a: number;
+  user_b: number;
+  kappa: number | null;
+  n: number;
+  observed_agreement?: number;
+  undefined: string | null;
+}
+
+export interface AgreementReport {
+  screened_papers: number;
+  multiply_screened: number;
+  raters: number;
+  alpha: { alpha: number | null; n_items: number; undefined: string | null };
+  pairwise_cohen: PairwiseKappa[];
+  method: Record<string, unknown>;
+}
+
+export async function getAgreement(collectionId: number): Promise<AgreementReport> {
+  return json(
+    await fetch(`${API_BASE}/api/collections/${collectionId}/agreement`, {
+      credentials: "include",
+    }),
+  );
+}

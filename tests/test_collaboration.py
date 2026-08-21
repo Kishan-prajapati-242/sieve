@@ -564,3 +564,51 @@ class TestConflictListIsAlsoBlinded:
         # Adjudicating a queue you cannot see is not a job.
         assert seen["scoped"] is False
         assert sorted(c["paper_id"] for c in seen["conflicts"]) == sorted(pids)
+
+
+class TestDetailViewIsAListOfPapers:
+    """PAPERS_SQL returns one row per (paper, screener), which is right for an
+    export and wrong for this view. With see_all an owner saw the same paper
+    once per colleague, and the UI rendered duplicate React keys — the visible
+    symptom of a shape mismatch rather than a permission bug."""
+
+    def test_owner_sees_each_paper_once(self, dsn: str) -> None:
+        pids = seed(dsn, 3)
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post(
+            "/api/collections", json={"name": "R", "screening_mode": "blind"}
+        ).json()["id"]
+        tok = ada.post(f"/api/collections/{cid}/invites", json={"role": "screener"}).json()[
+            "token"
+        ]
+        grace = client_for(dsn, "grace@example.com")
+        grace.post(f"/api/collections/invites/{tok}/accept")
+        for pid in pids:
+            ada.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "include"})
+            grace.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "exclude"})
+
+        papers = ada.get(f"/api/collections/{cid}").json()["papers"]
+        ids = [p["id"] for p in papers]
+        assert len(ids) == len(set(ids)) == 3
+        # And they are HER calls, not a mixture.
+        assert {p["decision"] for p in papers} == {"include"}
+
+    def test_the_export_still_carries_every_screener(self, dsn: str) -> None:
+        """The two shapes are deliberate: a list of papers here, a list of
+        decisions there."""
+        pid = seed(dsn, 1)[0]
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post(
+            "/api/collections", json={"name": "R", "screening_mode": "blind"}
+        ).json()["id"]
+        tok = ada.post(f"/api/collections/{cid}/invites", json={"role": "screener"}).json()[
+            "token"
+        ]
+        grace = client_for(dsn, "grace@example.com")
+        grace.post(f"/api/collections/invites/{tok}/accept")
+        ada.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "include"})
+        grace.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "exclude"})
+
+        body = ada.get(f"/api/collections/{cid}/export.csv").content.decode("utf-8-sig")
+        rows = [r for r in body.splitlines()[1:] if r.strip()]
+        assert len(rows) == 2  # one per screener

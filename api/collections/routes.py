@@ -273,13 +273,18 @@ def get_collection(
 ) -> dict[str, Any]:
     with get_pool().connection() as conn:
         row = _require_collection(conn, collection_id, user["id"])
-        role = role_for(conn, collection_id, user["id"])
+        # ALWAYS the caller's own rows here, even for an owner.
+        #
+        # PAPERS_SQL returns one row per (paper, screener), which is right for
+        # an export — an owner needs every call attributed. It is wrong for
+        # this view, which is a list of PAPERS: with see_all the same paper
+        # appeared once per screener, and React rendered duplicate keys.
+        #
+        # Others' calls arrive per-paper through /papers/{id}/screening, which
+        # is also where the blinding rule lives, so the list stays a list and
+        # the disclosure stays in one place.
         papers = _fetch_papers(
-            conn,
-            collection_id,
-            decision,
-            user_id=user["id"],
-            see_all=role in CAN_RESOLVE,
+            conn, collection_id, decision, user_id=user["id"], see_all=False
         )
     return {
         "id": row[0],

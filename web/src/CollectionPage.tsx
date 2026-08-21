@@ -8,11 +8,15 @@ import {
   csvExportUrl,
   exportUrl,
   getCollection,
+  listCollections,
   screen,
   unscreen,
   type Decision,
 } from "./api";
 import { DecisionBar } from "./DecisionBar";
+import { AgreementPanel } from "./AgreementPanel";
+import { ConflictsPanel } from "./ConflictsPanel";
+import { OtherCalls } from "./OtherCalls";
 import { MembersPanel } from "./MembersPanel";
 import { DUR, EASE, rowVariants } from "./motion";
 
@@ -30,6 +34,16 @@ export function CollectionPage() {
     queryFn: () => getCollection(cid, filter === "all" ? undefined : filter),
     enabled: Number.isFinite(cid),
   });
+
+  // Collaboration UI only appears when the collection is actually
+  // collaborative. `screening_mode` comes from the collections list, which is
+  // already loaded for the nav, so this costs no extra request.
+  const { data: summaries } = useQuery({
+    queryKey: ["collections"],
+    queryFn: listCollections,
+  });
+  const mine = summaries?.find((c) => c.id === cid);
+  const isCollaborative = mine ? mine.screening_mode === "blind" : false;
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["collection"] });
@@ -105,8 +119,17 @@ export function CollectionPage() {
             transition={{ duration: 0.3, ease: EASE }}
             className="overflow-hidden"
           >
-            <div className="pb-4">
+            <div className="grid gap-4 pb-4 lg:grid-cols-2">
               <MembersPanel collectionId={cid} />
+              {/* Both only for collaborative collections: a solo review has
+                  nobody to disagree with and no agreement to measure, so these
+                  would be two panels explaining they are empty. */}
+              {isCollaborative && <AgreementPanel collectionId={cid} />}
+              {isCollaborative && (
+                <div className="lg:col-span-2">
+                  <ConflictsPanel collectionId={cid} />
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -187,6 +210,10 @@ export function CollectionPage() {
                   ✕
                 </button>
               </div>
+              {/* Only in a collaborative collection — in solo mode there is
+                  nobody to compare against and the request would be a round
+                  trip per row for a guaranteed empty answer. */}
+              {isCollaborative && <OtherCalls collectionId={cid} paperId={p.id} />}
             </motion.li>
           ))}
         </AnimatePresence>
