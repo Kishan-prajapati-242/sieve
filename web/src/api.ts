@@ -230,3 +230,84 @@ export async function fetchStats(): Promise<CorpusStats> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
+
+// ============================================================ COLLABORATION ==
+//
+// Every function here maps to one audited endpoint. What comes back is already
+// scoped by role on the server (docs/plans/screening-read-audit.md) — the
+// client never filters for privacy, because a filter in the browser is a
+// suggestion, not a boundary.
+
+export type Role = "owner" | "resolver" | "screener" | "viewer";
+
+export interface Member {
+  user_id: number;
+  email: string;
+  role: Role;
+  joined_at: string;
+}
+
+export interface MemberProgress {
+  user_id: number;
+  email: string;
+  role: Role;
+  /** Volume only. Never a decision breakdown — see the audit. */
+  screened: number;
+}
+
+export interface MembersResponse {
+  members: Member[];
+  your_role: Role;
+  progress: MemberProgress[];
+}
+
+export async function getMembers(collectionId: number): Promise<MembersResponse> {
+  return json(
+    await fetch(`${API_BASE}/api/collections/${collectionId}/members`, {
+      credentials: "include",
+    }),
+  );
+}
+
+export async function createInvite(
+  collectionId: number,
+  role: Exclude<Role, "owner">,
+): Promise<{ token: string; role: Role }> {
+  return json(
+    await fetch(`${API_BASE}/api/collections/${collectionId}/invites`, {
+      credentials: "include",
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ role }),
+    }),
+  );
+}
+
+export async function acceptInvite(token: string): Promise<{ collection_id: number }> {
+  return json(
+    await fetch(`${API_BASE}/api/collections/invites/${token}/accept`, {
+      credentials: "include",
+      method: "POST",
+    }),
+  );
+}
+
+export async function removeMember(collectionId: number, memberId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/collections/${collectionId}/members/${memberId}`, {
+    credentials: "include",
+    method: "DELETE",
+  });
+  if (!res.ok && res.status !== 204) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail ?? `${res.status}`);
+  }
+}
+
+/** An invite link the owner can paste anywhere.
+ *
+ *  Built against the FRONTEND origin, not the API's: the recipient needs a page
+ *  that can sign them in first, and /api/... would hand them raw JSON.
+ */
+export function inviteLink(token: string): string {
+  return `${window.location.origin}/invite/${token}`;
+}

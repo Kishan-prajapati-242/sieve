@@ -16,6 +16,7 @@ import { VerifyBanner } from "./VerifyBanner";
 import { useAuth } from "./auth";
 import { CollectionPage } from "./CollectionPage";
 import { CollectionsPage } from "./CollectionsPage";
+import { InvitePage } from "./InvitePage";
 import { Footer, LandingPage } from "./LandingPage";
 import { routeVariants } from "./motion";
 import { SearchPage } from "./SearchPage";
@@ -143,6 +144,14 @@ function Shell() {
                     <Container className="py-10">
                       <CollectionsPage />
                     </Container>
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/invite/:token"
+                element={
+                  <RequireAuth>
+                    <InvitePage />
                   </RequireAuth>
                 }
               />

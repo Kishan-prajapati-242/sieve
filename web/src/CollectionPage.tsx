@@ -13,6 +13,7 @@ import {
   type Decision,
 } from "./api";
 import { DecisionBar } from "./DecisionBar";
+import { MembersPanel } from "./MembersPanel";
 import { DUR, EASE, rowVariants } from "./motion";
 
 const FILTERS: (Decision | "all")[] = ["all", "include", "maybe", "exclude"];
@@ -21,6 +22,7 @@ export function CollectionPage() {
   const { id } = useParams();
   const cid = Number(id);
   const [filter, setFilter] = useState<Decision | "all">("all");
+  const [showTeam, setShowTeam] = useState(false);
   const qc = useQueryClient();
 
   const { data, error, isLoading } = useQuery({
@@ -79,8 +81,36 @@ export function CollectionPage() {
           >
             Export .csv
           </a>
+          {/* A toggle rather than always-open: a solo reviewer has nobody to
+              manage, and pushing the papers down the page to say so is a
+              worse default than one click for the people who need it. */}
+          <button
+            type="button"
+            onClick={() => setShowTeam((v) => !v)}
+            aria-expanded={showTeam}
+            className="hairline lift rounded-lg border px-3 py-2 text-sm font-medium
+                       text-ink-200 hover:hairline-strong hover:bg-ink-850"
+          >
+            {showTeam ? "Hide team" : "Team"}
+          </button>
         </div>
       </div>
+
+      <AnimatePresence initial={false}>
+        {showTeam && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.3, ease: EASE }}
+            className="overflow-hidden"
+          >
+            <div className="pb-4">
+              <MembersPanel collectionId={cid} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="flex gap-2">
         {FILTERS.map((f) => (
