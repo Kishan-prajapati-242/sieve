@@ -127,19 +127,36 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
           )}
 
           {mode === "signup" && config && !config.password_signup ? (
-            // No form, no disabled inputs to argue with. The server refuses
-            // this path, so the page says why once and points at the one that
-            // works — a greyed-out form invites people to try it anyway.
-            <div className="hairline mt-6 rounded-xl border bg-keyword-950/40 p-5">
-              <p className="text-sm leading-relaxed text-ink-200">
-                Email sign-up is paused. We can&apos;t deliver verification codes until our
-                sending domain is verified, and an account you can&apos;t verify is an account
-                you can&apos;t use.
-              </p>
-              <p className="mt-3 text-xs leading-relaxed text-ink-400">
-                Google sign-in works today and verifies your address at Google, so nothing is
-                lost. Email sign-up returns as soon as the domain is live.
-              </p>
+            // Yellow, striped, and a bit pleased with itself. The flag already
+            // returns 403 so nobody could get through — but a page that just
+            // omits the form looks broken rather than deliberate, and the real
+            // reason is worth saying out loud: without working mail, "verify
+            // your email" is an honour system, and an honour system is how you
+            // end up with accounts claiming addresses they do not own.
+            <div className="mt-7 overflow-hidden rounded-xl border border-keyword-500/40">
+              {/* The label sits on a solid chip, not directly on the stripes:
+                  dark text over an alternating dark/yellow pattern is
+                  unreadable at every point where a dark band passes under it. */}
+              <div className="roadworks flex items-center gap-2 px-3 py-2">
+                <span className="rounded bg-[#140d02] px-2 py-1 font-mono text-[10px]
+                                 font-bold uppercase tracking-[0.18em] text-keyword-300">
+                  🚧 Under construction
+                </span>
+              </div>
+              <div className="bg-keyword-950/60 p-5">
+                <p className="text-sm leading-relaxed text-ink-100">
+                  Email sign-up is off while we wait on a mail domain. We can send
+                  verification codes to exactly one inbox right now, and it is not
+                  yours — statistically speaking.
+                </p>
+                <p className="mt-3 text-sm leading-relaxed text-ink-300">
+                  Which leaves the honour system, and the honour system means anyone
+                  can claim any address. So: no.
+                </p>
+                <p className="mt-4 font-mono text-[11px] uppercase tracking-wider text-keyword-ink">
+                  Use Google above — it verifies your address for us, for free.
+                </p>
+              </div>
             </div>
           ) : (
           <form onSubmit={onSubmit} className={`flex flex-col gap-4 ${config?.google ? "" : "mt-8"}`}>

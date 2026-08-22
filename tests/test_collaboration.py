@@ -612,3 +612,150 @@ class TestDetailViewIsAListOfPapers:
         body = ada.get(f"/api/collections/{cid}/export.csv").content.decode("utf-8-sig")
         rows = [r for r in body.splitlines()[1:] if r.strip()]
         assert len(rows) == 2  # one per screener
+
+
+class TestCollectionPhase:
+    """Phase is a property of the collection, and it is a BLINDING property.
+
+    Every visibility question is now keyed on (role, phase), not role alone —
+    which is the part that would have silently broken if `blind` had stayed
+    `mode == "blind"` at each call site.
+    """
+
+    def _team(self, dsn: str):  # type: ignore[no-untyped-def]
+        pids = seed(dsn, 3)
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post(
+            "/api/collections", json={"name": "R", "screening_mode": "blind"}
+        ).json()["id"]
+        tok = ada.post(f"/api/collections/{cid}/invites", json={"role": "screener"}).json()[
+            "token"
+        ]
+        grace = client_for(dsn, "grace@example.com")
+        grace.post(f"/api/collections/invites/{tok}/accept")
+        return ada, grace, cid, pids
+
+    def test_review_phase_lifts_the_blind_for_undecided_papers(self, dsn: str) -> None:
+        ada, grace, cid, pids = self._team(dsn)
+        ada.put(f"/api/collections/{cid}/screenings/{pids[0]}", json={"decision": "include"})
+
+        # Grace has not decided: blinded.
+        before = grace.get(f"/api/collections/{cid}/papers/{pids[0]}/screening").json()
+        assert before["blinded"] is True and before["others"] == []
+
+        flip = ada.put(f"/api/collections/{cid}/phase", json={"phase": "review"})
+        assert flip.status_code == 200
+
+        # Same request, same undecided state, blind lifted collection-wide.
+        after = grace.get(f"/api/collections/{cid}/papers/{pids[0]}/screening").json()
+        assert after["blinded"] is False
+        assert [o["decision"] for o in after["others"]] == ["include"]
+        # Notes STILL sealed outside reconciliation — the phase lifts the
+        # decision blind, not the reasoning blind.
+        assert after["notes_visible"] is False
+
+    def test_review_phase_unscopes_the_conflict_queue(self, dsn: str) -> None:
+        ada, grace, cid, pids = self._team(dsn)
+        for pid in pids[:2]:
+            ada.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "include"})
+            grace.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "exclude"})
+        # A third screener who decided nothing sees nothing while blind.
+        tok = ada.post(f"/api/collections/{cid}/invites", json={"role": "screener"}).json()[
+            "token"
+        ]
+        sam = client_for(dsn, "sam@example.com")
+        sam.post(f"/api/collections/invites/{tok}/accept")
+        assert sam.get(f"/api/collections/{cid}/conflicts").json()["conflicts"] == []
+
+        ada.put(f"/api/collections/{cid}/phase", json={"phase": "review"})
+        seen = sam.get(f"/api/collections/{cid}/conflicts").json()
+        assert seen["scoped"] is False
+        assert len(seen["conflicts"]) == 2
+
+    def test_only_owners_change_phase(self, dsn: str) -> None:
+        _ada, grace, cid, _pids = self._team(dsn)
+        resp = grace.put(f"/api/collections/{cid}/phase", json={"phase": "review"})
+        assert resp.status_code == 404
+
+    def test_the_owner_is_shown_what_they_are_about_to_reveal(self, dsn: str) -> None:
+        ada, grace, cid, pids = self._team(dsn)
+        for pid in pids:
+            ada.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "include"})
+            grace.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "exclude"})
+        prev = ada.get(f"/api/collections/{cid}/phase").json()["reveal_preview"]
+        # A confirmation with no numbers in it is not informed consent.
+        assert prev == {"papers": 3, "decisions": 6, "screeners": 2, "conflicts": 3}
+
+    def test_who_lifted_the_blind_and_when_is_recorded(self, dsn: str) -> None:
+        ada, grace, cid, pids = self._team(dsn)
+        ada.put(f"/api/collections/{cid}/screenings/{pids[0]}", json={"decision": "include"})
+        grace.put(f"/api/collections/{cid}/screenings/{pids[0]}", json={"decision": "exclude"})
+        ada.put(f"/api/collections/{cid}/phase", json={"phase": "review"})
+        ada.put(f"/api/collections/{cid}/phase", json={"phase": "closed"})
+
+        hist = ada.get(f"/api/collections/{cid}/phase").json()["history"]
+        # A sequence, not a single fact — reopening is allowed, so phase
+        # changes accumulate and "when did this stop being blind" needs the log.
+        assert [(h["from_phase"], h["to_phase"]) for h in hist] == [
+            ("review", "closed"),
+            ("screening", "review"),
+        ]
+        assert all(h["changed_by"] == "ada@example.com" for h in hist)
+        assert hist[1]["decisions_revealed"] == 2
+
+    def test_closed_blocks_writes(self, dsn: str) -> None:
+        ada, _grace, cid, pids = self._team(dsn)
+        ada.put(f"/api/collections/{cid}/screenings/{pids[0]}", json={"decision": "include"})
+        ada.put(f"/api/collections/{cid}/phase", json={"phase": "closed"})
+
+        resp = ada.put(
+            f"/api/collections/{cid}/screenings/{pids[1]}", json={"decision": "include"}
+        )
+        assert resp.status_code == 409
+        assert "closed" in resp.json()["detail"].lower()
+        # Reopening restores writes — closed is a state, not a tombstone.
+        ada.put(f"/api/collections/{cid}/phase", json={"phase": "review"})
+        assert (
+            ada.put(
+                f"/api/collections/{cid}/screenings/{pids[1]}", json={"decision": "include"}
+            ).status_code
+            == 200
+        )
+
+    def test_reopening_is_allowed_and_flags_the_stale_resolution(self, dsn: str) -> None:
+        """The decision that could have gone the other way.
+
+        Blocking reopening would mean one misclick permanently costs a review
+        its blind screening, recoverable only by recreating the collection and
+        losing every decision. Allowed instead, with staleness DERIVED from
+        timestamps — a call newer than the ruling means the ruling was made on
+        different information.
+        """
+        ada, grace, cid, pids = self._team(dsn)
+        pid = pids[0]
+        ada.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "include"})
+        grace.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "exclude"})
+        ada.put(f"/api/collections/{cid}/conflicts/{pid}", json={"decision": "include"})
+
+        fresh = ada.get(f"/api/collections/{cid}/resolutions").json()["resolutions"]
+        assert fresh[0]["stale"] is False
+
+        # Reopen, and Grace changes the call the ruling was made over.
+        ada.put(f"/api/collections/{cid}/phase", json={"phase": "screening"})
+        grace.put(f"/api/collections/{cid}/screenings/{pid}", json={"decision": "maybe"})
+
+        after = ada.get(f"/api/collections/{cid}/resolutions").json()["resolutions"]
+        assert after[0]["stale"] is True
+        # The ruling itself is untouched — it remains a true record that a
+        # ruling was made, only its applicability has lapsed.
+        assert after[0]["decision"] == "include"
+
+    def test_solo_collections_are_unaffected_by_phase(self, dsn: str) -> None:
+        pid = seed(dsn, 1)[0]
+        ada = client_for(dsn, "ada@example.com")
+        cid = ada.post(
+            "/api/collections", json={"name": "Mine", "screening_mode": "solo"}
+        ).json()["id"]
+        assert ada.get(f"/api/collections/{cid}/phase").json()["phase"] == "screening"
+        view = ada.get(f"/api/collections/{cid}/papers/{pid}/screening").json()
+        assert view["blinded"] is False  # never blind: nobody to hide from

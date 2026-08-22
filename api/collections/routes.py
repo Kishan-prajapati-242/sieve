@@ -28,6 +28,7 @@ from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
 from api.auth.routes import CurrentUser
+from api.collections import phase as phase_rules
 from api.collections import screening as screening_view
 from api.collections.agreement import agreement_report
 from api.collections.bibtex import to_bibtex
@@ -306,6 +307,14 @@ def screen(
     one row, and a different decision replaces the old one in place."""
     with get_pool().connection() as conn:
         _require_role(conn, collection_id, user["id"], CAN_SCREEN)
+        _mode, phase = phase_rules.phase_of(conn, collection_id)
+        if phase not in phase_rules.WRITABLE:
+            # Without this, "finished" is a social convention and a stray click
+            # months later edits a published record with no trace.
+            raise HTTPException(
+                status_code=409,
+                detail="This review is closed. Reopen it to change decisions.",
+            )
         if conn.execute("SELECT 1 FROM papers WHERE id = %s", (paper_id,)).fetchone() is None:
             raise HTTPException(status_code=404, detail=f"no paper {paper_id}")
         row = conn.execute(
@@ -480,12 +489,17 @@ def get_paper_screening(collection_id: int, paper_id: int, user: CurrentUser) ->
     """What this caller may see about one paper — the blinding rule applied."""
     with get_pool().connection() as conn:
         _require_role(conn, collection_id, user["id"], CAN_VIEW)
-        row = conn.execute(
-            "SELECT screening_mode FROM collections WHERE id = %s", (collection_id,)
-        ).fetchone()
-        blind = bool(row and row[0] == "blind")
+        mode, phase = phase_rules.phase_of(conn, collection_id)
+        # Blinding is the CONJUNCTION of a blind collection and the screening
+        # phase. Computing it per-route as `mode == "blind"` silently ignored
+        # phase, and a phase change is precisely a blinding change — so every
+        # such site would have been wrong the moment phases shipped.
         return screening_view.paper_view(
-            conn, collection_id, paper_id, user["id"], blind=blind
+            conn,
+            collection_id,
+            paper_id,
+            user["id"],
+            blind=phase_rules.is_blind(mode, phase),
         )
 
 
@@ -498,11 +512,14 @@ def get_conflicts(collection_id: int, user: CurrentUser) -> dict[str, Any]:
     """
     with get_pool().connection() as conn:
         role = _require_role(conn, collection_id, user["id"], CAN_VIEW)
+        _mode, phase = phase_rules.phase_of(conn, collection_id)
+        see_all = phase_rules.sees_all_conflicts(role, phase, CAN_RESOLVE)
         return {
             "conflicts": screening_view.conflicts(
-                conn, collection_id, user_id=user["id"], see_all=role in CAN_RESOLVE
+                conn, collection_id, user_id=user["id"], see_all=see_all
             ),
-            "scoped": role not in CAN_RESOLVE,
+            "scoped": not see_all,
+            "phase": phase,
         }
 
 
@@ -534,6 +551,12 @@ def put_resolution(
     """
     with get_pool().connection() as conn:
         _require_role(conn, collection_id, user["id"], CAN_RESOLVE)
+        _mode, phase = phase_rules.phase_of(conn, collection_id)
+        if phase not in phase_rules.WRITABLE:
+            raise HTTPException(
+                status_code=409,
+                detail="This review is closed. Reopen it to change a resolution.",
+            )
         row = conn.execute(
             """
             INSERT INTO screening_resolutions
@@ -594,3 +617,59 @@ def get_agreement(collection_id: int, user: CurrentUser) -> dict[str, Any]:
         _require_role(conn, collection_id, user["id"], CAN_VIEW)
         rows = screening_view.agreement_rows(conn, collection_id)
     return agreement_report(rows)
+
+
+class PhaseBody(BaseModel):
+    phase: Literal["screening", "review", "closed"]
+
+
+@router.get("/{collection_id}/phase")
+def get_phase(collection_id: int, user: CurrentUser) -> dict[str, Any]:
+    """Current phase, what advancing would reveal, and who changed it before.
+
+    The preview is served to every member, not just owners: a screener is
+    entitled to know their calls are about to become visible, and that the
+    blind was lifted at a particular moment by a particular person.
+    """
+    with get_pool().connection() as conn:
+        role = _require_role(conn, collection_id, user["id"], CAN_VIEW)
+        mode, phase = phase_rules.phase_of(conn, collection_id)
+        return {
+            "phase": phase,
+            "screening_mode": mode,
+            "can_change": role in CAN_INVITE,
+            "reveal_preview": phase_rules.reveal_preview(conn, collection_id),
+            "history": phase_rules.history(conn, collection_id),
+        }
+
+
+@router.put("/{collection_id}/phase")
+def put_phase(collection_id: int, body: PhaseBody, user: CurrentUser) -> dict[str, Any]:
+    """Change phase. Owners only.
+
+    Reopening (review -> screening) is PERMITTED. Blocking it would mean an
+    owner who advanced by one misclick has permanently lost blind screening for
+    that review, recoverable only by recreating the collection and losing every
+    decision — punishing a misclick with data loss is worse than the
+    inconsistency it prevents.
+    """
+    with get_pool().connection() as conn:
+        _require_role(conn, collection_id, user["id"], CAN_INVITE)
+        try:
+            result = phase_rules.set_phase(conn, collection_id, body.phase, user["id"])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result
+
+
+@router.get("/{collection_id}/resolutions")
+def get_resolutions(collection_id: int, user: CurrentUser) -> dict[str, Any]:
+    """Recorded rulings, each flagged if a call changed underneath it.
+
+    Staleness is derived from timestamps rather than stored — reopening a
+    collection is allowed, and that is exactly when a resolution can end up
+    ruling on information that has since moved.
+    """
+    with get_pool().connection() as conn:
+        _require_role(conn, collection_id, user["id"], CAN_VIEW)
+        return {"resolutions": screening_view.resolutions(conn, collection_id)}

@@ -414,3 +414,39 @@ export async function getAgreement(collectionId: number): Promise<AgreementRepor
     }),
   );
 }
+
+export type Phase = "screening" | "review" | "closed";
+
+export interface PhaseInfo {
+  phase: Phase;
+  screening_mode: "solo" | "blind";
+  can_change: boolean;
+  reveal_preview: { papers: number; decisions: number; screeners: number; conflicts: number };
+  history: {
+    from_phase: Phase;
+    to_phase: Phase;
+    changed_by: string;
+    changed_at: string;
+    papers_revealed: number;
+    decisions_revealed: number;
+  }[];
+}
+
+export async function getPhase(collectionId: number): Promise<PhaseInfo> {
+  return json(
+    await fetch(`${API_BASE}/api/collections/${collectionId}/phase`, {
+      credentials: "include",
+    }),
+  );
+}
+
+export async function setPhase(collectionId: number, phase: Phase): Promise<unknown> {
+  return json(
+    await fetch(`${API_BASE}/api/collections/${collectionId}/phase`, {
+      credentials: "include",
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ phase }),
+    }),
+  );
+}

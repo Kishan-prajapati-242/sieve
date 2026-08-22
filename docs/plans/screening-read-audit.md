@@ -9,31 +9,59 @@ queue, reconciliation view, agreement display, and the search page's "Add
 to…"), so every read that touches `screenings` is enumerated here with what it
 returns per role.
 
-**The rule being enforced**, from the design record:
+**Two inputs, not one.** Every answer below depends on **role AND phase**.
+Phase was added in 0017 and it is a blinding property, so a path checked
+against role alone is a path that will be wrong the first time an owner
+advances the collection.
+
+| phase | what it does |
+|---|---|
+| `screening` | blinding on — the rule below applies |
+| `review` | blinding lifted collection-wide; decisions visible, conflict queue unscoped |
+| `closed` | as review, plus no writes to screenings or resolutions |
+
+**The screening-phase rule:**
 
 | stage | you may see |
 |---|---|
 | before you decide | nothing from anyone — no decisions, no notes, **no counts** |
 | after you decide | others' decisions, never their notes |
-| at reconciliation | notes in full (owners only) |
+| at reconciliation | notes in full (resolvers only) |
+
+**Notes never open by phase.** `review` lifts the DECISION blind, not the
+reasoning blind — reasoning still becomes visible only at reconciliation, and
+only to someone who can resolve. Phase is about coordination; the note rule is
+about anchoring, and they are different problems.
 
 ---
 
 ## Every path that reads `screenings`
 
-| # | path | scoped by | screener sees | owner sees | viewer sees |
+| # | path | keyed on | screener, `screening` | screener, `review`/`closed` | resolver / owner |
 |---|---|---|---|---|---|
-| 1 | `GET /collections` — the cards | `%(user_id)s` filter in `LIST_SQL` | own counts + team volume | same | same |
-| 2 | `GET /collections/{id}` — detail | `see_all` in `PAPERS_SQL` | own rows only | all rows | own (none) + resolutions |
-| 3 | `GET .../export.csv` | `see_all` in `PAPERS_SQL` | own rows + notes | everything | resolutions |
-| 4 | `GET .../export.bib` | `see_all` in `PAPERS_SQL` | own includes | all includes | resolutions |
-| 5 | `GET .../papers/{pid}/screening` | `paper_view(blind=…)` | own; others' decisions **after deciding** | same | same |
-| 6 | `GET .../conflicts` | `see_all` in `CONFLICTS_SQL` | contested papers **they have decided** | whole queue | own-decided (none) |
-| 7 | `GET .../conflicts/{pid}` | `CAN_RESOLVE` | **404** | everything incl. notes | **404** |
-| 8 | `GET .../agreement` | aggregate only | statistics, no individual calls | same | same |
+| 1 | `GET /collections` — cards | `user_id` in `LIST_SQL` | own counts + team volume | unchanged | unchanged |
+| 2 | `GET /collections/{id}` — detail | own rows always | own rows | own rows | own rows |
+| 3 | `GET .../export.csv` | role → `see_all` | own rows + notes | own rows + notes | everything |
+| 4 | `GET .../export.bib` | role → `see_all` | own includes | own includes | all includes |
+| 5 | `GET .../papers/{pid}/screening` | **`is_blind(mode, phase)`** | nothing until decided | **all decisions, notes still sealed** | same |
+| 6 | `GET .../conflicts` | **`sees_all_conflicts(role, phase)`** | papers they decided | **whole queue** | whole queue |
+| 7 | `GET .../conflicts/{pid}` | `CAN_RESOLVE` | **404** | **404** | everything incl. notes |
+| 8 | `GET .../agreement` | aggregate only | statistics, never individual calls | same | same |
 | 9 | `GET .../members` | membership | roster + per-member volume | same | same |
-| 10 | `GET /api/stats` — public | — | corpus facts only | — | — |
-| 11 | dedup `merge_group` / `rollback` | not user-facing | — | — | — |
+| 10 | `GET .../phase` | membership | phase + history + reveal preview | same | same, plus `can_change` |
+| 11 | `GET .../resolutions` | membership | rulings + derived `stale` flag | same | same |
+| 12 | `GET /api/stats` — public | — | corpus facts only | — | — |
+| 13 | dedup `merge_group` / `rollback` | not user-facing | — | — | — |
+
+**Row 2 changed.** The detail view now returns the caller's own rows in every
+phase and for every role. `PAPERS_SQL`'s per-(paper, screener) shape is right
+for an export and wrong for a list of papers — with `see_all` an owner saw each
+paper once per colleague. Others' calls arrive through row 5, which is where
+the blinding rule already lives.
+
+**Writes are phase-gated too**, which the table above does not cover: `closed`
+returns 409 on both screening and resolution. Without it "finished" is a social
+convention and a stray click months later edits a published record.
 
 ---
 

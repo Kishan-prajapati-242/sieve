@@ -513,3 +513,15 @@ button:disabled,
   width: 100vw !important;
   height: 100vh !important;
 }
+
+
+/* Roadworks stripes for the under-construction banner. A real diagonal hazard
+   pattern rather than a flat yellow bar — the joke only lands if it looks like
+   the thing it is imitating. */
+.roadworks {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--color-keyword-400) 0 10px,
+    #1a1204 10px 20px
+  );
+}

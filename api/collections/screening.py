@@ -122,6 +122,26 @@ GROUP BY m.user_id, u.email, m.role
 ORDER BY (m.role = 'owner') DESC, u.email
 """
 
+# A resolution is STALE when a call it ruled over changed afterwards.
+#
+# Derived from timestamps rather than stored: `decided_at` is refreshed by the
+# screening upsert, so any screening newer than the resolution means the ruling
+# was made on different information. Reopening a collection is allowed, which
+# is exactly when this arises.
+RESOLUTIONS_SQL = """
+SELECT r.paper_id, r.decision, r.note, u.email AS resolved_by, r.resolved_at,
+       r.self_resolved,
+       EXISTS (
+           SELECT 1 FROM screenings s
+           WHERE s.collection_id = r.collection_id
+             AND s.paper_id = r.paper_id
+             AND s.decided_at > r.resolved_at
+       ) AS stale
+FROM screening_resolutions r JOIN users u ON u.id = r.resolved_by
+WHERE r.collection_id = %(collection_id)s
+ORDER BY r.resolved_at DESC
+"""
+
 AGREEMENT_ROWS_SQL = """
 SELECT paper_id, user_id, decision FROM screenings WHERE collection_id = %(collection_id)s
 """
@@ -210,4 +230,21 @@ def agreement_rows(conn: psycopg.Connection, collection_id: int) -> list[tuple[i
     return [
         (int(r[0]), int(r[1]), str(r[2]))
         for r in conn.execute(AGREEMENT_ROWS_SQL, {"collection_id": collection_id}).fetchall()
+    ]
+
+
+def resolutions(conn: psycopg.Connection, collection_id: int) -> list[dict[str, Any]]:
+    """Recorded rulings, each flagged if a call has changed under it."""
+    rows = conn.execute(RESOLUTIONS_SQL, {"collection_id": collection_id}).fetchall()
+    return [
+        {
+            "paper_id": r[0],
+            "decision": r[1],
+            "note": r[2],
+            "resolved_by": r[3],
+            "resolved_at": r[4],
+            "self_resolved": r[5],
+            "stale": r[6],
+        }
+        for r in rows
     ]

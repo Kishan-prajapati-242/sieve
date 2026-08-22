@@ -17,6 +17,7 @@ import { DecisionBar } from "./DecisionBar";
 import { AgreementPanel } from "./AgreementPanel";
 import { ConflictsPanel } from "./ConflictsPanel";
 import { OtherCalls } from "./OtherCalls";
+import { PhaseControl } from "./PhaseControl";
 import { MembersPanel } from "./MembersPanel";
 import { DUR, EASE, rowVariants } from "./motion";
 
@@ -124,6 +125,7 @@ export function CollectionPage() {
               {/* Both only for collaborative collections: a solo review has
                   nobody to disagree with and no agreement to measure, so these
                   would be two panels explaining they are empty. */}
+              {isCollaborative && <PhaseControl collectionId={cid} />}
               {isCollaborative && <AgreementPanel collectionId={cid} />}
               {isCollaborative && (
                 <div className="lg:col-span-2">
